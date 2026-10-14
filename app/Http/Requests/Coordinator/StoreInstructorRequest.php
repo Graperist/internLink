@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Http\Requests\Coordinator;
+
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class StoreInstructorRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()?->isCoordinator() ?? false;
+    }
+
+    public function rules(): array
+    {
+        $campusId = $this->user()->campus_id;
+
+        return [
+            'id_number' => [
+                'required', 'string', 'max:50',
+                Rule::unique('users', 'id_number')->where('campus_id', $campusId),
+            ],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'program_id' => [
+                'required',
+                Rule::exists('programs', 'id')->where('campus_id', $campusId),
+            ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'id_number.unique' => 'An account with this ID number already exists at your campus.',
+            'program_id.exists' => 'Select a program offered at your campus.',
+        ];
+    }
+}

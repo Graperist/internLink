@@ -1,0 +1,24 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('evaluations', function (Blueprint $table) {
+            $table->decimal('work_performance', 5, 2)->nullable()->after('rating');
+            $table->decimal('professional_conduct', 5, 2)->nullable()->after('work_performance');
+            $table->decimal('technical_skill', 5, 2)->nullable()->after('professional_conduct');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('evaluations', function (Blueprint $table) {
+            $table->dropColumn(['work_performance', 'professional_conduct', 'technical_skill']);
+        });
+    }
+};

@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Deployment extends Model
+{
+    protected static function booted(): void
+    {
+        // Once the student is deployed, the coordinator's
+        // "ready for deployment" notice is resolved.
+        static::created(function (Deployment $deployment) {
+            $studentId = $deployment->internship?->student_id;
+
+            if ($studentId) {
+                \App\Models\Notification::resolve('predeploy:'.$studentId);
+            }
+        });
+    }
+
+    protected $fillable = ['internship_id', 'hte_id', 'start_date', 'end_date', 'status'];
+
+    protected $casts = ['start_date' => 'date', 'end_date' => 'date'];
+
+    public function internship()
+    {
+        return $this->belongsTo(Internship::class);
+    }
+
+    public function hte()
+    {
+        return $this->belongsTo(Hte::class);
+    }
+
+    // "generates" - all DTR entries logged under this deployment
+    public function dtrs()
+    {
+        return $this->hasMany(Dtr::class);
+    }
+
+    public function latestDtr()
+    {
+        return $this->hasOne(Dtr::class)->latestOfMany('log_date');
+    }
+
+    // "results_in" - the evaluation tied to this deployment
+    public function evaluation()
+    {
+        return $this->hasOne(Evaluation::class);
+    }
+}

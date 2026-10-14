@@ -1,0 +1,209 @@
+/* Audit Trail pop-up notepad - staff portals only */
+
+.ila {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* ---- toggle pill ---- */
+.ila-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.9rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--il-navy-dark, #16324f);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(15, 30, 50, 0.3);
+    cursor: pointer;
+}
+.ila-toggle:hover { background: var(--il-navy, #1c3f66); }
+.ila-toggle:focus-visible,
+.ila-close:focus-visible,
+.ila-filter:focus-visible,
+.ila-more:focus-visible { outline: 2px solid var(--il-gold, #f0b429); outline-offset: 2px; }
+.ila-toggle .ti { color: var(--il-gold, #f0b429); font-size: 1.1rem; }
+
+.ila-badge {
+    min-width: 1.35rem;
+    padding: 0 0.4rem;
+    border-radius: 999px;
+    background: var(--il-gold, #f0b429);
+    color: var(--il-navy-dark, #16324f);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.35rem;
+    text-align: center;
+}
+.ila-badge[hidden] { display: none; }
+
+/* ---- the notepad ---- */
+.ila-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(620px, calc(100vw - 24px));
+    display: flex;
+    flex-direction: column;
+    max-height: min(72vh, 560px);
+    background: #fffdf2;
+    border-radius: 6px 6px 12px 12px;
+    box-shadow: 0 18px 50px rgba(15, 30, 50, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+    color: #22303f;
+    outline: none;
+    overflow: hidden;
+}
+.ila-panel[hidden] { display: none; }
+
+/* notepad "spiral" strip along the top edge */
+.ila-spiral {
+    flex: none;
+    height: 16px;
+    background:
+        radial-gradient(circle at 50% 55%, #fffdf2 0 4px, transparent 4.5px) 0 0 / 22px 16px repeat-x,
+        linear-gradient(#d9dee6, #c3cad5);
+}
+
+.ila-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.9rem 0.5rem 60px;
+    border-bottom: 2px solid rgba(220, 80, 80, 0.45);
+}
+.ila-title { display: flex; flex-direction: column; line-height: 1.2; margin-right: auto; }
+.ila-title strong { font-size: 1rem; color: var(--il-navy-dark, #16324f); }
+.ila-title small { color: #6a7787; font-size: 0.75rem; }
+
+.ila-live { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: #4a5a6b; }
+.ila-dot { width: 8px; height: 8px; border-radius: 50%; background: #2f9e6f; animation: ila-pulse 2s infinite; }
+@keyframes ila-pulse { 50% { opacity: 0.35; } }
+
+.ila-close {
+    border: 0;
+    background: transparent;
+    color: #4a5a6b;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 0.25rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.ila-close:hover { background: rgba(0, 0, 0, 0.07); }
+
+.ila-filters {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.5rem 0.9rem 0.5rem 60px;
+    border-bottom: 1px solid rgba(70, 110, 170, 0.25);
+}
+.ila-filter {
+    border: 1px solid rgba(70, 110, 170, 0.35);
+    background: transparent;
+    color: #34495e;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.65rem;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.ila-filter:hover { background: rgba(70, 110, 170, 0.1); }
+.ila-filter.is-active { background: var(--il-navy-dark, #16324f); border-color: var(--il-navy-dark, #16324f); color: #fff; }
+
+/* the ruled, red-margin writing area */
+.ila-list {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    background: linear-gradient(90deg,
+        transparent 47px, rgba(220, 80, 80, 0.5) 47px, rgba(220, 80, 80, 0.5) 49px, transparent 49px);
+}
+.ila-item {
+    position: relative;
+    padding: 0.5rem 0.9rem 0.5rem 60px;
+    border-bottom: 1px solid rgba(70, 110, 170, 0.22);
+    font-size: 0.83rem;
+    line-height: 1.35;
+}
+.ila-item.is-new { animation: ila-flash 2.4s ease-out; }
+@keyframes ila-flash { from { background: rgba(240, 180, 41, 0.35); } to { background: transparent; } }
+
+.ila-ico {
+    position: absolute;
+    left: 11px;
+    top: 0.55rem;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: #fffdf2;
+    border: 1.5px solid currentColor;
+    font-size: 0.85rem;
+}
+.ila-k-click .ila-ico { color: #3b6fd6; }
+.ila-k-page .ila-ico { color: #6b7c93; }
+.ila-k-action .ila-ico { color: #2f9e6f; }
+.ila-k-security .ila-ico { color: #b7791f; }
+/* only real alerts (failed sign-in, denied access) are drawn in red */
+.ila-item.is-alert { background: rgba(214, 69, 69, 0.07); }
+.ila-item.is-alert .ila-ico { color: #d64545; }
+.ila-item.is-alert .ila-desc { color: #a12a2a; font-weight: 600; }
+
+.ila-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; }
+.ila-who { font-weight: 700; color: var(--il-navy-dark, #16324f); }
+.ila-who.is-you { font-style: italic; }
+.ila-role {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 0.4rem;
+    border-radius: 4px;
+    background: rgba(28, 63, 102, 0.1);
+    color: #34495e;
+}
+.ila-time { margin-left: auto; font-size: 0.72rem; color: #6a7787; white-space: nowrap; }
+.ila-desc { overflow-wrap: anywhere; }
+.ila-ip { font-size: 0.68rem; color: #8894a3; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+
+.ila-empty { margin: 0; padding: 1.5rem 0.9rem 1.5rem 60px; color: #6a7787; font-size: 0.85rem; }
+.ila-empty[hidden], .ila-more[hidden], .ila-foot[hidden] { display: none; }
+
+.ila-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0.9rem 0.5rem 60px;
+    min-height: 2.2rem;
+    border-top: 1px solid rgba(70, 110, 170, 0.25);
+    background: #fbf7e3;
+}
+.ila-more {
+    border: 0;
+    background: transparent;
+    color: var(--il-blue-btn, #3b6fd6);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+}
+.ila-more:hover { text-decoration: underline; }
+.ila-status { font-size: 0.72rem; color: #8a5a00; margin-left: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ila-dot, .ila-item.is-new { animation: none; }
+}
+@media print { .ila { display: none !important; } }

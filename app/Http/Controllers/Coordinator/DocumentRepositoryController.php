@@ -1,0 +1,200 @@
+<?php
+
+namespace App\Http\Controllers\Coordinator;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Coordinator\StoreRepositoryFileRequest;
+use App\Models\Document;
+use App\Models\DocumentRequirement;
+use App\Models\Program;
+use App\Models\Student;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use ZipArchive;
+use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class DocumentRepositoryController extends Controller
+{
+    /**
+     * Figure 7 - Digital Repository: every document on file for the
+     * campus, searchable/filterable, with a coordinator-side manual
+     * upload since the Student portal's own upload flow doesn't exist yet.
+     *
+     * Known simplification: every row here is tied to a specific student's
+     * internship (documents.internship_id is required). Your mockup shows
+     * one row with no student ("MOA_BDO_Alaminos_2026.pdf") implying some
+     * files are HTE-level, not student-level - that's a schema change
+     * (nullable internship_id, or a separate hte-level attachment table)
+     * that isn't in yet. For now, every upload needs a student attached.
+     */
+    public function index(Request $request): View
+    {
+        $campusId = auth()->user()->campus_id;
+
+        // One row per student (not per file). Each student carries only the
+        // files they have passed: approved documents with a file on record,
+        // for live requirements (no legacy forms / seminars).
+        $query = Student::with(['user', 'program'])
+            ->with(['documents' => fn ($q) => $q
+                ->where('documents.status', 'approved')
+                ->whereNotNull('documents.file_path')
+                ->where('documents.file_path', '!=', '')
+                ->whereHas('requirement', fn ($r) => $r->where('is_active', true))
+                ->with(['requirement', 'uploader.role'])
+            ])
+            ->join('users', 'users.id', '=', 'students.user_id')
+            ->where('students.campus_id', $campusId)
+            ->select('students.*')
+            ->orderBy('users.name');
+
+        if ($search = $request->query('search')) {
+            $query->where(function ($q) use ($search) {
+                $q->where('users.name', 'like', "%{$search}%")
+                    ->orWhere('users.id_number', 'like', "%{$search}%")
+                    ->orWhereHas('documents', fn ($d) => $d->where('documents.original_filename', 'like', "%{$search}%"));
+            });
+        }
+
+        if ($requirementId = $request->query('document_requirement_id')) {
+            $query->whereHas('documents', fn ($d) => $d
+                ->where('documents.document_requirement_id', $requirementId)
+                ->where('documents.status', 'approved'));
+        }
+
+        if ($programId = $request->query('program_id')) {
+            $query->where('students.program_id', $programId);
+        }
+
+        $students = $query->paginate(15)->withQueryString();
+
+        $requirements = DocumentRequirement::where('campus_id', $campusId)->where('is_active', true)->orderBy('name')->get();
+        $programs = Program::where('campus_id', $campusId)->orderBy('name')->get();
+
+        // How many live required forms each stage has, for the "x / y" counts.
+        $stageTotals = DocumentRequirement::where('campus_id', $campusId)
+            ->where('is_active', true)
+            ->where('is_required', true)
+            ->whereIn('stage', ['pre_deployment', 'post_deployment'])
+            ->selectRaw('stage, count(*) as total')
+            ->groupBy('stage')
+            ->pluck('total', 'stage');
+
+        return view('coordinator.repository.index', compact('students', 'requirements', 'programs', 'stageTotals'));
+    }
+
+    public function create(): View
+    {
+        $campusId = auth()->user()->campus_id;
+
+        $students = Student::with('user')->where('campus_id', $campusId)->get();
+        $requirements = DocumentRequirement::where('campus_id', $campusId)->where('is_active', true)->orderBy('name')->get();
+
+        return view('coordinator.repository.create', compact('students', 'requirements'));
+    }
+
+    public function store(StoreRepositoryFileRequest $request): RedirectResponse
+    {
+        $coordinator = auth()->user();
+
+        $student = Student::findOrFail($request->validated('student_id'));
+
+        $internship = $student->internships()
+            ->whereIn('status', ['pre_deployment', 'deployed'])
+            ->latest('id')
+            ->first();
+
+        abort_if(! $internship, 422, 'This student has no active internship record to attach a document to.');
+
+        $file = $request->file('file');
+        $path = $file->store("internship_documents/campus_{$coordinator->campus_id}/student_{$student->id}");
+
+        Document::updateOrCreate(
+            [
+                'internship_id' => $internship->id,
+                'document_requirement_id' => $request->validated('document_requirement_id'),
+            ],
+            [
+                'uploaded_by_user_id' => $coordinator->id,
+                'file_path' => $path,
+                'original_filename' => $file->getClientOriginalName(),
+                'status' => 'submitted',
+                'submitted_at' => now(),
+            ]
+        );
+
+        return redirect()
+            ->route('coordinator.repository.index')
+            ->with('status', 'File uploaded to the repository.');
+    }
+
+    /**
+     * One ZIP with every approved document file on record for a student -
+     * the files they have passed - so the coordinator doesn't have to
+     * download them one by one. Legacy/inactive requirements are left out.
+     */
+    public function downloadAllForStudent(Student $student)
+    {
+        $campusId = auth()->user()->campus_id;
+        abort_unless($student->campus_id === $campusId, 403);
+
+        $documents = Document::with('requirement')
+            ->whereHas('internship', fn ($q) => $q->where('student_id', $student->id))
+            ->whereHas('requirement', fn ($q) => $q->where('is_active', true))
+            ->where('status', 'approved')
+            ->whereNotNull('file_path')
+            ->get()
+            ->filter(fn ($document) => Storage::exists($document->file_path))
+            ->sortBy(fn ($document) => $document->requirement->display_order);
+
+
+        if ($documents->isEmpty()) {
+            return redirect()
+                ->route('coordinator.repository')
+                ->with('status', 'No approved files are on record for this student yet.');
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'docs_');
+        $zip = new ZipArchive();
+        abort_unless($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true, 500, 'Could not create the ZIP file.');
+
+        $used = [];
+        foreach ($documents as $document) {
+            $extension = pathinfo($document->original_filename ?: $document->file_path, PATHINFO_EXTENSION);
+            $base = trim(str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], '-', $document->requirement->name));
+            $folder = match ($document->requirement->stage) {
+                'pre_deployment' => 'Pre-Deployment',
+                'post_deployment' => 'Post-Deployment',
+                default => 'During Training',
+            };
+            $entry = $folder.'/'.$base.($extension ? '.'.$extension : '');
+
+            // Keep names unique if two files would collide.
+            $n = 2;
+            while (isset($used[strtolower($entry)])) {
+                $entry = $folder.'/'.$base.' ('.$n++.')'.($extension ? '.'.$extension : '');
+            }
+            $used[strtolower($entry)] = true;
+
+            $zip->addFromString($entry, Storage::get($document->file_path)); // works on local disk and cloud buckets
+        }
+        $zip->close();
+
+        $label = Str::slug(($student->user->id_number ?? 'student').'-'.($student->user->name ?? ''));
+
+        return response()->download($tmp, $label.'-documents.zip')->deleteFileAfterSend(true);
+    }
+
+    public function download(Document $document): StreamedResponse
+    {
+        $campusId = auth()->user()->campus_id;
+
+        abort_unless($document->internship->campus_id === $campusId, 403);
+        abort_if(blank($document->file_path), 404, 'No file has been uploaded for this document yet.');
+        abort_unless(Storage::exists($document->file_path), 404);
+
+        return Storage::download($document->file_path, $document->original_filename);
+    }
+}
