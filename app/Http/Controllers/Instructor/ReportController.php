@@ -112,7 +112,7 @@ class ReportController extends Controller
             'rows' => $rows,
             'semester' => $data['semester'] ?? $defaultSemester,
             'academicYear' => $data['academic_year'] ?? $defaultAcademicYear,
-            'collegeName' => $instructor->program?->name ?? '',
+            'collegeName' => $instructor->isCoordinator() ? ($instructor->campus?->name ?? '') : ($instructor->program?->name ?? ''),
         ]));
     }
 
@@ -131,7 +131,7 @@ class ReportController extends Controller
         $instructor = auth()->user()->instructor;
         [$defaultSemester, $defaultAcademicYear] = $this->currentTerm();
 
-        $students = $instructor->advisees()->with(['user', 'program'])->get()
+        $students = $instructor->visibleStudents()->with(['user', 'program'])->get()
             ->sortBy(fn ($student) => $student->user->name, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
@@ -148,7 +148,7 @@ class ReportController extends Controller
             'rows' => $rows,
             'semester' => $data['semester'] ?? $defaultSemester,
             'academicYear' => $data['academic_year'] ?? $defaultAcademicYear,
-            'collegeName' => $instructor->program?->name ?? '',
+            'collegeName' => $instructor->isCoordinator() ? ($instructor->campus?->name ?? '') : ($instructor->program?->name ?? ''),
         ]));
     }
 
@@ -161,9 +161,7 @@ class ReportController extends Controller
         return Deployment::with(['hte', 'internship.student.user', 'internship.student.program'])
             ->whereNotNull('hte_id')
             ->whereIn('status', ['pending', 'active', 'completed'])
-            ->whereHas('internship.student', fn ($q) => $q
-                ->where('campus_id', $instructor->campus_id)
-                ->where('program_id', $instructor->program_id))
+            ->whereHas('internship', fn ($q) => $instructor->limitInternships($q))
             ->get();
     }
 

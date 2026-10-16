@@ -159,25 +159,29 @@ class DocumentController extends Controller
             ? Hte::where('campus_id', $student->campus_id)->orderBy('name')->get()
             : collect();
 
-        // Course/Major defaults for this student's own program - IT,
-        // Hospitality Management, and Tourism Management have no major, so
-        // that field only ever offers "N/A". Business Administration is the
-        // one program with majors (Financial Management / Operations
-        // Management), modeled here as two separate Program rows
-        // (BSBA-FM/BSBA-OM) - the form still shows one generic "Business
-        // Administration" course with Major picking between the two, so it
-        // matches the real paper form's Course/Major split.
-        $programCode = $student->program->code ?? '';
+        // Course/Major defaults for this student's own program. Each program
+        // row is one course + optional major (see the coordinator's Programs
+        // page), so e.g. BSBA-OM and BSBA-FM both show the course "Business
+        // Administration" with Major picking between them - matching the
+        // real paper form's Course/Major split.
         $courseMajorDefaults = [
-            'course' => str_starts_with($programCode, 'BSBA')
-                ? 'Bachelor of Science in Business Administration'
-                : ($student->program->name ?? ''),
-            'major' => match ($programCode) {
-                'BSBA-OM' => 'OM',
-                'BSBA-FM' => 'FM',
-                default => 'N/A',
-            },
+            'course' => $student->program?->courseTitle() ?? '',
+            'major' => $student->program?->majorLabel() ?? 'N/A',
         ];
+
+        // Course choices come from the programs the coordinator set up for
+        // this campus (Programs page), not a fixed list.
+        $campusPrograms = \App\Models\Program::where('campus_id', $student->campus_id)->get();
+        $courseOptions = $campusPrograms
+            ->map(fn ($program) => $program->courseTitle())
+            ->push($courseMajorDefaults['course'])
+            ->filter()->unique()->sort()->values()->all();
+        $majorOptionsByCourse = $campusPrograms
+            ->groupBy(fn ($program) => $program->courseTitle())
+            ->map(fn ($programs) => $programs->map(fn ($program) => $program->majorLabel())
+                ->reject(fn ($major) => $major === 'N/A')->unique()->sort()->values())
+            ->filter(fn ($majors) => $majors->isNotEmpty())
+            ->all();
 
         // Endorsement Letter defaults come from the student's current
         // deployment when an HTE has already been selected. The recipient
@@ -258,7 +262,7 @@ class DocumentController extends Controller
         }
 
         return view('student.documents.fill', compact(
-            'requirement', 'document', 'htes', 'courseMajorDefaults', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
+            'requirement', 'document', 'htes', 'courseMajorDefaults', 'courseOptions', 'majorOptionsByCourse', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
             'student', 'internship'
         ));
     }
@@ -326,14 +330,8 @@ class DocumentController extends Controller
                 ->exists();
 
             $agreementValues = [
-                'course' => str_starts_with((string) ($student->program?->code ?? ''), 'BSBA')
-                    ? 'Bachelor of Science in Business Administration'
-                    : ($student->program?->name ?? ''),
-                'major' => match ($student->program?->code) {
-                    'BSBA-OM' => 'OM',
-                    'BSBA-FM' => 'FM',
-                    default => 'N/A',
-                },
+                'course' => $student->program?->courseTitle() ?? '',
+                'major' => $student->program?->majorLabel() ?? 'N/A',
                 'address' => $selected['address'],
                 'company_name' => $hte->name,
                 'company_address' => $hte->address,
@@ -421,9 +419,7 @@ class DocumentController extends Controller
             $consentValues = [
                 'full_name' => $student->user->name,
                 'address' => $selected['address'],
-                'course' => str_starts_with((string) ($student->program?->code ?? ''), 'BSBA')
-                    ? 'Bachelor of Science in Business Administration'
-                    : ($student->program?->name ?? ''),
+                'course' => $student->program?->courseTitle() ?? '',
                 'required_hours' => (string) $requiredHours,
                 'company_name' => $selected['company_name'],
                 'signed_city' => $signedCity,

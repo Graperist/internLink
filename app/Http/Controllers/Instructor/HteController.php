@@ -19,12 +19,11 @@ class HteController extends Controller
         $instructor = auth()->user()->instructor;
 
         $query = Hte::where('campus_id', $instructor->campus_id)->withCount([
-            // Only this instructor's own advisees (same campus + program).
+            // Students this person can see (campus for the coordinator,
+            // own program for an instructor).
             'deployments as my_students_count' => fn ($q) => $q
                 ->whereIn('status', ['pending', 'active'])
-                ->whereHas('internship.student', fn ($s) => $s
-                    ->where('campus_id', $instructor->campus_id)
-                    ->where('program_id', $instructor->program_id)),
+                ->whereHas('internship', fn ($i) => $instructor->limitInternships($i)),
         ]);
 
         if ($search = $request->query('search')) {

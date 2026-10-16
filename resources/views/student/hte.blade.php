@@ -10,15 +10,16 @@
 @if (! $deployment)
     <div class="il-card">
         <p class="text-secondary mb-0">
-            You haven't been assigned a Host Training Establishment yet. Your OJT Coordinator
-            will assign one from the Deployment screen.
+            You don't have a Host Training Establishment yet. Choose your firm or agency on your
+            <a href="{{ route('student.documents') }}">Application for OJT</a> - once your subject instructor accepts it,
+            that HTE is recorded here automatically.
         </p>
     </div>
 @else
     <div class="il-card">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="h6 fw-bold mb-0">My Host Training Establishment</h2>
-            <span class="badge rounded-pill text-bg-primary">{{ ucfirst($deployment->status) }}</span>
+            <span class="badge rounded-pill text-bg-primary">{{ $deployment->status === 'pending' ? 'Placed - starts once your pre-OJT requirements are approved' : ucfirst($deployment->status) }}</span>
         </div>
 
         <div class="p-3 mb-3" style="background: #f4f6f9; border-radius: 10px;">

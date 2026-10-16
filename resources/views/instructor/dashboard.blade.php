@@ -42,7 +42,7 @@
     <p class="il-hero-title">Good morning, {{ auth()->user()->name }}!</p>
     <p class="il-hero-subtitle">
         You have {{ $counts['pending_review'] }} document{{ $counts['pending_review'] === 1 ? '' : 's' }} pending review
-        and {{ $counts['awaiting_approval'] }} student{{ $counts['awaiting_approval'] === 1 ? '' : 's' }} awaiting deployment approval.
+        and {{ $counts['awaiting_approval'] }} student{{ $counts['awaiting_approval'] === 1 ? '' : 's' }} placed at a partner agency but not yet started.
     </p>
 </div>
 
@@ -54,7 +54,7 @@
                 <div class="il-stat-number">{{ $counts['advisees'] }}</div>
                 <span class="badge rounded-pill text-bg-success">Active</span>
             </div>
-            <div class="text-secondary small">My {{ auth()->user()->instructor->program->code ?? '' }} Students</div>
+            <div class="text-secondary small">{{ auth()->user()->isCoordinator() ? 'Campus Students' : 'My '.(auth()->user()->instructor->program->code ?? '').' Students' }}</div>
         </a>
     </div>
     <div class="col-md-3">
@@ -83,10 +83,37 @@
                     <i class="ti ti-alert-triangle"></i> Action Needed
                 </span>
             </div>
-            <div class="text-secondary small">Awaiting Approval</div>
+            <div class="text-secondary small">Placed, Not Started</div>
         </a>
     </div>
 </div>
+
+@if ($campus)
+    {{-- Coordinator only: campus-level items that need attention --}}
+    <div class="il-card mb-3">
+        <h2 class="h6 fw-bold mb-3">Campus attention</h2>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <a href="{{ route('instructor.htes', ['moa_status' => 'pending']) }}" class="il-row-link">
+                    <span class="small"><i class="ti ti-file-certificate text-warning"></i> Partner HTEs with MOA pending</span>
+                    <span class="fw-bold">{{ $campus['moa_pending'] }}</span>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ route('coordinator.programs.index') }}" class="il-row-link">
+                    <span class="small"><i class="ti ti-school text-danger"></i> Programs without an instructor</span>
+                    <span class="fw-bold">{{ $campus['uncovered_programs'] }}</span>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ route('instructor.advisees', ['status' => 'not_deployed']) }}" class="il-row-link">
+                    <span class="small"><i class="ti ti-user-question text-secondary"></i> Students with no placement yet</span>
+                    <span class="fw-bold">{{ $campus['not_placed'] }}</span>
+                </a>
+            </div>
+        </div>
+    </div>
+@endif
 
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">

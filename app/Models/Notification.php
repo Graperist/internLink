@@ -93,21 +93,16 @@ class Notification extends Model
                 'dtr' => $path('student.dtr'),
                 default => $path('student.notifications'),
             },
-            'instructor' => match ($type) {
+            'instructor', 'coordinator' => match ($type) {
                 'document_status' => $path('instructor.documents'),
-                'dtr' => $path('instructor.advisees'),
+                'pre_deployment_complete', 'deployment' => $path('instructor.advisees'),
+                'dtr' => $path('instructor.monitoring'),
                 default => $path('instructor.notifications'),
             },
             'hte_representative' => match ($type) {
                 'dtr' => $path('hte.dtr'),
                 'document_status' => $path('hte.evaluations'),
                 default => $path('hte.notifications'),
-            },
-            'coordinator' => match ($type) {
-                'pre_deployment_complete' => $path('coordinator.deployments'),
-                'document_status' => $path('coordinator.documents'),
-                'dtr' => $path('coordinator.monitoring'),
-                default => $path('coordinator.notifications'),
             },
             default => null,
         };

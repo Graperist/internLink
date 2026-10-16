@@ -4,22 +4,19 @@ use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordChangeController;
 use App\Http\Controllers\AuditTrailController;
-use App\Http\Controllers\Coordinator\DashboardController;
-use App\Http\Controllers\Coordinator\DeploymentController;
 use App\Http\Controllers\Coordinator\DocumentController;
 use App\Http\Controllers\Coordinator\DocumentRepositoryController;
-use App\Http\Controllers\Coordinator\DocumentViewController;
 use App\Http\Controllers\Coordinator\HteController;
 use App\Http\Controllers\Hte\NotificationController as HteNotificationController;
 use App\Http\Controllers\Hte\PortalController as HtePortalController;
 use App\Http\Controllers\Hte\FormController as HteFormController;
 use App\Http\Controllers\Coordinator\HteAccountController;
 use App\Http\Controllers\Coordinator\InstructorController;
-use App\Http\Controllers\Coordinator\MonitoringController;
+use App\Http\Controllers\Coordinator\ProgramController;
 use App\Http\Controllers\Coordinator\ReportController;
-use App\Http\Controllers\Coordinator\StudentController;
-use App\Http\Controllers\Coordinator\StudentImportController;
 use App\Http\Controllers\Instructor\AdviseeController;
+use App\Http\Controllers\Instructor\InternAccountController;
+use App\Http\Controllers\Instructor\MonitoringController;
 use App\Http\Controllers\Instructor\DashboardController as InstructorDashboardController;
 use App\Http\Controllers\Instructor\DocumentReviewController;
 use App\Http\Controllers\Instructor\FormController as InstructorFormController;
@@ -32,10 +29,9 @@ use App\Http\Controllers\Student\DocumentController as StudentDocumentController
 use App\Http\Controllers\Student\DtrController;
 use App\Http\Controllers\Student\HteInfoController;
 use App\Http\Controllers\Student\NotificationController as StudentNotificationController;
-use App\Http\Controllers\Coordinator\NotificationController as CoordinatorNotificationController;
-use App\Http\Controllers\Coordinator\ProfileController as CoordinatorProfileController;
 use App\Http\Controllers\Student\ProfileController as StudentProfileController;
 use App\Http\Controllers\Student\ProgressController;
+use App\Http\Middleware\EnsureInstructorProfile;
 use App\Http\Middleware\EnsurePasswordIsChanged;
 use Illuminate\Support\Facades\Route;
 
@@ -85,105 +81,16 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
     // Clicking any notification (every portal) opens the page it is about.
     Route::get('/notifications/{notification}/open', \App\Http\Controllers\NotificationOpenController::class)->name('notifications.open');
 
-    // Figure 5 - Coordinator Portal
-    Route::middleware('role:coordinator')->prefix('coordinator')->name('coordinator.')->group(function () {
-        Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
-        Route::get('/notifications', [CoordinatorNotificationController::class, 'index'])
-    ->name('notifications');
-
-        Route::get('/profile', [CoordinatorProfileController::class, 'index'])->name('profile');
-
-        // Campus Executive Director / College Dean names used by printable forms
-        Route::get('/campus-settings', [\App\Http\Controllers\Coordinator\CampusSettingsController::class, 'edit'])->name('campus-settings.edit');
-        Route::put('/campus-settings', [\App\Http\Controllers\Coordinator\CampusSettingsController::class, 'update'])->name('campus-settings.update');
-        Route::put('/profile/account', [CoordinatorProfileController::class, 'updateAccount'])->name('profile.account');
-        Route::put('/profile/photo', [CoordinatorProfileController::class, 'updatePhoto'])->name('profile.photo');
-        Route::delete('/profile/photo', [CoordinatorProfileController::class, 'removePhoto'])->name('profile.photo.remove');
-
-
-        // Figure 6 - Intern Master List + Add Intern provisioning
-        Route::get('/students', [StudentController::class, 'index'])->name('students.index');
-        Route::get('/students/create', [StudentController::class, 'create'])->name('students.create');
-        Route::post('/students', [StudentController::class, 'store'])->name('students.store');
-        Route::post('/students/{student}/reset-password', [StudentController::class, 'resetPassword'])->name('students.reset-password');
-
-        // Bulk import
-        Route::get('/students/import', [StudentImportController::class, 'create'])->name('students.import');
-        Route::post('/students/import', [StudentImportController::class, 'store'])->name('students.import.store');
-        Route::get('/students/import/template', [StudentImportController::class, 'downloadTemplate'])->name('students.import.template');
-
-        // Manage Instructors - create/reassign/reset Subject Instructor accounts
-        Route::get('/instructors', [InstructorController::class, 'index'])->name('instructors.index');
-        Route::get('/instructors/create', [InstructorController::class, 'create'])->name('instructors.create');
-        Route::post('/instructors', [InstructorController::class, 'store'])->name('instructors.store');
-        Route::get('/instructors/{instructor}/edit', [InstructorController::class, 'edit'])->name('instructors.edit');
-        Route::put('/instructors/{instructor}', [InstructorController::class, 'update'])->name('instructors.update');
-        Route::post('/instructors/{instructor}/reset-password', [InstructorController::class, 'resetPassword'])->name('instructors.reset-password');
-
-        // HTE Accounts - create/reset the single representative account per HTE
-        Route::get('/hte-accounts', [HteAccountController::class, 'index'])
-            ->name('hte-accounts.index');
-
-        Route::get('/hte-accounts/create', [HteAccountController::class, 'create'])
-            ->name('hte-accounts.create');
-
-        Route::post('/hte-accounts', [HteAccountController::class, 'store'])
-            ->name('hte-accounts.store');
-
-        Route::post('/hte-accounts/{representative}/reset-password',
-            [HteAccountController::class, 'resetPassword'])
-            ->name('hte-accounts.reset-password');
-
-        Route::delete('/hte-accounts/{representative}',
-            [HteAccountController::class, 'destroy'])
-            ->name('hte-accounts.destroy');
-
-        // Figure 4 - Deployment Management
-        Route::get('/deployments', [DeploymentController::class, 'index'])->name('deployments.index');
-        Route::post('/deployments/{student}', [DeploymentController::class, 'store'])->name('deployments.store');
-
-        // Figure 5 - Monitoring Dashboard
-        Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
-
-        // Figure 6 - Document Tracking
-        Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
-        Route::get('/documents/export', [DocumentController::class, 'export'])->name('documents.export');
-
-        // Read-only view of one student's full pre-to-post-deployment form
-        // trail, plus the same printable/download endpoints the instructor
-        // uses so a coordinator can open a form without any approve/return
-        // action - that decision stays with the subject instructor.
-        Route::get('/students/{student}/documents', [DocumentViewController::class, 'show'])->name('students.documents');
-        Route::get('/documents/{document}/printable', [DocumentViewController::class, 'printable'])->name('documents.printable');
-        Route::get('/documents/{document}/view', [DocumentViewController::class, 'view'])->name('documents.view');
-        Route::get('/documents/{document}/download', [DocumentViewController::class, 'download'])->name('documents.download');
-
-        // Figure 7 - Digital Repository
-        Route::get('/repository', [DocumentRepositoryController::class, 'index'])->name('repository');
-        Route::get('/repository/upload', [DocumentRepositoryController::class, 'create'])->name('repository.create');
-        Route::post('/repository', [DocumentRepositoryController::class, 'store'])->name('repository.store');
-        Route::get('/repository/students/{student}/download-all', [DocumentRepositoryController::class, 'downloadAllForStudent'])->name('repository.student.download-all');
-        Route::get('/repository/{document}/download', [DocumentRepositoryController::class, 'download'])->name('repository.download');
-
-        // Partner HTEs
-        Route::get('/htes', [HteController::class, 'index'])->name('htes');
-        Route::get('/htes/create', [HteController::class, 'create'])->name('htes.create');
-        Route::post('/htes', [HteController::class, 'store'])->name('htes.store');
-        Route::get('/htes/{hte}/edit', [HteController::class, 'edit'])->name('htes.edit');
-        Route::put('/htes/{hte}', [HteController::class, 'update'])->name('htes.update');
-
-        // Reports
-        Route::get('/reports', [ReportController::class, 'index'])->name('reports');
-        Route::get('/reports/export/roster', [ReportController::class, 'exportInternRoster'])->name('reports.export-roster');
-        Route::get('/reports/export/htes', [ReportController::class, 'exportHtePartnership'])->name('reports.export-hte');
-        Route::get('/reports/export/approved-documents', [ReportController::class, 'downloadApprovedDocuments'])->name('reports.export-approved-documents');
-        Route::get('/reports/export/evaluations', [ReportController::class, 'exportEvaluationSummary'])->name('reports.export-evaluations');
-        Route::get('/reports/export/compliance', [ReportController::class, 'exportDocumentsCompliance'])->name('reports.export-compliance');
-    });
-
-    // Figure 13 - Subject Instructor Portal
-    Route::middleware('role:instructor')->prefix('instructor')->name('instructor.')->group(function () {
+    // ------------------------------------------------------------------
+    // Coordinator + Subject Instructor - ONE shared portal.
+    // The OJT Coordinator is also a program instructor, so both roles use
+    // the same modules below. The difference is scope (see Instructor
+    // model): an instructor sees their own program; the coordinator sees
+    // the whole campus. Acting on a student stays limited to one's own
+    // program for both. URL prefix and route names stay "instructor" so
+    // links already saved in notifications keep working.
+    // ------------------------------------------------------------------
+    Route::middleware(['role:instructor,coordinator', EnsureInstructorProfile::class])->prefix('instructor')->name('instructor.')->group(function () {
         Route::get('/dashboard', [InstructorDashboardController::class, 'index'])->name('dashboard');
 
         // Announcements (e.g. Pre-/Post-OJT Seminar schedule) -> student notifications
@@ -192,7 +99,18 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
 
         Route::get('/advisees', [AdviseeController::class, 'index'])->name('advisees');
         Route::get('/advisees/export', [AdviseeController::class, 'export'])->name('advisees.export');
+        Route::post('/advisees/{deployment}/activate', [AdviseeController::class, 'activate'])->name('advisees.activate');
         Route::post('/advisees/{deployment}/confirm-completion', [AdviseeController::class, 'confirmCompletion'])->name('advisees.confirm-completion');
+
+        // Intern accounts - added by the subject instructor, own program only.
+        Route::get('/interns/create', [InternAccountController::class, 'create'])->name('interns.create');
+        Route::post('/interns', [InternAccountController::class, 'store'])->name('interns.store');
+        Route::get('/interns/import', [InternAccountController::class, 'importForm'])->name('interns.import');
+        Route::post('/interns/import', [InternAccountController::class, 'import'])->name('interns.import.store');
+        Route::get('/interns/import/template', [InternAccountController::class, 'template'])->name('interns.template');
+        Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
+
+        Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
         Route::post('/documents/{document}/review', [DocumentReviewController::class, 'review'])->name('documents.review');
@@ -201,7 +119,6 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{document}/complete', [DocumentReviewController::class, 'markCompleted'])->name('documents.complete');
         Route::get('/documents/{document}/view', [DocumentReviewController::class, 'view'])->name('documents.view');
         Route::get('/documents/{document}/download', [DocumentReviewController::class, 'download'])->name('documents.download');
-
 
         Route::get('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'create'])->name('forms.create');
         Route::post('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'store'])->name('forms.store');
@@ -221,6 +138,72 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::put('/profile/account', [InstructorProfileController::class, 'updateAccount'])->name('profile.account');
         Route::put('/profile/photo', [InstructorProfileController::class, 'updatePhoto'])->name('profile.photo');
         Route::delete('/profile/photo', [InstructorProfileController::class, 'removePhoto'])->name('profile.photo.remove');
+    });
+
+    // Coordinator-only campus administration, on top of the shared portal.
+    Route::middleware(['role:coordinator', EnsureInstructorProfile::class])->prefix('coordinator')->name('coordinator.')->group(function () {
+        // Old coordinator pages that are now shared modules - kept as
+        // redirects so bookmarks and saved notification links still work.
+        Route::redirect('/dashboard', '/instructor/dashboard')->name('dashboard');
+        Route::redirect('/students', '/instructor/advisees')->name('students.index');
+        Route::redirect('/deployments', '/instructor/advisees')->name('deployments.index');
+        Route::redirect('/monitoring', '/instructor/monitoring')->name('monitoring');
+        Route::redirect('/notifications', '/instructor/notifications')->name('notifications');
+        Route::redirect('/profile', '/instructor/profile')->name('profile');
+
+        // Programs - courses and majors offered for OJT on this campus
+        Route::get('/programs', [ProgramController::class, 'index'])->name('programs.index');
+        Route::get('/programs/create', [ProgramController::class, 'create'])->name('programs.create');
+        Route::post('/programs', [ProgramController::class, 'store'])->name('programs.store');
+        Route::get('/programs/{program}/edit', [ProgramController::class, 'edit'])->name('programs.edit');
+        Route::put('/programs/{program}', [ProgramController::class, 'update'])->name('programs.update');
+        Route::delete('/programs/{program}', [ProgramController::class, 'destroy'])->name('programs.destroy');
+
+        // Campus Executive Director / College Dean names used by printable forms
+        Route::get('/campus-settings', [\App\Http\Controllers\Coordinator\CampusSettingsController::class, 'edit'])->name('campus-settings.edit');
+        Route::put('/campus-settings', [\App\Http\Controllers\Coordinator\CampusSettingsController::class, 'update'])->name('campus-settings.update');
+
+        // Manage Instructors - create/reassign/reset Subject Instructor accounts
+        Route::get('/instructors', [InstructorController::class, 'index'])->name('instructors.index');
+        Route::get('/instructors/create', [InstructorController::class, 'create'])->name('instructors.create');
+        Route::post('/instructors', [InstructorController::class, 'store'])->name('instructors.store');
+        Route::get('/instructors/{instructor}/edit', [InstructorController::class, 'edit'])->name('instructors.edit');
+        Route::put('/instructors/{instructor}', [InstructorController::class, 'update'])->name('instructors.update');
+        Route::post('/instructors/{instructor}/reset-password', [InstructorController::class, 'resetPassword'])->name('instructors.reset-password');
+
+        // HTE Accounts - create/reset the single representative account per HTE
+        Route::get('/hte-accounts', [HteAccountController::class, 'index'])->name('hte-accounts.index');
+        Route::get('/hte-accounts/create', [HteAccountController::class, 'create'])->name('hte-accounts.create');
+        Route::post('/hte-accounts', [HteAccountController::class, 'store'])->name('hte-accounts.store');
+        Route::post('/hte-accounts/{representative}/reset-password', [HteAccountController::class, 'resetPassword'])->name('hte-accounts.reset-password');
+        Route::delete('/hte-accounts/{representative}', [HteAccountController::class, 'destroy'])->name('hte-accounts.destroy');
+
+        // Document Tracking - campus-wide compliance overview
+        Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
+        Route::get('/documents/export', [DocumentController::class, 'export'])->name('documents.export');
+
+        // Digital Repository
+        Route::get('/repository', [DocumentRepositoryController::class, 'index'])->name('repository');
+        Route::get('/repository/upload', [DocumentRepositoryController::class, 'create'])->name('repository.create');
+        Route::post('/repository', [DocumentRepositoryController::class, 'store'])->name('repository.store');
+        Route::get('/repository/students/{student}/download-all', [DocumentRepositoryController::class, 'downloadAllForStudent'])->name('repository.student.download-all');
+        Route::get('/repository/{document}/download', [DocumentRepositoryController::class, 'download'])->name('repository.download');
+
+        // Partner HTEs - the list is the shared Partner Agencies module;
+        // adding and editing an HTE stays with the coordinator.
+        Route::get('/htes', [HteController::class, 'index'])->name('htes');
+        Route::get('/htes/create', [HteController::class, 'create'])->name('htes.create');
+        Route::post('/htes', [HteController::class, 'store'])->name('htes.store');
+        Route::get('/htes/{hte}/edit', [HteController::class, 'edit'])->name('htes.edit');
+        Route::put('/htes/{hte}', [HteController::class, 'update'])->name('htes.update');
+
+        // Campus reports (CSV / file exports)
+        Route::get('/reports', [ReportController::class, 'index'])->name('reports');
+        Route::get('/reports/export/roster', [ReportController::class, 'exportInternRoster'])->name('reports.export-roster');
+        Route::get('/reports/export/htes', [ReportController::class, 'exportHtePartnership'])->name('reports.export-hte');
+        Route::get('/reports/export/approved-documents', [ReportController::class, 'downloadApprovedDocuments'])->name('reports.export-approved-documents');
+        Route::get('/reports/export/evaluations', [ReportController::class, 'exportEvaluationSummary'])->name('reports.export-evaluations');
+        Route::get('/reports/export/compliance', [ReportController::class, 'exportDocumentsCompliance'])->name('reports.export-compliance');
     });
 
     // Figure 19 - HTE Portal

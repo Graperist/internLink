@@ -125,7 +125,7 @@
     <p class="text-secondary small mb-0">
         {{ $hteCount }} partner HTE{{ $hteCount === 1 ? '' : 's' }} on file,
         {{ $activeMoaCount }} with an active MOA.
-        See <a href="{{ route('coordinator.htes') }}">Partner HTEs</a> for the full breakdown per establishment.
+        See <a href="{{ route('instructor.htes') }}">Partner HTEs</a> for the full breakdown per establishment.
     </p>
 </div>
 @endsection

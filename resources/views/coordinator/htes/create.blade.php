@@ -10,7 +10,7 @@
 <div class="il-card" style="max-width: 560px;">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">New Host Training Establishment</h2>
-        <a href="{{ route('coordinator.htes') }}" class="btn btn-sm btn-outline-secondary">&larr; Back</a>
+        <a href="{{ route('instructor.htes') }}" class="btn btn-sm btn-outline-secondary">&larr; Back</a>
     </div>
 
     @if ($errors->any())

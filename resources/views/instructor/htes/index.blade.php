@@ -3,9 +3,19 @@
 @section('title', 'Partner Agencies - PSU Intern-Link')
 
 @section('content')
+@php $isCoordinator = auth()->user()->isCoordinator(); @endphp
 <div class="il-page-header">
     <h1 class="il-page-title">Partner agencies</h1>
+    @if ($isCoordinator)
+        <a href="{{ route('coordinator.htes.create') }}" class="il-btn-primary text-decoration-none">
+            <i class="ti ti-plus"></i> Add partner HTE
+        </a>
+    @endif
 </div>
+
+@if (session('status'))
+    <div class="alert alert-success" role="status">{{ session('status') }}</div>
+@endif
 
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -50,7 +60,8 @@
                     <th>Contact person</th>
                     <th>Phone</th>
                     <th>MOA status</th>
-                    <th>My students</th>
+                    <th>{{ $isCoordinator ? 'Students' : 'My students' }}</th>
+                    @if ($isCoordinator)<th></th>@endif
                 </tr>
             </thead>
             <tbody>
@@ -83,10 +94,13 @@
                             </span>
                         </td>
                         <td>{{ $hte->my_students_count }}</td>
+                        @if ($isCoordinator)
+                            <td class="text-end"><a href="{{ route('coordinator.htes.edit', $hte) }}" class="small fw-semibold text-decoration-none">Edit</a></td>
+                        @endif
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="text-center text-secondary py-4">
+                        <td colspan="{{ $isCoordinator ? 6 : 5 }}" class="text-center text-secondary py-4">
                             @if (request()->hasAny(['search', 'moa_status']))
                                 No agencies match this search or filter.
                             @else
@@ -99,9 +113,11 @@
         </table>
     </div>
 
-    <p class="text-secondary small mt-3 mb-0">
-        This list is view-only. Ask your OJT Coordinator to add or update an agency.
-    </p>
+    @unless ($isCoordinator)
+        <p class="text-secondary small mt-3 mb-0">
+            This list is view-only. Ask your OJT Coordinator to add or update an agency.
+        </p>
+    @endunless
 </div>
 
 <div class="mt-3">

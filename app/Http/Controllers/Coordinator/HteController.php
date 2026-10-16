@@ -11,19 +11,10 @@ use Illuminate\View\View;
 
 class HteController extends Controller
 {
-    public function index(Request $request): View
+    /** The list itself is the shared Partner Agencies module. */
+    public function index(): RedirectResponse
     {
-        $campusId = auth()->user()->campus_id;
-        $query = Hte::where('campus_id', $campusId)->withCount([
-            'deployments as active_interns_count' => fn ($q) => $q->where('status', 'active'),
-            'deployments as total_interns_count',
-        ]);
-
-        if ($search = $request->query('search')) $query->where('name', 'like', "%{$search}%");
-        if ($status = $request->query('moa_status')) $query->where('moa_status', $status);
-
-        $htes = $query->orderBy('name')->paginate(20)->withQueryString();
-        return view('coordinator.htes.index', compact('htes'));
+        return redirect()->route('instructor.htes');
     }
 
     public function create(): View { return view('coordinator.htes.create'); }
@@ -31,7 +22,7 @@ class HteController extends Controller
     public function store(StoreHteRequest $request): RedirectResponse
     {
         Hte::create(['campus_id' => auth()->user()->campus_id, ...$request->validated()]);
-        return redirect()->route('coordinator.htes')->with('status', 'Partner HTE added with DTR location security settings.');
+        return redirect()->route('instructor.htes')->with('status', 'Partner HTE added with DTR location security settings.');
     }
 
     public function edit(Hte $hte): View
@@ -44,6 +35,6 @@ class HteController extends Controller
     {
         abort_unless($hte->campus_id === auth()->user()->campus_id, 403);
         $hte->update($request->validated());
-        return redirect()->route('coordinator.htes')->with('status', $hte->name.' was updated.');
+        return redirect()->route('instructor.htes')->with('status', $hte->name.' was updated.');
     }
 }

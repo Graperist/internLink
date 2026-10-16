@@ -1,4 +1,4 @@
-@extends('layouts.coordinator')
+@extends('layouts.instructor')
 
 @section('title', 'Monitoring Dashboard - PSU Intern-Link')
 
@@ -62,7 +62,7 @@
                 <tr>
                     <td colspan="5" class="text-center text-secondary py-4">
                         No actively deployed interns yet.
-                        <a href="{{ route('coordinator.deployments.index') }}">Assign a deployment</a> first.
+                        <a href="{{ route('instructor.advisees', ['status' => 'pending']) }}">Start a deployment</a> first.
                     </td>
                 </tr>
             @endforelse

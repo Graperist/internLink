@@ -1012,12 +1012,7 @@
                                         'civil_status' => ['Single', 'Married', 'Widowed', 'Separated', 'Divorced', 'Annulled'],
                                         'sex' => ['Male', 'Female'],
                                         'sex_gender' => ['Male', 'Female'],
-                                        'course' => [
-                                            'Bachelor of Science in Information Technology',
-                                            'Bachelor of Science in Business Administration',
-                                            'Bachelor of Science in Hospitality Management',
-                                            'Bachelor of Science in Tourism Management',
-                                        ],
+                                        'course' => $courseOptions ?? [$courseMajorDefaults['course']],
                                         'major' => $selectedValue && $selectedValue !== 'N/A' ? [$selectedValue] : ['N/A'],
                                         default => [],
                                     };
@@ -1121,8 +1116,8 @@
 <script>
 (function () {
     // Keeps the Major <select> in sync with whichever Course is picked -
-    // only Business Administration has real majors (FM/OM); every other
-    // course collapses Major down to a single locked "N/A" option.
+    // a course with majors offers them; any other course collapses Major
+    // down to a single locked "N/A" option.
     const courseSelect = document.getElementById('course');
     const majorSelect = document.getElementById('major');
 
@@ -1130,9 +1125,8 @@
         return;
     }
 
-    const majorOptionsByCourse = {
-        'Bachelor of Science in Business Administration': ['FM', 'OM'],
-    };
+    // Built from the campus's programs (Programs page): course -> majors.
+    const majorOptionsByCourse = @json($majorOptionsByCourse ?? []);
     const defaultMajorOptions = ['N/A'];
 
     function rebuildMajorOptions() {

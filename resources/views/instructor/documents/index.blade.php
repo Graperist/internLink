@@ -23,7 +23,7 @@
 
 @if ($advisees->isEmpty())
     <div class="il-card text-center text-secondary py-4">
-        No students are in your program yet.
+        {{ auth()->user()->isCoordinator() ? 'No students are on your campus yet.' : 'No students are in your program yet.' }}
     </div>
 @else
     <div class="il-card mb-3">
@@ -32,7 +32,11 @@
                 <h2 class="h6 fw-bold mb-1">
                     Pre-Deployment Requirements — {{ $student->user->name }}
                     <span class="text-secondary fw-normal">{{ $student->user->id_number }}</span>
+                    <span class="badge rounded-pill text-bg-light text-secondary fw-semibold">{{ $student->program->code ?? '' }}</span>
                 </h2>
+                @unless ($canAct)
+                    <div class="small text-secondary mt-1"><i class="ti ti-eye"></i> View only &mdash; this student is in another program. Their subject instructor approves or returns these forms.</div>
+                @endunless
 
                 {{-- Static/informational only - no per-signatory approval state exists anywhere in the schema. --}}
                 <div class="d-flex flex-wrap gap-1 mt-2">
@@ -51,7 +55,7 @@
                 $adviseeSearchData = $advisees->map(fn ($advisee) => [
                     'id' => $advisee->id,
                     'name' => $advisee->user->name,
-                    'id_number' => $advisee->user->id_number,
+                    'id_number' => $advisee->user->id_number.($advisee->program ? ' · '.$advisee->program->code : ''),
                     'pending' => $advisee->pending_documents_count,
                 ])->values();
             @endphp
@@ -231,10 +235,10 @@
                                     <div class="d-flex gap-2 flex-wrap mt-2">
                                         @if (in_array($packetStatus, ['submitted', 'for_review']))
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            <form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Print for signing</button></form>
+                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Print for signing</button></form>@endif
                                         @elseif ($packetStatus === 'printed')
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            <form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Confirm signed paper returned</button></form>
+                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Confirm signed paper returned</button></form>@endif
                                         @elseif ($packetStatus === 'completed')
                                             <span class="text-secondary small">Awaiting student's one-time signed-copy upload.</span>
                                         @elseif ($packetStatus === 'approved')
@@ -532,6 +536,7 @@
                                                     View Printable
                                                 </a>
                                                 @if ($requirement->workflow_mode === 'print_sign')
+                                                    @if ($canAct)
                                                     <button
                                                         type="button"
                                                         class="btn btn-sm btn-primary"
@@ -541,7 +546,9 @@
                                                     >
                                                         Print for Signing
                                                     </button>
+                                                    @endif
                                                 @else
+                                                    @if ($canAct)
                                                     <button
                                                         type="button"
                                                         class="btn btn-sm btn-primary"
@@ -553,7 +560,9 @@
                                                     >
                                                         Approve / Return
                                                     </button>
+                                                    @endif
                                                 @endif
+                                                @if ($canAct)
                                                 <button
                                                     type="button"
                                                     class="btn btn-sm btn-outline-danger"
@@ -564,6 +573,7 @@
                                                 >
                                                     Return to Student
                                                 </button>
+                                                @endif
                                             @elseif ($status === 'returned')
                                                 <a
                                                     href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}"
@@ -577,6 +587,7 @@
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                     View Printable
                                                 </a>
+                                                @if ($canAct)
                                                 <button
                                                     type="button"
                                                     class="btn btn-sm btn-primary"
@@ -586,6 +597,8 @@
                                                 >
                                                     Approve
                                                 </button>
+                                                @endif
+                                                @if ($canAct)
                                                 <button
                                                     type="button"
                                                     class="btn btn-sm btn-outline-danger"
@@ -596,6 +609,7 @@
                                                 >
                                                     Return
                                                 </button>
+                                                @endif
                                             @elseif ($status === 'completed')
                                                 <span class="text-secondary" style="font-size: 0.78rem;">Awaiting student's signed-copy upload.</span>
                                             @elseif ($status === 'approved')
@@ -629,6 +643,7 @@
                                             </a>
 
                                             @if (in_array($status, ['submitted', 'for_review']))
+                                                @if ($canAct)
                                                 <button
                                                     type="button"
                                                     class="btn btn-sm btn-primary"
@@ -640,6 +655,7 @@
                                                 >
                                                     Approve / Return
                                                 </button>
+                                                @endif
                                             @elseif ($status === 'returned')
                                                 <span class="text-secondary small align-self-center">{{ $requirement->audience === 'coordinator' ? "Awaiting the coordinator's corrected upload." : "Awaiting student's corrected resubmission." }}</span>
                                             @endif

@@ -152,13 +152,13 @@ class AuditTrailTest extends TestCase
     {
         $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
-        $this->actingAs($coordinator)->get(route('coordinator.dashboard'))->assertOk();
+        $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk();
 
         $this->assertDatabaseHas('activity_logs', [
             'user_id' => $coordinator->id,
             'action' => 'page.view',
             'description' => 'Opened the dashboard',
-            'route_name' => 'coordinator.dashboard',
+            'route_name' => 'instructor.dashboard',
             'method' => 'GET',
         ]);
     }
@@ -177,9 +177,10 @@ class AuditTrailTest extends TestCase
 
     public function test_a_form_rejected_by_validation_is_labelled_as_such(): void
     {
-        $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
+        // Adding interns is done by the program's instructor now.
+        $instructor = $this->makeInstructor($this->campusA, $this->programA, 'I-001');
 
-        $this->actingAs($coordinator)->post(route('coordinator.students.store'), [])
+        $this->actingAs($instructor)->post(route('instructor.interns.store'), [])
             ->assertSessionHasErrors();
 
         $log = ActivityLog::where('action', 'action.post')->firstOrFail();
@@ -216,7 +217,7 @@ class AuditTrailTest extends TestCase
         $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
         $student = $this->makeStudent($this->campusA, $this->programA, 'S-001');
 
-        $this->actingAs($coordinator)->get(route('coordinator.dashboard'))
+        $this->actingAs($coordinator)->get(route('instructor.dashboard'))
             ->assertSee('id="ilAudit"', false)
             ->assertSee('audit-trail.js', false);
 

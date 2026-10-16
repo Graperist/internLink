@@ -1,10 +1,9 @@
 <?php
 
-namespace App\Http\Controllers\Coordinator;
+namespace App\Http\Controllers\Instructor;
 
 use App\Http\Controllers\Controller;
 use App\Models\Dtr;
-use App\Models\Student;
 use Illuminate\View\View;
 
 class MonitoringController extends Controller
@@ -12,18 +11,15 @@ class MonitoringController extends Controller
     /**
      * Figure 5 (Monitoring Dashboard) - today's DTR status and cumulative
      * hours-rendered progress, scoped to actively deployed interns only.
-     *
-     * Note: every row will show "No DTR" until the Student portal exists,
-     * since nothing currently writes to the dtrs table - this page reads
-     * real data, it just has nothing to read yet.
      */
     public function index(): View
     {
-        $coordinator = auth()->user();
-        $campusId = $coordinator->campus_id;
+        // Shared module: the coordinator sees the whole campus, an
+        // instructor sees their own program.
+        $instructor = auth()->user()->instructor;
 
-        $deployedStudents = Student::with(['user', 'program', 'currentInternship.deployment.hte'])
-            ->where('campus_id', $campusId)
+        $deployedStudents = $instructor->visibleStudents()
+            ->with(['user', 'program', 'currentInternship.deployment.hte'])
             ->whereHas('currentInternship.deployment', fn ($q) => $q->where('status', 'active'))
             ->get();
 
@@ -45,6 +41,6 @@ class MonitoringController extends Controller
             ];
         })->sortBy(fn ($row) => $row['student']->user->name);
 
-        return view('coordinator.monitoring.index', compact('rows'));
+        return view('instructor.monitoring.index', compact('rows'));
     }
 }

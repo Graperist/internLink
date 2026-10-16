@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\Instructor;
-use App\Models\Program;
+use App\Models\Internship;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
@@ -24,10 +24,12 @@ use Throwable;
  * Bulk-provisions Student Intern accounts from an uploaded spreadsheet.
  *
  * Expected columns (see public/templates/student_import_template.csv):
- *   id_number, name, email, program_code, instructor_email (optional)
+ *   id_number, name, email, program_code (optional)
  *
- * campus_id is NEVER read from the file - every row is provisioned into the
- * logged-in coordinator's own campus, same rule as the single-add form.
+ * Interns are added by their subject instructor, so every row goes into the
+ * importing instructor's own campus AND program - neither is read from the
+ * file. If a row does fill in program_code, it must match that program, so
+ * a sheet meant for another program is caught instead of silently imported.
  */
 class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, SkipsOnError, SkipsOnFailure
 {
@@ -39,13 +41,15 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
     /** @var array<int, array{row:int,reason:string}> */
     public array $skipped = [];
 
-    public function __construct(private readonly int $campusId)
+    public function __construct(private readonly Instructor $instructor)
     {
     }
 
     public function collection(Collection $rows): void
     {
         $studentRole = Role::where('code', 'student')->firstOrFail();
+        $program = $this->instructor->program;
+        $campusId = $this->instructor->campus_id;
 
         foreach ($rows as $index => $row) {
             $excelRow = $index + 2; // +1 for zero-index, +1 for the header row
@@ -54,10 +58,14 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
             $name = trim((string) ($row['name'] ?? ''));
             $email = trim((string) ($row['email'] ?? ''));
             $programCode = trim((string) ($row['program_code'] ?? ''));
-            $instructorEmail = trim((string) ($row['instructor_email'] ?? ''));
 
-            if ($idNumber === '' || $name === '' || $email === '' || $programCode === '') {
+            if ($idNumber === '' || $name === '' || $email === '') {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Missing required field(s).'];
+                continue;
+            }
+
+            if ($programCode !== '' && strcasecmp($programCode, $program->code) !== 0) {
+                $this->skipped[] = ['row' => $excelRow, 'reason' => "Program '{$programCode}' is not your program ({$program->code}). Only its own instructor can add this intern."];
                 continue;
             }
 
@@ -72,31 +80,12 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
                 continue;
             }
 
-            $program = Program::where('campus_id', $this->campusId)->where('code', $programCode)->first();
-            if (! $program) {
-                $this->skipped[] = ['row' => $excelRow, 'reason' => "Program code '{$programCode}' not found for this campus."];
-                continue;
-            }
-
-            $instructorId = null;
-            if ($instructorEmail !== '') {
-                $instructor = Instructor::whereHas('user', fn ($q) => $q->where('email', $instructorEmail))
-                    ->where('campus_id', $this->campusId)
-                    ->first();
-
-                if (! $instructor) {
-                    $this->skipped[] = ['row' => $excelRow, 'reason' => "Instructor '{$instructorEmail}' not found for this campus."];
-                    continue;
-                }
-                $instructorId = $instructor->id;
-            }
-
             $temporaryPassword = Str::password(10, symbols: false);
 
             try {
-                DB::transaction(function () use ($idNumber, $name, $email, $program, $instructorId, $studentRole, $temporaryPassword) {
+                DB::transaction(function () use ($idNumber, $name, $email, $program, $campusId, $studentRole, $temporaryPassword) {
                     $user = User::create([
-                        'campus_id' => $this->campusId,
+                        'campus_id' => $campusId,
                         'role_id' => $studentRole->id,
                         'id_number' => $idNumber,
                         'name' => $name,
@@ -106,12 +95,23 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
                         'must_change_password' => true,
                     ]);
 
-                    Student::create([
+                    $student = Student::create([
                         'user_id' => $user->id,
-                        'campus_id' => $this->campusId,
+                        'campus_id' => $campusId,
                         'program_id' => $program->id,
-                        'instructor_id' => $instructorId,
+                        'instructor_id' => $this->instructor->id,
                         'hours_rendered' => 0,
+                    ]);
+
+                    // Same as the single Add Intern form: every student starts
+                    // with an internship record so they can fill in forms.
+                    Internship::create([
+                        'student_id' => $student->id,
+                        'campus_id' => $campusId,
+                        'program_id' => $program->id,
+                        'instructor_id' => $this->instructor->id,
+                        'required_hours' => $program->required_hours ?? 486,
+                        'status' => 'pre_deployment',
                     ]);
                 });
 
@@ -133,7 +133,6 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
             'id_number' => ['required'],
             'name' => ['required'],
             'email' => ['required', 'email'],
-            'program_code' => ['required'],
         ];
     }
 

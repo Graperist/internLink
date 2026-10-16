@@ -72,8 +72,8 @@ class PreDeployment
 
     /**
      * Call after any document becomes approved. When that completes the
-     * student's pre-deployment requirements, notify the campus coordinators
-     * (once per student).
+     * student's pre-deployment requirements, notify the campus coordinator
+     * and the program's instructors (once per student).
      */
     public static function notifyCoordinatorsIfComplete(Internship $internship): void
     {
@@ -87,26 +87,32 @@ class PreDeployment
 
         $title = 'Pre-deployment requirements complete';
         $message = $name.($idNumber ? " ({$idNumber})" : '')
-            .' has completed all pre-deployment requirements and is ready for deployment.';
+            .' has completed all pre-deployment requirements and is ready for deployment.'
+            .' Set the OJT dates and start the deployment in My Students.';
 
-        $coordinators = User::where('campus_id', $internship->campus_id)
-            ->whereHas('role', fn ($q) => $q->where('code', 'coordinator'))
+        // The program's instructors start the OJT; the coordinator follows
+        // the whole campus. Both get the notice.
+        $recipients = User::where('campus_id', $internship->campus_id)
             ->where('status', 'active')
+            ->where(fn ($q) => $q
+                ->whereHas('role', fn ($r) => $r->where('code', 'coordinator'))
+                ->orWhereHas('instructor', fn ($i) => $i->where('program_id', $internship->program_id)))
             ->get();
 
-        foreach ($coordinators as $coordinator) {
-            $alreadyNotified = Notification::where('user_id', $coordinator->id)
+        foreach ($recipients as $recipient) {
+            $alreadyNotified = Notification::where('user_id', $recipient->id)
                 ->where('type', 'pre_deployment_complete')
-                ->where('message', $message)
+                ->where('resolve_key', 'predeploy:'.$student->id)
                 ->exists();
 
             if (! $alreadyNotified) {
                 Notification::create([
-                    'user_id' => $coordinator->id,
+                    'user_id' => $recipient->id,
                     'type' => 'pre_deployment_complete',
                     'resolve_key' => 'predeploy:'.$student->id,
                     'title' => $title,
                     'message' => $message,
+                    'url' => route('instructor.advisees', ['search' => $idNumber], false),
                 ]);
             }
         }

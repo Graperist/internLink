@@ -126,7 +126,7 @@ class DocumentRepositoryController extends Controller
         );
 
         return redirect()
-            ->route('coordinator.repository.index')
+            ->route('coordinator.repository')
             ->with('status', 'File uploaded to the repository.');
     }
 

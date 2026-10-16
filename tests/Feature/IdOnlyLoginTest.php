@@ -63,7 +63,7 @@ class IdOnlyLoginTest extends TestCase
         $cases = [
             ['student', '23-AC-0092', 'student.dashboard'],
             ['instructor', 'ACC-INST-001', 'instructor.dashboard'],
-            ['coordinator', 'ACC-COORD-001', 'coordinator.dashboard'],
+            ['coordinator', 'ACC-COORD-001', 'instructor.dashboard'], // the coordinator uses the shared portal
             ['hte_representative', 'ACC-HTE-001', 'hte.dashboard'],
         ];
 

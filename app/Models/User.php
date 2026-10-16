@@ -91,8 +91,9 @@ class User extends Authenticatable
     public function dashboardRouteName(): string
     {
         return match ($this->role?->code) {
-            'coordinator' => 'coordinator.dashboard',
-            'instructor' => 'instructor.dashboard',
+            // The coordinator is also a program instructor and uses the
+            // same shared portal (with campus-wide view + admin pages).
+            'coordinator', 'instructor' => 'instructor.dashboard',
             'hte_representative' => 'hte.dashboard',
             'student' => 'student.dashboard',
             default => 'login',

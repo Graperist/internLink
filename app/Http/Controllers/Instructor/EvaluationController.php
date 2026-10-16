@@ -21,7 +21,7 @@ class EvaluationController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
-        $advisees = $instructor->advisees()
+        $advisees = $instructor->visibleStudents()
             ->with([
                 'user',
                 'program',
@@ -74,11 +74,7 @@ class EvaluationController extends Controller
         $document->load('requirement', 'internship');
         abort_unless($document->requirement?->code === 'EVALUATION_FORM', 404);
         abort_unless($document->requirement->campus_id === $instructor->campus_id, 403);
-        abort_unless(
-            $document->internship->campus_id === $instructor->campus_id
-                && $document->internship->program_id === $instructor->program_id,
-            403
-        );
+        abort_unless($instructor->canView($document->internship), 403);
         abort_unless(EvaluationRouting::isSubmitted($document), 404);
 
         $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user', 'uploader');

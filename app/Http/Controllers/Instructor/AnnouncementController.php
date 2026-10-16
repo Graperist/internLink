@@ -20,7 +20,7 @@ class AnnouncementController extends Controller
             ->latest()
             ->paginate(10);
 
-        $advisee_count = $user->instructor->advisees()->count();
+        $advisee_count = $user->instructor->visibleStudents()->count();
 
         return view('instructor.announcements.index', [
             'announcements' => $announcements,
@@ -71,7 +71,8 @@ class AnnouncementController extends Controller
         }
         $body = implode("\n", $lines) ?: $data['title'];
 
-        $userIds = $instructor->advisees()->pluck('user_id')->filter()->unique();
+        // Coordinator: every student on the campus. Instructor: their program.
+        $userIds = $instructor->visibleStudents()->pluck('user_id')->filter()->unique();
 
         $now = now();
         Notification::insert($userIds->map(fn ($id) => [

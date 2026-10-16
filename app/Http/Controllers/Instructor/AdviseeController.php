@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Instructor;
 
 use App\Http\Controllers\Controller;
 use App\Models\Deployment;
-use App\Models\DocumentRequirement;
+use App\Models\HteRepresentative;
+use App\Models\Program;
 use App\Models\Dtr;
 use App\Models\Notification;
 use App\Support\AuditLogger;
+use App\Support\PreDeployment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -27,15 +29,94 @@ class AdviseeController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
-        $requiredDocsCount = DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('is_required', true)
-            ->count();
+        $preDeploymentIds = PreDeployment::requirementIds($instructor->campus_id);
+        $requiredDocsCount = $preDeploymentIds->count();
 
-        $query = $this->filteredAdvisees($instructor, $request);
+        $advisees = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)
+            ->latest('id')->paginate(20)->withQueryString();
 
-        $advisees = $query->latest('id')->paginate(20)->withQueryString();
+        // The coordinator sees the whole campus, so give them a program filter.
+        $programs = $instructor->isCoordinator()
+            ? Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
+            : collect();
 
-        return view('instructor.advisees.index', compact('advisees', 'requiredDocsCount'));
+        return view('instructor.advisees.index', compact('advisees', 'requiredDocsCount', 'programs', 'instructor'));
+    }
+
+    /**
+     * Start the OJT. The deployment itself was created automatically when
+     * the student's Application for OJT was accepted (see AutoDeployment);
+     * here the subject instructor sets the training dates and marks the
+     * student as deployed, once every pre-OJT requirement is approved.
+     */
+    public function activate(Request $request, Deployment $deployment): RedirectResponse
+    {
+        $user = auth()->user();
+        $instructor = $user->instructor;
+        $deployment->load('internship.student.user', 'hte');
+        $internship = $deployment->internship;
+        abort_unless($instructor && $instructor->canActOn($internship), 403);
+
+        $data = $request->validate([
+            'start_date' => ['required', 'date'],
+            'end_date' => ['required', 'date', 'after:start_date'],
+        ], [
+            'end_date.after' => 'The end date must be after the start date.',
+        ]);
+
+        if ($deployment->status !== 'pending') {
+            throw ValidationException::withMessages(['activation' => 'Only a pending deployment can be started.']);
+        }
+
+        if (! PreDeployment::isComplete($internship)) {
+            throw ValidationException::withMessages([
+                'activation' => 'This student cannot be deployed yet - every required pre-OJT document must be approved first.',
+            ]);
+        }
+
+        DB::transaction(function () use ($deployment, $internship, $data) {
+            $deployment->update([
+                'start_date' => $data['start_date'],
+                'end_date' => $data['end_date'],
+                'status' => 'active',
+            ]);
+            $internship->update(['status' => 'deployed']);
+        });
+
+        $start = $deployment->start_date->format('M d, Y');
+        $end = $deployment->end_date->format('M d, Y');
+
+        if ($studentUserId = $internship->student?->user_id) {
+            Notification::create([
+                'user_id' => $studentUserId,
+                'type' => 'deployment',
+                'title' => 'You are now deployed',
+                'message' => "Your OJT at {$deployment->hte?->name} runs from {$start} to {$end}. You can now clock in from Daily Time Record.",
+                'url' => route('student.dtr', [], false),
+            ]);
+        }
+
+        HteRepresentative::where('hte_id', $deployment->hte_id)->pluck('user_id')->each(
+            fn ($userId) => Notification::create([
+                'user_id' => $userId,
+                'type' => 'deployment',
+                'title' => 'New student-intern assigned',
+                'message' => ($internship->student?->user?->name ?? 'A student')." will train with you from {$start} to {$end}.",
+                'url' => route('hte.students', [], false),
+            ])
+        );
+
+        AuditLogger::record(
+            'deployment.activated',
+            "Deployment started at {$deployment->hte?->name} ({$start} to {$end}).",
+            $user,
+            $request,
+            $deployment,
+            $internship->campus_id,
+        );
+
+        return redirect()->route('instructor.advisees', $request->only('search', 'status', 'program_id'))
+            ->with('status', ($internship->student?->user?->name ?? 'The student').' is now deployed.');
     }
 
     /**
@@ -53,8 +134,7 @@ class AdviseeController extends Controller
             $locked = Deployment::query()->whereKey($deployment->id)->lockForUpdate()->firstOrFail();
             $locked->load(['internship.student.program', 'internship.program']);
             $internship = $locked->internship;
-            abort_unless($internship && $internship->campus_id === $instructor->campus_id
-                && $internship->program_id === $instructor->program_id, 403);
+            abort_unless($instructor->canActOn($internship), 403);
 
             if ($locked->status !== 'active' || $internship->status !== 'deployed') {
                 throw ValidationException::withMessages([
@@ -165,11 +245,10 @@ class AdviseeController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
-        $requiredDocsCount = DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('is_required', true)
-            ->count();
+        $preDeploymentIds = PreDeployment::requirementIds($instructor->campus_id);
+        $requiredDocsCount = $preDeploymentIds->count();
 
-        $advisees = $this->filteredAdvisees($instructor, $request)->get();
+        $advisees = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)->get();
 
         $callback = function () use ($advisees, $requiredDocsCount) {
             $handle = fopen('php://output', 'w');
@@ -203,11 +282,18 @@ class AdviseeController extends Controller
         ]);
     }
 
-    private function filteredAdvisees($instructor, Request $request)
+    private function filteredAdvisees($instructor, Request $request, $preDeploymentIds)
     {
-        $query = $instructor->advisees()
+        // Coordinator: whole campus. Instructor: own program.
+        $query = $instructor->visibleStudents()
             ->with(['user', 'program', 'currentInternship.deployment.hte', 'currentInternship.deployment.dtrs'])
-            ->withCount(['documents as approved_documents_count' => fn ($q) => $q->where('documents.status', 'approved')]);
+            ->withCount(['documents as approved_documents_count' => fn ($q) => $q
+                ->where('documents.status', 'approved')
+                ->whereIn('documents.document_requirement_id', $preDeploymentIds)]);
+
+        if ($instructor->isCoordinator() && ($programId = $request->query('program_id'))) {
+            $query->where('program_id', $programId);
+        }
 
         if ($search = $request->query('search')) {
             $query->whereHas('user', fn ($q) => $q

@@ -28,9 +28,8 @@ class DashboardController extends Controller
         // keeps the dashboard counts and Recent Submissions in step with that
         // page - no legacy forms or seminars. The MOA (coordinator-uploaded)
         // is included since instructors review it too.
-        $documentScope = fn () => Document::whereHas('internship', fn ($q) => $q
-            ->where('campus_id', $instructor->campus_id)
-            ->where('program_id', $instructor->program_id)
+        // The coordinator sees the whole campus; an instructor their program.
+        $documentScope = fn () => Document::whereHas('internship', fn ($q) => $instructor->limitInternships($q)
         )->whereHas('requirement', fn ($q) => $q
             ->where('is_active', true)
             ->where('is_required', true)
@@ -39,15 +38,14 @@ class DashboardController extends Controller
         );
 
         $counts = [
-            'advisees' => $instructor->advisees()->count(),
-            'deployed' => $instructor->advisees()->whereHas(
+            'advisees' => $instructor->visibleStudents()->count(),
+            'deployed' => $instructor->visibleStudents()->whereHas(
                 'currentInternship.deployment',
                 fn ($q) => $q->where('status', 'active')
             )->count(),
-            // "Awaiting deployment approval" - the closest real signal for
-            // this in the current schema is a deployment already assigned
-            // by the Coordinator but still sitting in 'pending' status.
-            'awaiting_approval' => $instructor->advisees()->whereHas(
+            // Placed (deployment created automatically from the accepted
+            // Application for OJT) but not yet started by the instructor.
+            'awaiting_approval' => $instructor->visibleStudents()->whereHas(
                 'currentInternship.deployment',
                 fn ($q) => $q->where('status', 'pending')
             )->count(),
@@ -69,6 +67,21 @@ class DashboardController extends Controller
             ->take(5)
             ->get();
 
-        return view('instructor.dashboard', compact('counts', 'recentSubmissions'));
+        // Coordinator only: campus-level items to keep an eye on.
+        $campus = null;
+        if ($instructor->isCoordinator()) {
+            $campusId = $instructor->campus_id;
+            $coveredProgramIds = \App\Models\Instructor::where('campus_id', $campusId)
+                ->whereNotNull('program_id')->pluck('program_id');
+
+            $campus = [
+                'moa_pending' => \App\Models\Hte::where('campus_id', $campusId)->where('moa_status', 'pending')->count(),
+                'uncovered_programs' => \App\Models\Program::where('campus_id', $campusId)
+                    ->whereNotIn('id', $coveredProgramIds)->count(),
+                'not_placed' => $instructor->visibleStudents()->whereDoesntHave('currentInternship.deployment')->count(),
+            ];
+        }
+
+        return view('instructor.dashboard', compact('counts', 'recentSubmissions', 'campus'));
     }
 }

@@ -8,11 +8,18 @@ class Deployment extends Model
 {
     protected static function booted(): void
     {
-        // Once the student is deployed, the coordinator's
-        // "ready for deployment" notice is resolved.
-        static::created(function (Deployment $deployment) {
+        // Once the student is actually deployed (status becomes active), the
+        // "ready for deployment" notice is resolved. Deployments are now
+        // created as soon as the application is accepted, so creation alone
+        // no longer means the student is deployed.
+        static::saved(function (Deployment $deployment) {
+            if ($deployment->status !== 'active') {
+                return;
+            }
+            if (! $deployment->wasRecentlyCreated && ! $deployment->wasChanged('status')) {
+                return;
+            }
             $studentId = $deployment->internship?->student_id;
-
             if ($studentId) {
                 \App\Models\Notification::resolve('predeploy:'.$studentId);
             }

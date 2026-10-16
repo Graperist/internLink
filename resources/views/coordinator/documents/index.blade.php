@@ -71,7 +71,7 @@
                         </td>
                         <td class="text-end text-nowrap">
                             @if ($row->document)
-                                <a href="{{ route('coordinator.documents.printable', $row->document) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                <a href="{{ route('instructor.documents.printable', ['document' => $row->document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary">
                                     <i class="ti ti-eye"></i> View Form 23b
                                 </a>
                             @else
@@ -218,7 +218,7 @@
                         </span>
                     </td>
                     <td>
-                        <a href="{{ route('coordinator.students.documents', $student) }}" class="btn btn-sm btn-outline-secondary">
+                        <a href="{{ route('instructor.documents', ['student' => $student->id]) }}" class="btn btn-sm btn-outline-secondary">
                             <i class="ti ti-eye"></i> View All
                         </a>
                     </td>

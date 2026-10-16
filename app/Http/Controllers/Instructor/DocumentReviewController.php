@@ -66,9 +66,10 @@ class DocumentReviewController extends Controller
 
 
 
-        $advisees = $instructor->advisees()
+        // Coordinator: every student on the campus. Instructor: own program.
+        $advisees = $instructor->visibleStudents()
 
-            ->with('user')
+            ->with(['user', 'program'])
 
             ->withCount(['documents as pending_documents_count' => fn ($q) => $q
 
@@ -206,9 +207,13 @@ class DocumentReviewController extends Controller
 
 
 
+        // Approve / return / print / unlock buttons only for students in the
+        // viewer's own program. The coordinator sees other programs read-only.
+        $canAct = $student ? $instructor->canActOn($student) : false;
+
         return view('instructor.documents.index', compact(
 
-            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets'
+            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets', 'canAct'
 
         ));
 
@@ -307,9 +312,15 @@ class DocumentReviewController extends Controller
 
 
 
+        $placement = null;
+
         if ($validated['decision'] === 'approved') {
 
             \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->internship);
+
+            // An accepted Application for OJT places the student at the
+            // firm they chose - no manual deployment assignment.
+            $placement = \App\Support\AutoDeployment::fromAcceptedApplication($document);
 
         }
 
@@ -335,7 +346,7 @@ class DocumentReviewController extends Controller
 
             ->route('instructor.documents', ['student' => $document->internship->student_id])
 
-            ->with('status', 'Document '.$validated['decision'].'.');
+            ->with('status', trim('Document '.$validated['decision'].'. '.($placement ?? '')));
 
     }
 
@@ -371,13 +382,17 @@ class DocumentReviewController extends Controller
 
         $document->update(['status' => 'printed', 'printed_at' => now()]);
 
+        // Print for Signing is how the instructor accepts a print-and-sign
+        // form, so an accepted Application for OJT creates the deployment.
+        $placement = \App\Support\AutoDeployment::fromAcceptedApplication($document);
+
 
 
         return redirect()
 
             ->route('instructor.documents', ['student' => $document->internship->student_id])
 
-            ->with('status', 'Marked as printed - out for signing.');
+            ->with('status', trim('Marked as printed - out for signing. '.($placement ?? '')));
 
     }
 
@@ -391,13 +406,13 @@ class DocumentReviewController extends Controller
 
      */
 
-    public function printable(Document $document): View
+    public function printable(Document $document): View|\Illuminate\Http\Response
 
     {
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
 
 
 
@@ -458,7 +473,19 @@ class DocumentReviewController extends Controller
 
 
 
-        return view($view, compact('document'));
+        if ($instructor->canActOn($document->internship)) {
+            return view($view, compact('document'));
+        }
+
+        // View-only (the coordinator looking at another program's student):
+        // the shared templates open the print dialog on load and carry a
+        // Print button for the print-and-sign workflow. Strip both so the
+        // form is just read (signed copies live in the Repository).
+        $html = view($view, ['document' => $document, 'autoPrint' => false])->render();
+        $html = str_replace('<body onload="window.print()">', '<body>', $html);
+        $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
+
+        return response($html);
 
     }
 
@@ -515,7 +542,7 @@ class DocumentReviewController extends Controller
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
 
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
@@ -543,7 +570,7 @@ class DocumentReviewController extends Controller
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
 
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
@@ -555,20 +582,16 @@ class DocumentReviewController extends Controller
 
 
 
+    /** Acting on a document: own program only (the coordinator included). */
     private function authorizeInstructor(Document $document, $instructor): void
-
     {
+        abort_unless($instructor->canActOn($document->internship), 403);
+    }
 
-        abort_unless(
-
-            $document->internship->campus_id === $instructor->campus_id
-
-                && $document->internship->program_id === $instructor->program_id,
-
-            403
-
-        );
-
+    /** Opening / printing / downloading: anything the viewer can see. */
+    private function authorizeViewer(Document $document, $instructor): void
+    {
+        abort_unless($instructor->canView($document->internship), 403);
     }
 
 

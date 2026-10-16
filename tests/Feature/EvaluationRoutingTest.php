@@ -317,9 +317,9 @@ class EvaluationRoutingTest extends TestCase
 
         $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents'))
             ->assertOk()->assertSee('Fareheaven Boarding House')
-            ->assertSee(route('coordinator.documents.printable', $document), false);
+            ->assertSee(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]), false);
 
-        $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents.printable', $document))
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]))
             ->assertOk()->assertDontSee('window.print()', false);
     }
 
@@ -423,7 +423,7 @@ class EvaluationRoutingTest extends TestCase
     {
         $document = $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');
 
-        $html = $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents.printable', $document))->assertOk()->getContent();
+        $html = $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]))->assertOk()->getContent();
 
         foreach (['FM-AA-INT-19b', 'Rev. 1', '14-Nov-2024', 'EVALUATION INSTRUMENT OF PSU PARTNER AGENCIES', 'PANGASINAN STATE UNIVERSITY',
                   'Agency / Institution', 'Unit/Division', 'Sex - Gender', 'Type of Rater', 'Self Ratee (Representative of HTE)',

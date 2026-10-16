@@ -103,7 +103,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed advisees yet.</td></tr>
+                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed students yet.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -171,6 +171,8 @@
                                 <a href="{{ route('instructor.documents.printable', $row->form23a) }}?preview=1" target="_blank" class="btn btn-sm btn-outline-secondary">
                                     <i class="ti ti-eye"></i> View Form 23a
                                 </a>
+                            @elseif (! auth()->user()->instructor->canActOn($row->student))
+                                <span class="text-secondary small">Their instructor evaluates</span>
                             @elseif ($partnerAgencyFormRequirement && $row->deployment && $row->deployment->status === 'completed')
                                 <a href="{{ route('instructor.forms.create', [$partnerAgencyFormRequirement, $row->deployment]) }}" class="btn btn-sm btn-outline-primary">
                                     Evaluate
@@ -184,7 +186,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed advisees yet.</td></tr>
+                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed students yet.</td></tr>
                 @endforelse
             </tbody>
         </table>

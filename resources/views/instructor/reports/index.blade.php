@@ -10,7 +10,7 @@
 <div class="il-card">
     <p class="text-secondary small mb-3">
         Opens a printable copy of the official form, filled in from the system for your
-        {{ $instructor->program->code ?? '' }} students. The campus, instructor, coordinator and CED names come from your records.
+        {{ $instructor->isCoordinator() ? 'campus' : ($instructor->program->code ?? '') }} students. The campus, instructor, coordinator and CED names come from your records.
     </p>
 
     <div class="row g-3">

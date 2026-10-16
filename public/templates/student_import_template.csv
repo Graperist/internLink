@@ -1,3 +1,3 @@
-id_number,name,email,program_code,instructor_email
-2023-00451,Juan Reyes,juan.reyes@example.com,BSIT,instructor@internlink.test
-2023-00238,Maria Lim,maria.lim@example.com,BSBA-OM,
+id_number,name,email,program_code
+23-AC-0451,Juan Reyes,juan.reyes@example.com,BSIT
+23-AC-0238,Maria Lim,maria.lim@example.com,BSIT

@@ -29,8 +29,11 @@ class InstructorController extends Controller
     {
         $campusId = auth()->user()->campus_id;
 
+        // The coordinator's own teaching profile isn't an instructor account
+        // to manage here (it's set in their My Profile), so leave it out.
         $query = Instructor::with(['user', 'program'])
-            ->where('campus_id', $campusId);
+            ->where('campus_id', $campusId)
+            ->whereHas('user.role', fn ($q) => $q->where('code', 'instructor'));
 
         if ($search = $request->query('search')) {
             $query->whereHas('user', fn ($q) => $q
@@ -105,7 +108,7 @@ class InstructorController extends Controller
 
     public function edit(Instructor $instructor): View
     {
-        abort_unless($instructor->campus_id === auth()->user()->campus_id, 403);
+        abort_unless($instructor->campus_id === auth()->user()->campus_id && ! $instructor->isCoordinator(), 403);
 
         $programs = Program::where('campus_id', auth()->user()->campus_id)->orderBy('name')->get();
 
@@ -114,7 +117,7 @@ class InstructorController extends Controller
 
     public function update(Request $request, Instructor $instructor): RedirectResponse
     {
-        abort_unless($instructor->campus_id === auth()->user()->campus_id, 403);
+        abort_unless($instructor->campus_id === auth()->user()->campus_id && ! $instructor->isCoordinator(), 403);
 
         $validated = $request->validate([
             'program_id' => [
@@ -134,7 +137,7 @@ class InstructorController extends Controller
     {
         $coordinator = auth()->user();
 
-        abort_unless($instructor->campus_id === $coordinator->campus_id, 403);
+        abort_unless($instructor->campus_id === $coordinator->campus_id && ! $instructor->isCoordinator(), 403);
 
         $temporaryPassword = Str::password(10, symbols: false);
 

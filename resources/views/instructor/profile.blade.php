@@ -54,11 +54,27 @@
                 <label class="form-label small fw-semibold">Campus</label>
                 <input type="text" class="form-control mb-3" value="{{ $instructor->campus->name ?? '—' }}" disabled>
 
-                <label class="form-label small fw-semibold">Program</label>
-                <input type="text" class="form-control mb-2" value="{{ $instructor->program->name ?? '—' }}" disabled>
-                <p class="small text-secondary mb-4">
-                    Your ID number, campus, and program are set by your OJT Coordinator and can't be changed here.
-                </p>
+                @if ($instructor->isCoordinator())
+                    <label class="form-label small fw-semibold" for="program_id">Program I teach</label>
+                    <select name="program_id" id="program_id" class="form-select mb-2">
+                        <option value="">— None —</option>
+                        @foreach ($programs as $program)
+                            <option value="{{ $program->id }}" @selected((string) old('program_id', $instructor->program_id) === (string) $program->id)>
+                                {{ $program->code }} - {{ $program->displayName() }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="small text-secondary mb-4">
+                        As OJT Coordinator you see every student on the campus. For students in this program you also act as
+                        their subject instructor: add interns, review documents and start deployments.
+                    </p>
+                @else
+                    <label class="form-label small fw-semibold">Program</label>
+                    <input type="text" class="form-control mb-2" value="{{ $instructor->program?->displayName() ?? '—' }}" disabled>
+                    <p class="small text-secondary mb-4">
+                        Your ID number, campus, and program are set by your OJT Coordinator and can't be changed here.
+                    </p>
+                @endif
 
                 <button type="submit" class="btn btn-primary">Save account details</button>
             </form>
