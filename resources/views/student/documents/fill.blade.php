@@ -956,6 +956,10 @@
 
         @else
             @foreach ($requirement->groupedFieldDefinitions() as $groupLabel => $fields)
+                @if ($requirement->code === 'APPLICATION_FOR_OJT' && $groupLabel === 'Academic Credentials/Qualifications')
+                    @include('student.documents._form1-academic-table', ['document' => $document])
+                    @continue
+                @endif
                 @if ($groupLabel)
                     <h2 class="h6 fw-bold mt-4 mb-2">{{ $groupLabel }}</h2>
                 @endif

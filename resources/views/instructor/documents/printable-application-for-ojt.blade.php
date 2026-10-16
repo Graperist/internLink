@@ -72,7 +72,8 @@
     $academicRows = [];
     for ($i = 1; $i <= 5; $i++) {
         $academicRows[] = [
-            'sem' => $v("academic_{$i}_sem", ''),
+            // Shortened to fit the narrow SEM column of the official form.
+            'sem' => str_replace(['1st Semester', '2nd Semester'], ['1st Sem', '2nd Sem'], $v("academic_{$i}_sem", '')),
             'sy' => $v("academic_{$i}_sy", ''),
             'subject' => $v("academic_{$i}_subject", ''),
             'passing' => $v("academic_{$i}_passing", ''),

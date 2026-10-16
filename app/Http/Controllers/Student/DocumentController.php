@@ -514,7 +514,18 @@ class DocumentController extends Controller
             }
         }
 
-        $validated = $request->validate($rules, [
+        // Form 1's Academic Credentials table: SEM and SY come from dropdowns
+        // (checked here too). Signature and Date are signed on paper.
+        $extraMessages = [];
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            for ($i = 1; $i <= \App\Support\Form1Academics::ROWS; $i++) {
+                unset($rules["academic_{$i}_signature"], $rules["academic_{$i}_date"]);
+            }
+            $rules = array_merge($rules, array_intersect_key(\App\Support\Form1Academics::rules(), $rules));
+            $extraMessages = \App\Support\Form1Academics::messages();
+        }
+
+        $validated = $request->validate($rules, $extraMessages + [
             'attachment_medical_certificate.required' => 'Attach your Medical Certificate from a government physician.',
             'attachment_psychological_test.required' => 'Attach your Psychological Test Result.',
             'attachment_*.mimes' => 'Attachments must be a PDF, JPG or PNG file.',
