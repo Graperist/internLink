@@ -61,8 +61,9 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
                 continue;
             }
 
-            if (User::where('campus_id', $this->campusId)->where('id_number', $idNumber)->exists()) {
-                $this->skipped[] = ['row' => $excelRow, 'reason' => "ID number {$idNumber} already exists at this campus."];
+            // Unique across ALL campuses - sign-in is by ID alone.
+            if (User::where('id_number', $idNumber)->exists()) {
+                $this->skipped[] = ['row' => $excelRow, 'reason' => "ID number {$idNumber} is already registered."];
                 continue;
             }
 

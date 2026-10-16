@@ -99,7 +99,6 @@ class AuditTrailTest extends TestCase
         $user = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'correct-password',
         ])->assertRedirect();
 
@@ -115,7 +114,6 @@ class AuditTrailTest extends TestCase
         $user = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'hunter2-not-the-password',
         ])->assertSessionHasErrors('id_number');
 
@@ -123,16 +121,16 @@ class AuditTrailTest extends TestCase
         $this->assertSame($user->id, $log->user_id);
         $this->assertStringContainsString('wrong password', $log->description);
 
-        // Unknown ID: no user to attach to, but the campus's coordinator still gets to see it.
+        // Unknown ID: no user to attach to, but the campus named inside the
+        // ID ("AAA") still gets it, so that campus's coordinator can see it.
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'student',
-            'id_number' => 'NOPE-999', 'password' => 'whatever',
+            'id_number' => '23-AAA-9999', 'password' => 'whatever',
         ]);
 
         $unknown = ActivityLog::where('action', 'auth.login_failed')->latest('id')->first();
         $this->assertNull($unknown->user_id);
         $this->assertSame($this->campusA->id, $unknown->campus_id);
-        $this->assertStringContainsString('NOPE-999', $unknown->description);
+        $this->assertStringContainsString('23-AAA-9999', $unknown->description);
     }
 
     public function test_passwords_and_request_bodies_are_never_stored(): void
@@ -140,7 +138,6 @@ class AuditTrailTest extends TestCase
         $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'hunter2-not-the-password',
         ]);
 

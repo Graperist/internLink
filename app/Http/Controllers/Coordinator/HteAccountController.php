@@ -80,8 +80,8 @@ class HteAccountController extends Controller
                 'required',
                 'string',
                 'max:100',
-                \Illuminate\Validation\Rule::unique('users', 'id_number')
-                    ->where(fn ($q) => $q->where('campus_id', $campusId)),
+                // Unique across ALL campuses - sign-in is by ID alone.
+                \Illuminate\Validation\Rule::unique('users', 'id_number'),
             ],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
