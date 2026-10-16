@@ -97,6 +97,13 @@
                         @if ($doc?->original_filename)
                             <div class="text-secondary" style="font-size: 0.75rem;">{{ $doc->original_filename }}</div>
                         @endif
+                        @if ($doc && $doc->attachments->isNotEmpty())
+                            <div class="d-flex flex-wrap gap-2 mt-1" style="font-size: 0.75rem;">
+                                @foreach ($doc->attachments as $attachment)
+                                    <a href="{{ route('student.documents.attachment', $attachment) }}" target="_blank" class="text-decoration-none"><i class="ti ti-paperclip"></i> {{ $attachment->label() }}</a>
+                                @endforeach
+                            </div>
+                        @endif
                     </td>
                     <td class="text-secondary small">{{ ucfirst(str_replace('_', ' ', $requirement->stage)) }}</td>
                     <td class="text-secondary small">{{ $doc?->submitted_at?->format('M d, Y') ?? 'Not yet submitted' }}</td>

@@ -94,7 +94,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}">
+    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}" enctype="multipart/form-data">
         @csrf
 
         @if ($requirement->code === 'OJT_RESUME')
@@ -1047,6 +1047,35 @@
                     </div>
                 @endforeach
             @endforeach
+        @endif
+
+        @if ($attachmentKinds = \App\Models\DocumentAttachment::kindsFor($requirement->code))
+            <h2 class="h6 fw-bold mt-4 mb-1">Attachments</h2>
+            <p class="text-secondary small mb-3">
+                Attach your Medical Certificate and Psychological Test Result from a government physician, certifying that you are
+                physically, emotionally and mentally fit for the internship. They are submitted and reviewed together with this form.
+                PDF, JPG or PNG, up to 10 MB each.
+            </p>
+            <div class="row g-3">
+                @foreach ($attachmentKinds as $kind => $kindLabel)
+                    @php $attached = $document?->attachment($kind); @endphp
+                    <div class="col-md-6">
+                        <label class="il-form-label" for="attachment_{{ $kind }}">{{ $kindLabel }}@unless ($attached) <span class="text-danger">*</span>@endunless</label>
+                        @if ($attached)
+                            <div class="small mb-1">
+                                <i class="ti ti-paperclip"></i>
+                                <a href="{{ route('student.documents.attachment', $attached) }}" target="_blank">{{ $attached->original_filename ?: 'Attached file' }}</a>
+                                <span class="text-secondary">&middot; choose a file only to replace it</span>
+                            </div>
+                        @endif
+                        <input type="file" class="form-control @error('attachment_'.$kind) is-invalid @enderror" id="attachment_{{ $kind }}" name="attachment_{{ $kind }}"
+                               accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" {{ $attached ? '' : 'required' }}>
+                        @error('attachment_'.$kind)
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endforeach
+            </div>
         @endif
 
         <div class="d-flex gap-2 mt-3">

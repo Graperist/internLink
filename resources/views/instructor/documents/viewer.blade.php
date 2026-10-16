@@ -109,6 +109,24 @@
                     <i class="ti ti-external-link text-secondary"></i>
                 </a>
             @endif
+            @foreach (\App\Models\DocumentAttachment::kindsFor($requirement->code) as $kind => $kindLabel)
+                @php $attachment = $document->attachment($kind); @endphp
+                @if ($attachment)
+                    <a href="{{ route('instructor.documents.attachment', $attachment) }}" target="_blank"
+                       class="d-flex align-items-center gap-2 border rounded p-2 mb-2 text-decoration-none text-reset">
+                        <i class="ti ti-paperclip text-primary fs-5"></i>
+                        <span class="flex-grow-1 min-w-0">
+                            <span class="small fw-semibold d-block">{{ $kindLabel }}</span>
+                            <span class="text-secondary text-break" style="font-size: 0.75rem;">{{ $attachment->original_filename }}</span>
+                        </span>
+                        <i class="ti ti-external-link text-secondary"></i>
+                    </a>
+                @else
+                    <div class="d-flex align-items-center gap-2 border border-danger-subtle rounded p-2 mb-2 small text-danger">
+                        <i class="ti ti-paperclip-off fs-5"></i> No {{ $kindLabel }} attached
+                    </div>
+                @endif
+            @endforeach
             @if (! $structured && ! $hasFile)
                 <div class="small text-secondary">No file uploaded.</div>
             @endif

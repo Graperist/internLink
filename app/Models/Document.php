@@ -60,6 +60,17 @@ class Document extends Model
         return $this->hasMany(DocumentFieldValue::class);
     }
 
+    /** Files attached to this form (e.g. Form 1's medical certificate). */
+    public function attachments()
+    {
+        return $this->hasMany(DocumentAttachment::class);
+    }
+
+    public function attachment(string $kind): ?DocumentAttachment
+    {
+        return $this->attachments->firstWhere('kind', $kind);
+    }
+
     public function entries()
     {
         return $this->hasMany(DocumentEntry::class)->orderBy('entry_date');

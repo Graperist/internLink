@@ -149,8 +149,15 @@ class DocumentRepositoryController extends Controller
             ->filter(fn ($document) => Storage::exists($document->file_path))
             ->sortBy(fn ($document) => $document->requirement->display_order);
 
+        // Files attached to an approved form (Form 1's Medical Certificate
+        // and Psychological Test Result) go in the same folder as the form.
+        $attachments = \App\Models\DocumentAttachment::with('document.requirement')
+            ->whereHas('document', fn ($q) => $q->where('status', 'approved')
+                ->whereHas('internship', fn ($i) => $i->where('student_id', $student->id)))
+            ->get()
+            ->filter(fn ($attachment) => Storage::exists($attachment->file_path));
 
-        if ($documents->isEmpty()) {
+        if ($documents->isEmpty() && $attachments->isEmpty()) {
             return redirect()
                 ->route('coordinator.repository')
                 ->with('status', 'No approved files are on record for this student yet.');
@@ -179,6 +186,17 @@ class DocumentRepositoryController extends Controller
             $used[strtolower($entry)] = true;
 
             $zip->addFromString($entry, Storage::get($document->file_path)); // works on local disk and cloud buckets
+        }
+        foreach ($attachments as $attachment) {
+            $extension = pathinfo($attachment->original_filename ?: $attachment->file_path, PATHINFO_EXTENSION);
+            $base = trim(str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], '-', $attachment->label()));
+            $entry = 'Pre-Deployment/'.$base.($extension ? '.'.$extension : '');
+            $n = 2;
+            while (isset($used[strtolower($entry)])) {
+                $entry = 'Pre-Deployment/'.$base.' ('.$n++.')'.($extension ? '.'.$extension : '');
+            }
+            $used[strtolower($entry)] = true;
+            $zip->addFromString($entry, Storage::get($attachment->file_path));
         }
         $zip->close();
 

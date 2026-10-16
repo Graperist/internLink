@@ -14,8 +14,10 @@ class OfficialOjtFormsSeeder extends Seeder
         $requirements = [
             // Pre-OJT / Before deployment — source checklist order.
             ['code' => 'APPLICATION_FOR_OJT', 'name' => 'Form 1 – Application for Internship', 'stage' => 'pre_deployment', 'form_number' => '1', 'display_order' => 10, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
-            ['code' => 'MEDICAL_CERTIFICATE', 'name' => 'Medical Certificate from Government Physician', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 20, 'audience' => 'student', 'workflow_mode' => 'upload'],
-            ['code' => 'PSYCHOLOGICAL_TEST', 'name' => 'Psychological Test Result', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 30, 'audience' => 'student', 'workflow_mode' => 'upload'],
+            // Medical Certificate and Psychological Test are now attached to
+            // Form 1 itself (document_attachments), not separate requirements.
+            ['code' => 'MEDICAL_CERTIFICATE', 'name' => 'Medical Certificate from Government Physician', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 20, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
+            ['code' => 'PSYCHOLOGICAL_TEST', 'name' => 'Psychological Test Result', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 30, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
             ['code' => 'CERTIFICATE_OF_UNITS_EARNED', 'name' => 'Form 2 – Certification of Units Earned for Practicum/Internship', 'stage' => 'pre_deployment', 'form_number' => '2', 'display_order' => 40, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'PARENT_CONSENT', 'name' => 'Form 3 – Consent and Waiver', 'stage' => 'pre_deployment', 'form_number' => '3', 'display_order' => 50, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'PARENT_GUARDIAN_ID', 'name' => 'Photocopy of Parent/Guardian Valid ID', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 60, 'audience' => 'student', 'workflow_mode' => 'upload'],

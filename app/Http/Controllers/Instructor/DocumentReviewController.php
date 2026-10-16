@@ -176,7 +176,7 @@ class DocumentReviewController extends Controller
 
 
             $allStudentDocuments = $internship
-                ? $internship->documents()->with(['latestReview', 'fieldValues', 'entries.values', 'requirement'])->get()
+                ? $internship->documents()->with(['latestReview', 'fieldValues', 'entries.values', 'requirement', 'attachments'])->get()
                 : collect();
             $documentsByRequirement = $allStudentDocuments->keyBy('document_requirement_id');
             $form19Packets = $allStudentDocuments
@@ -753,6 +753,19 @@ class DocumentReviewController extends Controller
 
 
     /**
+     * Opens a file attached to a form (Form 1's Medical Certificate or
+     * Psychological Test Result). Anyone who may view the form may open it.
+     */
+    public function attachment(\App\Models\DocumentAttachment $attachment): StreamedResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeViewer($attachment->document, $instructor);
+        abort_unless(Storage::exists($attachment->file_path), 404);
+
+        return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
+    }
+
+    /**
      * Full view of one submitted form (Google Classroom style): the form or
      * file on the left, and on the right the files, previous remarks and the
      * Return / Approve / Print for signing actions with a remarks box. Arrows
@@ -762,7 +775,7 @@ class DocumentReviewController extends Controller
     {
         $instructor = auth()->user()->instructor;
         $this->authorizeViewer($document, $instructor);
-        $document->load('requirement.fieldDefinitions', 'internship.student.user', 'internship.student.program', 'latestReview', 'uploader');
+        $document->load('requirement.fieldDefinitions', 'internship.student.user', 'internship.student.program', 'latestReview', 'uploader', 'attachments');
 
         abort_if(in_array($document->requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true), 404);
 

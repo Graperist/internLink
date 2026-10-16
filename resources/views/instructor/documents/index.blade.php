@@ -681,6 +681,20 @@
                                                 </a>
                                             @endif
                                         </div>
+                                        @if ($kinds = \App\Models\DocumentAttachment::kindsFor($requirement->code))
+                                            <div class="mt-2 d-flex flex-wrap gap-2" style="font-size: 0.78rem;">
+                                                @foreach ($kinds as $kind => $kindLabel)
+                                                    @php $attachment = $document->attachment($kind); @endphp
+                                                    @if ($attachment)
+                                                        <a href="{{ route('instructor.documents.attachment', $attachment) }}" target="_blank" class="badge rounded-pill text-bg-light border text-decoration-none fw-normal py-2 px-3" style="font-size: 0.78rem;">
+                                                            <i class="ti ti-paperclip"></i> {{ $kindLabel }}
+                                                        </a>
+                                                    @else
+                                                        <span class="badge rounded-pill text-bg-light border text-danger fw-normal py-2 px-3" style="font-size: 0.78rem;"><i class="ti ti-paperclip-off"></i> No {{ $kindLabel }}</span>
+                                                    @endif
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     @else
                                         <div class="text-secondary" style="font-size: 0.78rem;">Not yet filled out by student.</div>
                                     @endif

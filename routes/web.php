@@ -121,6 +121,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{document}/complete', [DocumentReviewController::class, 'markCompleted'])->name('documents.complete');
         Route::get('/documents/{document}/view', [DocumentReviewController::class, 'view'])->name('documents.view');
         Route::get('/documents/{document}/download', [DocumentReviewController::class, 'download'])->name('documents.download');
+        Route::get('/documents/attachments/{attachment}', [DocumentReviewController::class, 'attachment'])->name('documents.attachment');
 
         Route::get('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'create'])->name('forms.create');
         Route::post('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'store'])->name('forms.store');
@@ -261,6 +262,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{document}/upload-signed', [StudentDocumentController::class, 'uploadSigned'])->name('documents.upload-signed');
         Route::post('/documents', [StudentDocumentController::class, 'store'])->name('documents.store');
         Route::get('/documents/{document}/download', [StudentDocumentController::class, 'download'])->name('documents.download');
+        Route::get('/documents/attachments/{attachment}', [StudentDocumentController::class, 'attachment'])->name('documents.attachment');
 
 
         Route::get('/hte', [HteInfoController::class, 'index'])->name('hte');

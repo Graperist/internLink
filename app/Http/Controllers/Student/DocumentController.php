@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Models\DocumentAttachment;
 use App\Models\DocumentFieldValue;
 use App\Models\DocumentEntry;
 use App\Models\DocumentRequirement;
@@ -100,7 +101,7 @@ class DocumentController extends Controller
             ->values();
 
         $docsByCode = $internship
-            ? $internship->documents()->with(['requirement', 'latestReview', 'entries'])->get()->keyBy(fn ($d) => $d->requirement->code)
+            ? $internship->documents()->with(['requirement', 'latestReview', 'entries', 'attachments'])->get()->keyBy(fn ($d) => $d->requirement->code)
             : collect();
 
         $checklist = $requirements->map(fn ($req) => [
@@ -128,7 +129,7 @@ class DocumentController extends Controller
 
         $document = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
-            ->with('fieldValues')
+            ->with('fieldValues', 'attachments')
             ->first();
 
         // Once printed, the entered data is what physically went out for
@@ -496,7 +497,32 @@ class DocumentController extends Controller
                 ? [$field->is_required ? 'required' : 'nullable', 'in:1,2,3,4,5']
                 : [$field->is_required ? 'required' : 'nullable', 'string', 'max:'.$maxLength];
         }
-        $validated = $request->validate($rules);
+        // Files that go with this form (Form 1: Medical Certificate and
+        // Psychological Test Result). Required the first time; on a
+        // resubmission they are only needed to replace a file.
+        $attachmentKinds = DocumentAttachment::kindsFor($requirement->code);
+        if ($attachmentKinds) {
+            $existing = $internship->documents()
+                ->where('document_requirement_id', $requirement->id)
+                ->with('attachments')
+                ->first();
+            foreach ($attachmentKinds as $kind => $label) {
+                $rules['attachment_'.$kind] = [
+                    $existing?->attachment($kind) ? 'nullable' : 'required',
+                    'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240',
+                ];
+            }
+        }
+
+        $validated = $request->validate($rules, [
+            'attachment_medical_certificate.required' => 'Attach your Medical Certificate from a government physician.',
+            'attachment_psychological_test.required' => 'Attach your Psychological Test Result.',
+            'attachment_*.mimes' => 'Attachments must be a PDF, JPG or PNG file.',
+            'attachment_*.max' => 'Each attachment must be 10 MB or smaller.',
+        ]);
+        foreach (array_keys($attachmentKinds) as $kind) {
+            unset($validated['attachment_'.$kind]);
+        }
 
         abort_if(
             in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
@@ -512,7 +538,7 @@ class DocumentController extends Controller
             ->where('status', 'returned')
             ->exists();
 
-        $document = DB::transaction(function () use ($requirement, $internship, $validated) {
+        $document = DB::transaction(function () use ($requirement, $internship, $validated, $attachmentKinds, $request, $student) {
             $document = Document::updateOrCreate(
                 [
                     'internship_id' => $internship->id,
@@ -530,6 +556,26 @@ class DocumentController extends Controller
                     ['document_id' => $document->id, 'field_key' => $key],
                     ['value' => $value]
                 );
+            }
+
+            foreach (array_keys($attachmentKinds) as $kind) {
+                $file = $request->file('attachment_'.$kind);
+                if (! $file) {
+                    continue;
+                }
+                $current = $document->attachments()->where('kind', $kind)->first();
+                $path = $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}");
+                DocumentAttachment::updateOrCreate(
+                    ['document_id' => $document->id, 'kind' => $kind],
+                    [
+                        'file_path' => $path,
+                        'original_filename' => $file->getClientOriginalName(),
+                        'uploaded_by_user_id' => auth()->id(),
+                    ]
+                );
+                if ($current && $current->file_path !== $path && Storage::exists($current->file_path)) {
+                    Storage::delete($current->file_path);
+                }
             }
 
             return $document;
@@ -1015,6 +1061,15 @@ class DocumentController extends Controller
         return redirect()->route('student.documents')->with('status', $wasReturned
             ? 'Corrected document uploaded and resubmitted for instructor review.'
             : 'Document uploaded and submitted for review.');
+    }
+
+    /** The student opens a file they attached to a form (e.g. Form 1). */
+    public function attachment(DocumentAttachment $attachment): StreamedResponse
+    {
+        abort_unless($attachment->document->internship->student_id === auth()->user()->student?->id, 403);
+        abort_unless(Storage::exists($attachment->file_path), 404);
+
+        return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
     }
 
     public function download(Document $document): StreamedResponse
