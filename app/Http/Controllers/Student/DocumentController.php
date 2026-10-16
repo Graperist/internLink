@@ -405,7 +405,7 @@ class DocumentController extends Controller
                     ),
                 ],
                 'signed_date' => ['required', 'date'],
-            ]);
+            ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
 
             $requiredHours = (int) ($student->program?->required_hours
                 ?? $internship->required_hours
@@ -440,7 +440,7 @@ class DocumentController extends Controller
                 ->where('status', 'returned')
                 ->exists();
 
-            $document = DB::transaction(function () use ($requirement, $internship, $consentValues) {
+            $document = DB::transaction(function () use ($requirement, $internship, $consentValues, $request, $student) {
                 $document = Document::updateOrCreate(
                     [
                         'internship_id' => $internship->id,
@@ -459,6 +459,9 @@ class DocumentController extends Controller
                         ['value' => $value]
                     );
                 }
+
+                // The Parent/Guardian Valid ID goes with the consent form.
+                $this->saveAttachments($document, $request, $student);
 
                 return $document;
             });
@@ -501,18 +504,7 @@ class DocumentController extends Controller
         // Psychological Test Result). Required the first time; on a
         // resubmission they are only needed to replace a file.
         $attachmentKinds = DocumentAttachment::kindsFor($requirement->code);
-        if ($attachmentKinds) {
-            $existing = $internship->documents()
-                ->where('document_requirement_id', $requirement->id)
-                ->with('attachments')
-                ->first();
-            foreach ($attachmentKinds as $kind => $label) {
-                $rules['attachment_'.$kind] = [
-                    $existing?->attachment($kind) ? 'nullable' : 'required',
-                    'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240',
-                ];
-            }
-        }
+        $rules += $this->attachmentRules($requirement, $internship);
 
         // Form 1's Academic Credentials table: SEM and SY come from dropdowns
         // (checked here too). The student can add rows; SIGNATURE is signed on paper.
@@ -526,12 +518,7 @@ class DocumentController extends Controller
             $extraMessages = \App\Support\Form1Academics::messages();
         }
 
-        $validated = $request->validate($rules, $extraMessages + [
-            'attachment_medical_certificate.required' => 'Attach your Medical Certificate from a government physician.',
-            'attachment_psychological_test.required' => 'Attach your Psychological Test Result.',
-            'attachment_*.mimes' => 'Attachments must be a PDF, JPG or PNG file.',
-            'attachment_*.max' => 'Each attachment must be 10 MB or smaller.',
-        ]);
+        $validated = $request->validate($rules, $extraMessages + self::ATTACHMENT_MESSAGES);
         foreach (array_keys($attachmentKinds) as $kind) {
             unset($validated['attachment_'.$kind]);
         }
@@ -553,7 +540,7 @@ class DocumentController extends Controller
             ->where('status', 'returned')
             ->exists();
 
-        $document = DB::transaction(function () use ($requirement, $internship, $validated, $attachmentKinds, $request, $student) {
+        $document = DB::transaction(function () use ($requirement, $internship, $validated, $request, $student) {
             $document = Document::updateOrCreate(
                 [
                     'internship_id' => $internship->id,
@@ -582,25 +569,7 @@ class DocumentController extends Controller
                     ->delete();
             }
 
-            foreach (array_keys($attachmentKinds) as $kind) {
-                $file = $request->file('attachment_'.$kind);
-                if (! $file) {
-                    continue;
-                }
-                $current = $document->attachments()->where('kind', $kind)->first();
-                $path = $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}");
-                DocumentAttachment::updateOrCreate(
-                    ['document_id' => $document->id, 'kind' => $kind],
-                    [
-                        'file_path' => $path,
-                        'original_filename' => $file->getClientOriginalName(),
-                        'uploaded_by_user_id' => auth()->id(),
-                    ]
-                );
-                if ($current && $current->file_path !== $path && Storage::exists($current->file_path)) {
-                    Storage::delete($current->file_path);
-                }
-            }
+            $this->saveAttachments($document, $request, $student);
 
             return $document;
         });
@@ -1085,6 +1054,69 @@ class DocumentController extends Controller
         return redirect()->route('student.documents')->with('status', $wasReturned
             ? 'Corrected document uploaded and resubmitted for instructor review.'
             : 'Document uploaded and submitted for review.');
+    }
+
+    private const ATTACHMENT_MESSAGES = [
+        'attachment_medical_certificate.required' => 'Attach your Medical Certificate from a government physician.',
+        'attachment_psychological_test.required' => 'Attach your Psychological Test Result.',
+        'attachment_parent_guardian_id.required' => 'Attach a photocopy of your parent/guardian\'s valid ID.',
+        'attachment_*.mimes' => 'Attachments must be a PDF, JPG or PNG file.',
+        'attachment_*.max' => 'Each attachment must be 10 MB or smaller.',
+    ];
+
+    /**
+     * Upload rules for the files a form takes (Form 1: Medical Certificate
+     * and Psychological Test; Form 3: Parent/Guardian Valid ID). Required
+     * the first time; on a resubmission only needed to replace a file.
+     */
+    private function attachmentRules(DocumentRequirement $requirement, $internship): array
+    {
+        $kinds = DocumentAttachment::kindsFor($requirement->code);
+        if (! $kinds) {
+            return [];
+        }
+
+        $existing = $internship->documents()
+            ->where('document_requirement_id', $requirement->id)
+            ->with('attachments')
+            ->first();
+
+        $rules = [];
+        foreach (array_keys($kinds) as $kind) {
+            $rules['attachment_'.$kind] = [
+                $existing?->attachment($kind) ? 'nullable' : 'required',
+                'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240',
+            ];
+        }
+
+        return $rules;
+    }
+
+    /** Stores the uploaded attachments on the form, replacing older files. */
+    private function saveAttachments(Document $document, Request $request, $student): void
+    {
+        $code = $document->requirement?->code
+            ?? DocumentRequirement::whereKey($document->document_requirement_id)->value('code');
+
+        foreach (array_keys(DocumentAttachment::kindsFor($code)) as $kind) {
+            $file = $request->file('attachment_'.$kind);
+            if (! $file) {
+                continue;
+            }
+            $current = $document->attachments()->where('kind', $kind)->first();
+            $path = $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}");
+            DocumentAttachment::updateOrCreate(
+                ['document_id' => $document->id, 'kind' => $kind],
+                [
+                    'file_path' => $path,
+                    'original_filename' => $file->getClientOriginalName(),
+                    'uploaded_by_user_id' => auth()->id(),
+                ]
+            );
+            if ($current && $current->file_path !== $path && Storage::exists($current->file_path)) {
+                Storage::delete($current->file_path);
+            }
+        }
     }
 
     /** The student opens a file they attached to a form (e.g. Form 1). */

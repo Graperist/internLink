@@ -1056,8 +1056,8 @@
         @if ($attachmentKinds = \App\Models\DocumentAttachment::kindsFor($requirement->code))
             <h2 class="h6 fw-bold mt-4 mb-1">Attachments</h2>
             <p class="text-secondary small mb-3">
-                Attach your Medical Certificate and Psychological Test Result from a government physician, certifying that you are
-                physically, emotionally and mentally fit for the internship. They are submitted and reviewed together with this form.
+                {{ \App\Models\DocumentAttachment::INSTRUCTIONS[$requirement->code] ?? '' }}
+                {{ count($attachmentKinds) > 1 ? 'They are' : 'It is' }} submitted and reviewed together with this form.
                 PDF, JPG or PNG, up to 10 MB each.
             </p>
             <div class="row g-3">

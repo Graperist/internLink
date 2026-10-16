@@ -5,8 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A file attached to a form - currently the Medical Certificate and the
- * Psychological Test Result that go with Form 1 (Application for Internship).
+ * A file attached to a form: the Medical Certificate and the Psychological
+ * Test Result that go with Form 1 (Application for Internship), and the
+ * Parent/Guardian Valid ID that goes with Form 3 (Consent and Waiver).
  */
 class DocumentAttachment extends Model
 {
@@ -16,9 +17,18 @@ class DocumentAttachment extends Model
             'medical_certificate' => 'Medical Certificate (government physician)',
             'psychological_test' => 'Psychological Test Result',
         ],
+        'PARENT_CONSENT' => [
+            'parent_guardian_id' => 'Parent/Guardian Valid ID (photocopy)',
+        ],
     ];
 
     protected $fillable = ['document_id', 'kind', 'file_path', 'original_filename', 'uploaded_by_user_id'];
+
+    /** What the student is told to attach, shown above the file inputs. */
+    public const INSTRUCTIONS = [
+        'APPLICATION_FOR_OJT' => 'Attach your Medical Certificate and Psychological Test Result from a government physician, certifying that you are physically, emotionally and mentally fit for the internship.',
+        'PARENT_CONSENT' => 'Attach a photocopy of the valid ID of the parent/guardian who signs this consent (front and back on one page or photo).',
+    ];
 
     public static function kindsFor(?string $requirementCode): array
     {
