@@ -4,7 +4,10 @@
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">Digital repository</h1>
+    <div>
+        <h1 class="il-page-title">Digital repository</h1>
+        <p class="text-secondary small mb-0">Pick a student to open the files they have passed.</p>
+    </div>
 </div>
 
 @if (session('status'))
@@ -61,75 +64,62 @@
     </form>
 
     @php
-        $stageLabels = ['pre_deployment' => 'Pre-deployment', 'active' => 'During training', 'post_deployment' => 'Post-deployment'];
         $preTotal = $stageTotals['pre_deployment'] ?? 0;
         $postTotal = $stageTotals['post_deployment'] ?? 0;
     @endphp
 
-    <table class="table align-middle mb-0">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0 il-repo-list">
         <thead>
             <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                <th>Student</th>
+                <th>Name</th>
                 <th>Program</th>
                 <th>Pre-deployment</th>
                 <th>Post-deployment</th>
-                <th>Access</th>
+                <th>Files</th>
+                <th class="text-end"></th>
             </tr>
         </thead>
         <tbody>
             @forelse ($students as $student)
                 @php
-                    $files = $student->documents->sortBy(fn ($d) => [$d->requirement->stage === 'pre_deployment' ? 1 : ($d->requirement->stage === 'active' ? 2 : 3), $d->requirement->display_order]);
+                    $files = $student->documents;
+                    $fileCount = $files->count() + $files->sum(fn ($d) => $d->attachments->count());
                     $preDone = $files->filter(fn ($d) => $d->requirement->stage === 'pre_deployment' && $d->requirement->is_required)->count();
                     $postDone = $files->filter(fn ($d) => $d->requirement->stage === 'post_deployment' && $d->requirement->is_required)->count();
+                    $openUrl = route('coordinator.repository', array_filter(['student' => $student->id, 'program_id' => request('program_id')]));
+                    $initials = collect(explode(' ', $student->user->name))->map(fn ($p) => $p[0] ?? '')->take(2)->join('');
                 @endphp
                 <tr>
                     <td>
-                        <div class="fw-semibold">{{ $student->user->name }}</div>
-                        <div class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</div>
+                        <a href="{{ $openUrl }}" class="d-flex align-items-center gap-2 text-decoration-none text-reset">
+                            <span class="il-row-avatar">{{ $initials }}</span>
+                            <span>
+                                <span class="fw-semibold d-block">{{ $student->user->name }}</span>
+                                <span class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</span>
+                            </span>
+                        </a>
                     </td>
-                    <td>{{ $student->program->code ?? '—' }}</td>
+                    <td><span class="badge rounded-pill text-bg-light text-secondary border">{{ $student->program->code ?? '—' }}</span></td>
                     <td><span class="badge rounded-pill {{ $preTotal > 0 && $preDone >= $preTotal ? 'text-bg-primary' : 'text-bg-light text-secondary' }}">{{ $preDone }} / {{ $preTotal }} passed</span></td>
                     <td><span class="badge rounded-pill {{ $postTotal > 0 && $postDone >= $postTotal ? 'text-bg-primary' : 'text-bg-light text-secondary' }}">{{ $postDone }} / {{ $postTotal }} passed</span></td>
-                    <td>
-                        @if ($files->isNotEmpty())
-                            <a href="{{ route('coordinator.repository.student.download-all', $student) }}" class="btn btn-sm btn-primary">
-                                <i class="ti ti-file-zip"></i> Download all (ZIP)
-                            </a>
-                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#files-{{ $student->id }}">
-                                Files ({{ $files->count() }})
-                            </button>
+                    <td class="small {{ $fileCount ? '' : 'text-secondary' }}">
+                        @if ($fileCount)
+                            <i class="ti ti-files text-secondary"></i> {{ $fileCount }} {{ \Illuminate\Support\Str::plural('file', $fileCount) }}
                         @else
-                            <span class="text-secondary small">No passed files yet</span>
+                            No passed files yet
                         @endif
                     </td>
+                    <td class="text-end text-nowrap">
+                        @if ($fileCount)
+                            <a href="{{ route('coordinator.repository.student.download-all', $student) }}" class="btn btn-sm btn-outline-secondary" title="Download all as ZIP"><i class="ti ti-file-zip"></i></a>
+                        @endif
+                        <a href="{{ $openUrl }}" class="btn btn-sm {{ $fileCount ? 'btn-primary' : 'btn-outline-secondary' }}">{{ $fileCount ? 'Open' : 'View' }}</a>
+                    </td>
                 </tr>
-                @if ($files->isNotEmpty())
-                    <tr class="collapse" id="files-{{ $student->id }}">
-                        <td colspan="5" class="bg-light">
-                            <table class="table table-sm mb-0 align-middle">
-                                <tbody>
-                                    @foreach ($files as $document)
-                                        <tr>
-                                            <td style="width:34%">{{ $document->requirement->name }}</td>
-                                            <td class="text-secondary small">{{ $stageLabels[$document->requirement->stage] ?? '' }}</td>
-                                            <td class="text-secondary small">{{ $document->submitted_at?->format('M d, Y') ?? '—' }}</td>
-                                            <td class="text-secondary small">{{ $document->uploader?->role?->name ?? 'Student' }}</td>
-                                            <td class="text-end">
-                                                <a href="{{ route('coordinator.repository.download', $document) }}" class="text-decoration-none small fw-semibold">
-                                                    <i class="ti ti-download"></i> Download
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        </td>
-                    </tr>
-                @endif
             @empty
                 <tr>
-                    <td colspan="5" class="text-center text-secondary py-4">
+                    <td colspan="6" class="text-center text-secondary py-5">
                         @if (request()->hasAny(['search', 'document_requirement_id', 'program_id']))
                             No students match this search or filter.
                         @else
@@ -140,9 +130,13 @@
             @endforelse
         </tbody>
     </table>
+    </div>
 </div>
 
 <div class="mt-3">
     {{ $students->links() }}
 </div>
+<style>
+    .il-repo-list tbody tr:hover { background: rgba(28, 63, 102, 0.035); }
+</style>
 @endsection

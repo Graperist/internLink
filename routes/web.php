@@ -200,6 +200,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/repository', [DocumentRepositoryController::class, 'store'])->name('repository.store');
         Route::get('/repository/students/{student}/download-all', [DocumentRepositoryController::class, 'downloadAllForStudent'])->name('repository.student.download-all');
         Route::get('/repository/{document}/download', [DocumentRepositoryController::class, 'download'])->name('repository.download');
+        Route::get('/repository/{document}/view', [DocumentRepositoryController::class, 'view'])->name('repository.view');
+        Route::get('/repository/attachments/{attachment}', [DocumentRepositoryController::class, 'attachment'])->name('repository.attachment');
 
         // Partner HTEs now live in the shared Partner Agencies module.
         Route::redirect('/htes', '/instructor/partner-agencies')->name('htes');

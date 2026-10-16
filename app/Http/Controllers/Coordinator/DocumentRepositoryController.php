@@ -34,6 +34,13 @@ class DocumentRepositoryController extends Controller
     {
         $campusId = auth()->user()->campus_id;
 
+        // Like Document Review: the student list first; picking a student
+        // opens their page with their passed files on the left and the
+        // selected file on the right.
+        if ($request->filled('student')) {
+            return $this->studentPage($request, $campusId);
+        }
+
         // One row per student (not per file). Each student carries only the
         // files they have passed: approved documents with a file on record,
         // for live requirements (no legacy forms / seminars).
@@ -43,7 +50,7 @@ class DocumentRepositoryController extends Controller
                 ->whereNotNull('documents.file_path')
                 ->where('documents.file_path', '!=', '')
                 ->whereHas('requirement', fn ($r) => $r->where('is_active', true))
-                ->with(['requirement', 'uploader.role'])
+                ->with(['requirement', 'uploader.role', 'attachments'])
             ])
             ->join('users', 'users.id', '=', 'students.user_id')
             ->where('students.campus_id', $campusId)
@@ -74,15 +81,146 @@ class DocumentRepositoryController extends Controller
         $programs = Program::where('campus_id', $campusId)->orderBy('name')->get();
 
         // How many live required forms each stage has, for the "x / y" counts.
-        $stageTotals = DocumentRequirement::where('campus_id', $campusId)
+        $stageTotals = $this->stageTotals($campusId);
+
+        return view('coordinator.repository.index', compact('students', 'requirements', 'programs', 'stageTotals'));
+    }
+
+    /** One student's passed files, Document Review style. */
+    private function studentPage(Request $request, int $campusId): View
+    {
+        $student = Student::with(['user', 'program'])
+            ->where('campus_id', $campusId)
+            ->findOrFail((int) $request->query('student'));
+
+        // Previous / next follow the list order (by name, same program filter).
+        $order = Student::join('users', 'users.id', '=', 'students.user_id')
+            ->where('students.campus_id', $campusId)
+            ->when($request->query('program_id'), fn ($q, $programId) => $q->where('students.program_id', $programId))
+            ->orderBy('users.name')
+            ->pluck('students.id')
+            ->values();
+        $index = $order->search($student->id);
+        $position = ['index' => $index === false ? 1 : $index + 1, 'total' => max($order->count(), 1)];
+        $prevId = $index !== false && $index > 0 ? $order[$index - 1] : null;
+        $nextId = $index !== false && $index < $order->count() - 1 ? $order[$index + 1] : null;
+        $prevStudent = $prevId ? Student::with('user')->find($prevId) : null;
+        $nextStudent = $nextId ? Student::with('user')->find($nextId) : null;
+
+        $files = $this->passedFiles($student);
+
+        $selected = $files->firstWhere('key', (string) $request->query('file')) ?? $files->first();
+
+        $stageTotals = $this->stageTotals($campusId);
+        $passedByStage = $files->where('kind', 'form')->where('required', true)->countBy('stage');
+
+        $jumpList = Student::with(['user', 'program'])
+            ->join('users', 'users.id', '=', 'students.user_id')
+            ->where('students.campus_id', $campusId)
+            ->select('students.*')
+            ->orderBy('users.name')
+            ->get()
+            ->map(fn ($s) => ['id' => $s->id, 'name' => $s->user->name, 'id_number' => $s->user->id_number.($s->program ? ' · '.$s->program->code : '')])
+            ->values();
+
+        return view('coordinator.repository.student', compact(
+            'student', 'files', 'selected', 'prevStudent', 'nextStudent', 'position', 'stageTotals', 'passedByStage', 'jumpList'
+        ));
+    }
+
+    /**
+     * A student's passed files: approved forms that have a file on record
+     * (live requirements only), each followed by the files attached to it
+     * (Form 1's medical / psychological, Form 3's guardian ID). Ordered by
+     * stage, then form number.
+     */
+    private function passedFiles(Student $student)
+    {
+        $stageRank = ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3];
+
+        $documents = Document::with(['requirement', 'uploader.role', 'attachments', 'reviews' => fn ($q) => $q->latest('reviewed_at')])
+            ->whereHas('internship', fn ($q) => $q->where('student_id', $student->id))
+            ->whereHas('requirement', fn ($q) => $q->where('is_active', true))
+            ->where('status', 'approved')
+            ->whereNotNull('file_path')
+            ->where('file_path', '!=', '')
+            ->get()
+            ->sortBy(function ($document) use ($stageRank) {
+                $number = preg_match('/^(\d+)/', (string) $document->requirement->form_number, $m) ? (int) $m[1] : PHP_INT_MAX;
+
+                return [$stageRank[$document->requirement->stage] ?? 4, $number, (string) $document->requirement->form_number, $document->requirement->display_order];
+            });
+
+        $isPreviewable = fn ($name) => (bool) preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) $name);
+        $files = collect();
+        foreach ($documents as $document) {
+            $approvedAt = $document->reviews->firstWhere('decision', 'approved')?->reviewed_at ?? $document->completed_at ?? $document->submitted_at;
+            $files->push([
+                'key' => 'd'.$document->id,
+                'kind' => 'form',
+                'title' => $document->requirement->name,
+                'stage' => $document->requirement->stage,
+                'required' => (bool) $document->requirement->is_required,
+                'filename' => $document->original_filename,
+                'date' => $approvedAt,
+                'uploader' => $document->uploader?->role?->name ?? 'Student',
+                'previewable' => $isPreviewable($document->original_filename ?: $document->file_path),
+                'view_url' => route('coordinator.repository.view', $document),
+                'download_url' => route('coordinator.repository.download', $document),
+            ]);
+            foreach ($document->attachments->sortBy('kind') as $attachment) {
+                $files->push([
+                    'key' => 'a'.$attachment->id,
+                    'kind' => 'attachment',
+                    'title' => $attachment->label(),
+                    'parent' => $document->requirement->name,
+                    'stage' => $document->requirement->stage,
+                    'required' => false,
+                    'filename' => $attachment->original_filename,
+                    'date' => $attachment->updated_at,
+                    'uploader' => 'Student Intern',
+                    'previewable' => $attachment->isPreviewable(),
+                    'view_url' => route('coordinator.repository.attachment', $attachment),
+                    'download_url' => route('coordinator.repository.attachment', ['attachment' => $attachment, 'download' => 1]),
+                ]);
+            }
+        }
+
+        return $files->values();
+    }
+
+    private function stageTotals(int $campusId)
+    {
+        return DocumentRequirement::where('campus_id', $campusId)
             ->where('is_active', true)
             ->where('is_required', true)
             ->whereIn('stage', ['pre_deployment', 'post_deployment'])
             ->selectRaw('stage, count(*) as total')
             ->groupBy('stage')
             ->pluck('total', 'stage');
+    }
 
-        return view('coordinator.repository.index', compact('students', 'requirements', 'programs', 'stageTotals'));
+    /** Opens a passed file in the browser (the preview on the student page). */
+    public function view(Document $document): StreamedResponse
+    {
+        abort_unless($document->internship->campus_id === auth()->user()->campus_id, 403);
+        abort_if(blank($document->file_path), 404);
+        abort_unless(Storage::exists($document->file_path), 404);
+
+        return Storage::response($document->file_path, $document->original_filename, [], 'inline');
+    }
+
+    /** Opens (or with ?download=1 downloads) a file attached to a form. */
+    public function attachment(Request $request, \App\Models\DocumentAttachment $attachment): StreamedResponse
+    {
+        abort_unless($attachment->document->internship->campus_id === auth()->user()->campus_id, 403);
+        abort_unless(Storage::exists($attachment->file_path), 404);
+
+        if ($request->boolean('download')) {
+            return Storage::download($attachment->file_path, $attachment->original_filename);
+        }
+
+        return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
     }
 
     public function create(): View
