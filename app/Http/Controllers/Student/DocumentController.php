@@ -83,12 +83,12 @@ class DocumentController extends Controller
             ->whereIn('audience', ['student', 'coordinator'])
             ->with('fieldDefinitions')
             ->get()
-            // Latest stage first: post-deployment, then active (e.g. the weekly
-            // report), then pre-deployment. Within a stage the forms follow
+            // In process order: pre-deployment, then active (e.g. the weekly
+            // report), then post-deployment. Within a stage the forms follow
             // their form number (1, 2, 3, 6, 11, 12, 15, 18 - "23a" after 23);
             // items without a number come after the numbered forms.
             ->sortBy(fn ($req) => [
-                ['post_deployment' => 1, 'active' => 2, 'pre_deployment' => 3][$req->stage] ?? 4,
+                ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3][$req->stage] ?? 4,
                 self::formNumberSortKey($req->form_number),
                 $req->display_order ?? 0,
                 $req->name,

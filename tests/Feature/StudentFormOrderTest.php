@@ -68,4 +68,30 @@ class StudentFormOrderTest extends TestCase
 
         $this->assertSame('Form 6 – Endorsement Letter', $form6->fresh()->name);
     }
+
+    public function test_stages_go_pre_deployment_then_active_then_post_deployment(): void
+    {
+        $role = Role::forceCreate(['code' => 'student', 'name' => 'student']);
+        $campus = Campus::forceCreate(['code' => 'ACC', 'name' => 'PSU - Alaminos City Campus', 'status' => 'active']);
+        $program = Program::forceCreate(['campus_id' => $campus->id, 'code' => 'BSIT', 'name' => 'BSIT', 'required_hours' => 486]);
+        foreach ([['NARRATIVE_REPORT', 'Narrative Report', null, 'post_deployment'], ['WEEKLY_REPORT', 'Form 19 – Weekly Report', '19', 'active'],
+                  ['APPLICATION_FOR_OJT', 'Form 1 – Application for Internship', '1', 'pre_deployment'], ['STUDENT_FEEDBACK_FORM', 'Form 20 – Feedback', '20', 'post_deployment']] as [$code, $name, $number, $stage]) {
+            DocumentRequirement::forceCreate([
+                'campus_id' => $campus->id, 'code' => $code, 'name' => $name, 'form_number' => $number, 'stage' => $stage,
+                'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => true, 'is_required' => true, 'display_order' => 1,
+            ]);
+        }
+        $user = User::forceCreate([
+            'campus_id' => $campus->id, 'role_id' => $role->id, 'id_number' => '23-AC-0093', 'name' => 'Jasmine',
+            'email' => 'j@t.local', 'password' => Hash::make('x'), 'status' => 'active', 'must_change_password' => false,
+        ]);
+        $student = Student::forceCreate(['user_id' => $user->id, 'campus_id' => $campus->id, 'program_id' => $program->id, 'hours_rendered' => 0]);
+        // Completed, so every stage is listed.
+        $internship = Internship::forceCreate(['student_id' => $student->id, 'campus_id' => $campus->id, 'program_id' => $program->id, 'required_hours' => 486, 'status' => 'completed']);
+        $hte = \App\Models\Hte::forceCreate(['campus_id' => $campus->id, 'name' => 'Hundred Islands Resort']);
+        \App\Models\Deployment::forceCreate(['internship_id' => $internship->id, 'hte_id' => $hte->id, 'status' => 'completed']);
+
+        $this->actingAs($user)->get(route('student.documents'))->assertOk()
+            ->assertSeeInOrder(['Form 1 – Application', 'Form 19 – Weekly Report', 'Form 20 – Feedback', 'Narrative Report']);
+    }
 }
