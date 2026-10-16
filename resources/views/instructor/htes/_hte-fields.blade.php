@@ -1,6 +1,6 @@
 @php $hte = $hte ?? null; @endphp
 
-<label class="form-label small fw-semibold">HTE name</label>
+<label class="form-label small fw-semibold">Name of agency / company <span class="text-danger">*</span></label>
 <input
     type="text"
     name="name"
@@ -10,30 +10,35 @@
     required
 >
 
-<label class="form-label small fw-semibold">Address</label>
+<label class="form-label small fw-semibold">Address <span class="text-danger">*</span></label>
 <input
     type="text"
     name="address"
     id="hteAddress"
     class="form-control mb-3"
     value="{{ old('address', $hte->address ?? '') }}"
+    required
 >
 
 <div class="row g-2 mb-3">
     <div class="col-md-6">
-        <label class="form-label small fw-semibold">Contact person</label>
+        <label class="form-label small fw-semibold">Contact person <span class="text-danger">*</span></label>
         <input
             type="text"
             name="contact_person"
+            id="hte_contact_person"
             class="form-control"
             value="{{ old('contact_person', $hte->contact_person ?? '') }}"
+            placeholder="e.g. Mr. Ramon Cruz"
+            required
         >
     </div>
     <div class="col-md-6">
-        <label class="form-label small fw-semibold">Representative position</label>
+        <label class="form-label small fw-semibold">Representative position <span class="text-danger">*</span></label>
         <input
             type="text"
             name="representative_position"
+            id="hte_representative_position"
             class="form-control"
             value="{{ old('representative_position', $hte->representative_position ?? '') }}"
             placeholder="e.g. Mayor, HR Officer, IT Manager"
@@ -43,21 +48,25 @@
 </div>
 
 <div class="mb-3">
-    <label class="form-label small fw-semibold">Contact email</label>
+    <label class="form-label small fw-semibold">Contact email <span class="text-secondary fw-normal">(optional)</span></label>
     <input
         type="email"
         name="contact_email"
+            id="hte_contact_email"
         class="form-control"
         value="{{ old('contact_email', $hte->contact_email ?? '') }}"
     >
 </div>
 
-<label class="form-label small fw-semibold">Contact phone</label>
+<label class="form-label small fw-semibold">Contact number <span class="text-danger">*</span></label>
 <input
     type="text"
     name="contact_phone"
+            id="hte_contact_phone"
     class="form-control mb-3"
     value="{{ old('contact_phone', $hte->contact_phone ?? '') }}"
+    placeholder="e.g. 0917 123 4567"
+    required
 >
 
 <label class="form-label small fw-semibold">MOA status</label>
@@ -70,7 +79,7 @@
 </select>
 
 <div class="border rounded-3 p-3 mb-4" style="background:#f8fafc;">
-    <div class="fw-semibold mb-1">DTR Location Security</div>
+    <div class="fw-semibold mb-1">DTR Location Security <span class="text-secondary fw-normal small">(can be set later, before interns clock in)</span></div>
     <div class="small text-secondary mb-3">
         Set the official HTE location used for attendance verification.
     </div>
@@ -181,7 +190,7 @@
         // If exact coordinates are already saved, open that precise pin
         // instead of a name/address text search - a search can land on the
         // wrong branch or a nearby listing, while the saved coordinates are
-        // exactly where the coordinator placed the pin.
+        // exactly where the pin was placed.
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
             const url = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lon);
             window.open(url, '_blank', 'noopener,noreferrer');

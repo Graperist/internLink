@@ -253,7 +253,7 @@
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Choose the partner HTE registered by your Coordinator.</div>
+                        <div class="form-text">Choose from your program's partner agencies for this term.</div>
                     @else
                         <input type="text" class="form-control" id="company_name" name="company_name"
                                value="{{ $endorsementCompany }}" placeholder="Enter company / agency name" required>
@@ -402,7 +402,7 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Select the partner Host Training Establishment registered by your Coordinator.
+                Select the partner Host Training Establishment from your program's partner agencies for this term.
                 The HTE address, representative name, representative position, and required internship
                 hours are filled automatically from the official HTE and program records.
             </div>
@@ -583,7 +583,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('company_name')
@@ -648,7 +648,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
@@ -755,7 +755,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
@@ -860,7 +860,7 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Select your registered partner HTE. The company address and required internship hours are filled automatically from your Coordinator's records.
+                Select your registered partner HTE. The company address and required internship hours are filled automatically from the partner agency records.
                 Enter your assigned company supervisor manually.
             </div>
 
@@ -892,13 +892,13 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
                     <div class="text-danger small mt-1">{{ $message }}</div>
                 @enderror
-                <div class="form-text">Only HTEs registered by your Coordinator for this campus are available.</div>
+                <div class="form-text">Only your program's partner agencies for this term are available.</div>
             </div>
 
             <div class="mb-3">
@@ -995,7 +995,7 @@
                                     @forelse ($htes as $hte)
                                         <option value="{{ $hte->name }}" {{ $selectedHte === $hte->name ? 'selected' : '' }}>{{ $hte->name }}</option>
                                     @empty
-                                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                                     @endforelse
                                 </select>
                             @elseif (in_array($field->field_key, ['civil_status', 'sex', 'sex_gender', 'course', 'major']))

@@ -100,6 +100,18 @@ class Instructor extends Model
             && $this->ownsProgramOf($record);
     }
 
+    /**
+     * Partner Agency repository entries are kept per program: only that
+     * program's instructor (the coordinator included, for the program they
+     * teach) may add, edit or remove them. The coordinator views all.
+     */
+    public function canManageListing(HteListing $listing): bool
+    {
+        return $this->program_id !== null
+            && (int) $listing->campus_id === (int) $this->campus_id
+            && (int) $listing->program_id === (int) $this->program_id;
+    }
+
     private function ownsProgramOf(Student|Internship $record): bool
     {
         return $this->program_id !== null && (int) $record->program_id === (int) $this->program_id;

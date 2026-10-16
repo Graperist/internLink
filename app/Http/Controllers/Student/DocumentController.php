@@ -151,12 +151,13 @@ class DocumentController extends Controller
 
         // The "Name of the Firm/Agency/Company" field (hte_name) is a plain
         // text box by default, but a student shouldn't be free-typing a
-        // company name here - they can only pick from the coordinator's
-        // actual partner HTE list for their campus, so what they submit
-        // always matches a real, MOA'd host.
+        // company name here - they pick from their program's Partner Agency
+        // list for the current term (kept by their subject instructor), so
+        // what they submit always matches a real partner. PM-PSU-03-AA-06,
+        // Note 2: present the list of partner agencies, let the student choose.
         $htes = ($requirement->fieldDefinitions->contains('field_key', 'hte_name')
                 || $requirement->fieldDefinitions->contains('field_key', 'company_name'))
-            ? Hte::where('campus_id', $student->campus_id)->orderBy('name')->get()
+            ? $this->partnerAgencyChoices($student, $internship)
             : collect();
 
         // Course/Major defaults for this student's own program. Each program
@@ -310,7 +311,7 @@ class DocumentController extends Controller
 
             if (blank($hte->address) || blank($hte->contact_person) || blank($hte->representative_position)) {
                 return back()->withInput()->withErrors([
-                    'hte_id' => 'The selected HTE is missing address, representative name, or representative position. Please ask the Coordinator to complete the HTE record first.',
+                    'hte_id' => 'The selected HTE is missing address, representative name, or representative position. Please ask your subject instructor to complete it in Partner Agencies first.',
                 ]);
             }
 
@@ -1015,5 +1016,23 @@ class DocumentController extends Controller
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
         return Storage::download($document->file_path, $document->original_filename);
+    }
+
+    /**
+     * Partner agencies a student may choose: their program's list for the
+     * current term. The HTE they are already placed at is always included,
+     * so a later form still shows it even if the list changed.
+     */
+    private function partnerAgencyChoices($student, $internship)
+    {
+        [$academicYear, $semester] = \App\Support\Term::current();
+
+        $htes = \App\Http\Controllers\Instructor\HteController::listedHtes($student->program_id, $academicYear, $semester);
+
+        if ($current = $internship?->deployment?->hte) {
+            $htes = $htes->push($current)->unique('id')->sortBy('name')->values();
+        }
+
+        return $htes;
     }
 }

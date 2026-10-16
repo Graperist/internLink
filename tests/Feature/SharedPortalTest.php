@@ -430,7 +430,7 @@ class SharedPortalTest extends TestCase
 
         $shared = ['instructor.dashboard', 'instructor.advisees', 'instructor.documents', 'instructor.monitoring',
             'instructor.htes', 'instructor.evaluations', 'instructor.reports', 'instructor.announcements',
-            'instructor.notifications', 'instructor.profile', 'instructor.interns.create', 'instructor.interns.import'];
+            'instructor.notifications', 'instructor.profile', 'instructor.interns.create', 'instructor.interns.import', 'instructor.htes.create'];
 
         foreach ([$coordinator, $instructor] as $user) {
             foreach ($shared as $name) {
@@ -440,7 +440,7 @@ class SharedPortalTest extends TestCase
 
         foreach (['coordinator.programs.index', 'coordinator.programs.create', 'coordinator.instructors.index',
             'coordinator.hte-accounts.index', 'coordinator.documents', 'coordinator.repository',
-            'coordinator.reports', 'coordinator.campus-settings.edit', 'coordinator.htes.create'] as $name) {
+            'coordinator.reports', 'coordinator.campus-settings.edit'] as $name) {
             $this->actingAs($coordinator)->get(route($name))->assertOk();
         }
     }

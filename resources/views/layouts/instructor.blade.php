@@ -50,7 +50,10 @@
                     <i class="ti ti-layout-dashboard"></i> Dashboard
                 </a>
 
-                <p class="il-nav-label">{{ $isCoordinator ? 'Students' : 'Advising' }}</p>
+                <p class="il-nav-label">Internship</p>
+                <a href="{{ route('instructor.htes') }}" class="il-nav-link {{ request()->routeIs('instructor.htes*') ? 'active' : '' }}">
+                    <i class="ti ti-building"></i> Partner Agencies
+                </a>
                 <a href="{{ route('instructor.advisees') }}" class="il-nav-link {{ request()->routeIs('instructor.advisees*', 'instructor.interns.*') ? 'active' : '' }}">
                     <i class="ti ti-users"></i> {{ $isCoordinator ? 'Students' : 'My Students' }}
                 </a>
@@ -59,9 +62,6 @@
                 </a>
                 <a href="{{ route('instructor.monitoring') }}" class="il-nav-link {{ request()->routeIs('instructor.monitoring') ? 'active' : '' }}">
                     <i class="ti ti-clock"></i> Monitoring
-                </a>
-                <a href="{{ route('instructor.htes') }}" class="il-nav-link {{ request()->routeIs('instructor.htes*', 'coordinator.htes*') ? 'active' : '' }}">
-                    <i class="ti ti-building"></i> Partner Agencies
                 </a>
                 <a href="{{ route('instructor.evaluations') }}" class="il-nav-link {{ request()->routeIs('instructor.evaluations*') ? 'active' : '' }}">
                     <i class="ti ti-star"></i> Evaluations

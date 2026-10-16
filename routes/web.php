@@ -6,7 +6,6 @@ use App\Http\Controllers\Auth\PasswordChangeController;
 use App\Http\Controllers\AuditTrailController;
 use App\Http\Controllers\Coordinator\DocumentController;
 use App\Http\Controllers\Coordinator\DocumentRepositoryController;
-use App\Http\Controllers\Coordinator\HteController;
 use App\Http\Controllers\Hte\NotificationController as HteNotificationController;
 use App\Http\Controllers\Hte\PortalController as HtePortalController;
 use App\Http\Controllers\Hte\FormController as HteFormController;
@@ -123,7 +122,16 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'create'])->name('forms.create');
         Route::post('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'store'])->name('forms.store');
 
+        // Partner Agencies - repository of partner industries per program
+        // and term (step 1 of the internship process). Entries are kept by
+        // each program's instructor; the coordinator views all programs.
         Route::get('/partner-agencies', [\App\Http\Controllers\Instructor\HteController::class, 'index'])->name('htes');
+        Route::get('/partner-agencies/create', [\App\Http\Controllers\Instructor\HteController::class, 'create'])->name('htes.create');
+        Route::post('/partner-agencies', [\App\Http\Controllers\Instructor\HteController::class, 'store'])->name('htes.store');
+        Route::post('/partner-agencies/copy-previous', [\App\Http\Controllers\Instructor\HteController::class, 'copyPrevious'])->name('htes.copy');
+        Route::get('/partner-agencies/{listing}/edit', [\App\Http\Controllers\Instructor\HteController::class, 'edit'])->name('htes.edit');
+        Route::put('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'update'])->name('htes.update');
+        Route::delete('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'destroy'])->name('htes.destroy');
 
         Route::get('/evaluations', [EvaluationController::class, 'index'])->name('evaluations');
         Route::get('/evaluations/{document}', [EvaluationController::class, 'show'])->whereNumber('document')->name('evaluations.show');
@@ -189,13 +197,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/repository/students/{student}/download-all', [DocumentRepositoryController::class, 'downloadAllForStudent'])->name('repository.student.download-all');
         Route::get('/repository/{document}/download', [DocumentRepositoryController::class, 'download'])->name('repository.download');
 
-        // Partner HTEs - the list is the shared Partner Agencies module;
-        // adding and editing an HTE stays with the coordinator.
-        Route::get('/htes', [HteController::class, 'index'])->name('htes');
-        Route::get('/htes/create', [HteController::class, 'create'])->name('htes.create');
-        Route::post('/htes', [HteController::class, 'store'])->name('htes.store');
-        Route::get('/htes/{hte}/edit', [HteController::class, 'edit'])->name('htes.edit');
-        Route::put('/htes/{hte}', [HteController::class, 'update'])->name('htes.update');
+        // Partner HTEs now live in the shared Partner Agencies module.
+        Route::redirect('/htes', '/instructor/partner-agencies')->name('htes');
 
         // Campus reports (CSV / file exports)
         Route::get('/reports', [ReportController::class, 'index'])->name('reports');

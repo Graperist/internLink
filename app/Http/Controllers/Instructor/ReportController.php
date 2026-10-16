@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Deployment;
 use App\Models\Document;
 use App\Models\Hte;
+use App\Models\HteListing;
 use App\Models\Instructor;
+use App\Models\Program;
 use App\Models\User;
+use App\Support\Term;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -86,33 +89,55 @@ class ReportController extends Controller
     }
 
     /**
-     * FM-AA-INT-06 - one row per partner industry, with the number of this
-     * instructor's student-trainees placed there.
+     * FM-AA-INT-06 - Masterlist of Partner Industries, printed from the
+     * Partner Agency repository for one academic year + semester. Only what
+     * the official form asks for is printed: the agency name and the total
+     * number of student-trainees. Address, contacts and MOA stay on screen.
+     *
+     * Instructor: their own program. Coordinator: one program, or all
+     * programs of the campus (an agency several programs list appears once,
+     * with their trainees added up).
      */
     public function partnerIndustries(Request $request): View
     {
+        [$defaultYear, $defaultSemester] = Term::current();
         $data = $request->validate([
-            'semester' => ['nullable', 'in:2nd Semester'],
+            'semester' => ['nullable', 'in:'.implode(',', Term::SEMESTERS)],
             'academic_year' => ['nullable', 'string', 'max:20'],
+            'program_id' => ['nullable', 'integer'],
         ]);
 
         $instructor = auth()->user()->instructor;
-        [$defaultSemester, $defaultAcademicYear] = $this->currentTerm();
+        $academicYear = Term::isValidAcademicYear($data['academic_year'] ?? null) ? $data['academic_year'] : $defaultYear;
+        $semester = $data['semester'] ?? $defaultSemester;
 
-        $rows = $this->traineeDeployments($instructor)
+        $program = null;
+        if (! $instructor->isCoordinator()) {
+            $program = $instructor->program;
+        } elseif (! empty($data['program_id'])) {
+            $program = Program::where('campus_id', $instructor->campus_id)->findOrFail($data['program_id']);
+        }
+
+        $counts = HteController::internCounts($instructor->campus_id, $academicYear, $semester);
+
+        $rows = HteListing::with('hte')
+            ->where('campus_id', $instructor->campus_id)
+            ->forTerm($academicYear, $semester)
+            ->when($program, fn ($q) => $q->where('program_id', $program->id), fn ($q) => $q->when(! $instructor->isCoordinator(), fn ($q) => $q->whereRaw('1 = 0')))
+            ->get()
             ->groupBy('hte_id')
             ->map(fn ($group) => [
                 'name' => $group->first()->hte->name,
-                'total' => $group->pluck('internship.student_id')->unique()->count(),
+                'total' => $group->sum(fn ($listing) => $counts[$listing->program_id.'|'.$listing->hte_id] ?? 0),
             ])
             ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
         return view('instructor.reports.partner-industries', array_merge($this->signatories($instructor), [
             'rows' => $rows,
-            'semester' => $data['semester'] ?? $defaultSemester,
-            'academicYear' => $data['academic_year'] ?? $defaultAcademicYear,
-            'collegeName' => $instructor->isCoordinator() ? ($instructor->campus?->name ?? '') : ($instructor->program?->name ?? ''),
+            'semester' => $semester,
+            'academicYear' => $academicYear,
+            'collegeName' => $program?->courseTitle() ?? ($instructor->campus?->name ?? ''),
         ]));
     }
 

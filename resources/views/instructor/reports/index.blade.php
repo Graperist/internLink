@@ -49,17 +49,26 @@
                   class="border rounded p-3 h-100 d-flex flex-column">
                 <p class="fw-semibold small mb-1">Masterlist of Partner Industries</p>
                 <p class="text-secondary small mb-3">
-                    FM-AA-INT-06 &middot; Partner companies with the number of your student-trainees in each
+                    FM-AA-INT-06 &middot; Printed from <a href="{{ route('instructor.htes') }}">Partner Agencies</a>:
+                    each agency on the term's list with the number of student-trainees
                 </p>
+                @php [$mpiYear, $mpiSemester] = \App\Support\Term::current(); @endphp
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_semester">Semester</label>
-                        <input type="text" class="form-control form-control-sm" id="mpi_semester" name="semester" value="2nd Semester" readonly>
+                        <select class="form-select form-select-sm" id="mpi_semester" name="semester">
+                            @foreach (\App\Support\Term::SEMESTERS as $option)
+                                <option value="{{ $option }}" @selected($option === $mpiSemester)>{{ $option }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_ay">Academic Year</label>
-                        <input type="text" class="form-control form-control-sm" id="mpi_ay" name="academic_year"
-                               value="{{ $academicYear }}" maxlength="20">
+                        <select class="form-select form-select-sm" id="mpi_ay" name="academic_year">
+                            @foreach (\App\Support\Term::academicYearOptions() as $option)
+                                <option value="{{ $option }}" @selected($option === $mpiYear)>{{ $option }}</option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
                 <div class="mt-auto">

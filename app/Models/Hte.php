@@ -44,4 +44,10 @@ class Hte extends Model
     {
         return $this->hasMany(Deployment::class);
     }
+
+    /** Partner Agency repository rows (program + term) for this HTE. */
+    public function listings()
+    {
+        return $this->hasMany(HteListing::class);
+    }
 }
