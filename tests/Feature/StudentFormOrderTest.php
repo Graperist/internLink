@@ -28,7 +28,7 @@ class StudentFormOrderTest extends TestCase
         // database seeded before the forms were renumbered.
         $forms = [
             ['18', 'Training Agreement and Liability Waiver', 5], ['1', 'Application for Internship', 1],
-            ['11', 'Internship Resume', 2], ['6', 'Endorsement Letter (Rev. 2, 2024)', 8],
+            ['11', 'Internship Resume', 2], ['6', 'Endorsement Letter', 8],
             ['3', 'Consent and Waiver', 7], ['12', 'Internship Agreement', 3],
             ['2', 'Certification of Units Earned for Practicum/Internship', 6], ['15', 'Internship Release Form', 4],
         ];
@@ -54,5 +54,18 @@ class StudentFormOrderTest extends TestCase
             'Form 11 – Internship Resume', 'Form 12 – Internship Agreement', 'Form 15 – Internship Release', 'Form 18 – Training',
         ]);
         $this->assertStringNotContainsString('<span class="text-secondary me-1">Form 1</span>', $response->getContent());
+    }
+
+    public function test_the_endorsement_letter_is_renamed(): void
+    {
+        $campus = Campus::forceCreate(['code' => 'ACC', 'name' => 'PSU - Alaminos City Campus', 'status' => 'active']);
+        $form6 = DocumentRequirement::forceCreate([
+            'campus_id' => $campus->id, 'code' => 'ENDORSEMENT_LETTER', 'name' => 'Form 6 – Endorsement Letter (Rev. 2, 2024)', 'form_number' => '6',
+            'stage' => 'pre_deployment', 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_active' => true, 'is_required' => true, 'display_order' => 70,
+        ]);
+
+        (require database_path('migrations/2026_10_16_500000_rename_endorsement_letter.php'))->up();
+
+        $this->assertSame('Form 6 – Endorsement Letter', $form6->fresh()->name);
     }
 }
