@@ -264,6 +264,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{document}/upload-signed', [StudentDocumentController::class, 'uploadSigned'])->name('documents.upload-signed');
         Route::post('/documents', [StudentDocumentController::class, 'store'])->name('documents.store');
         Route::get('/documents/{document}/download', [StudentDocumentController::class, 'download'])->name('documents.download');
+        Route::get('/documents/{document}/view', [StudentDocumentController::class, 'view'])->name('documents.view');
         Route::get('/documents/attachments/{attachment}', [StudentDocumentController::class, 'attachment'])->name('documents.attachment');
 
 

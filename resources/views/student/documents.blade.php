@@ -27,152 +27,261 @@
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
 
-<div class="il-card">
-    <h2 class="h6 fw-bold mb-3">OJT Requirements</h2>
+@php
+    $stageLabels = [
+        'pre_deployment' => 'Pre-Deployment Forms',
+        'active' => 'Active Forms',
+        'post_deployment' => 'Post-Deployment Forms',
+    ];
+    $statusColor = fn ($label) => match ($label) {
+        'Approved', 'Submitted', 'For Review', 'Sent to HTE' => 'text-bg-primary',
+        'Printed - Out for Signing' => 'text-bg-info',
+        'Signed Copy Upload Unlocked' => 'text-bg-success',
+        'Returned' => 'text-bg-danger',
+        default => 'text-bg-warning',
+    };
 
-    <table class="table align-middle mb-0">
-        <thead>
-            <tr class="text-secondary" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                <th>Requirement</th>
-                <th>Stage</th>
-                <th>Date submitted</th>
-                <th>Instructor feedback</th>
-                <th>Status</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @php
-                $statusColor = fn ($label) => match ($label) {
-                    'Approved' => 'text-bg-primary',
-                    'Submitted', 'For Review', 'Sent to HTE' => 'text-bg-primary',
-                    'Printed - Out for Signing' => 'text-bg-info',
-                    'Signed Copy Upload Unlocked' => 'text-bg-success',
-                    'Returned' => 'text-bg-danger',
-                    default => 'text-bg-warning', // Not submitted
-                };
-            @endphp
-            @foreach ($checklist as $row)
-                @php
-                    $doc = $row['document'];
-                    $requirement = $row['requirement'];
-                    $structured = $requirement->hasStructuredFields();
-                    $repeating = $requirement->is_repeating;
-                    $sentToHte = false; // reset per row; set below for Forms 20 / 23c
+    // Status of one form: label, icon, and whether the student has to act.
+    $info = function ($row) {
+        $doc = $row['document'];
+        $requirement = $row['requirement'];
+        $structured = $requirement->hasStructuredFields();
+        $sentToHte = false;
 
-                    if ($repeating) {
-                        $label = match ($doc?->status) {
-                            'draft' => ($doc->entries->count() ?? 0).' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
-                            'submitted', 'for_review' => 'For Review',
-                            'returned' => 'Returned',
-                            'printed' => 'Printed - Out for Signing',
-                            'completed' => 'Signed Copy Upload Unlocked',
-                            'approved' => 'Approved',
-                            default => 'Not started',
-                        };
-                    } elseif ($structured) {
-                        $sentToHte = in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
-                            && \App\Support\EvaluationRouting::isSubmitted($doc);
-                        $label = $sentToHte ? 'Sent to HTE' : match ($doc?->status) {
-                            'submitted', 'for_review' => 'For Review',
-                            'returned' => 'Returned',
-                            'printed' => 'Printed - Out for Signing',
-                            'completed' => 'Signed Copy Upload Unlocked',
-                            'approved' => 'Approved',
-                            default => 'Not submitted',
-                        };
-                    } else {
-                        $label = match ($doc?->status) {
-                            'approved' => 'Approved',
-                            'submitted' => 'Submitted',
-                            'for_review' => 'For Review',
-                            'returned' => 'Returned',
-                            default => 'Not submitted',
-                        };
-                    }
-                @endphp
-                <tr>
-                    <td>
-                        <div class="fw-semibold">@if($requirement->form_number && ! \Illuminate\Support\Str::startsWith($requirement->name, 'Form '))<span class="text-secondary me-1">Form {{ $requirement->form_number }}</span>· @endif{{ $requirement->name }}</div>
-                        @if ($doc?->original_filename)
-                            <div class="text-secondary" style="font-size: 0.75rem;">{{ $doc->original_filename }}</div>
-                        @endif
-                        @if ($doc && $doc->attachments->isNotEmpty())
-                            <div class="d-flex flex-wrap gap-2 mt-1" style="font-size: 0.75rem;">
-                                @foreach ($doc->attachments as $attachment)
-                                    <a href="{{ route('student.documents.attachment', $attachment) }}" target="_blank" class="text-decoration-none"><i class="ti ti-paperclip"></i> {{ $attachment->label() }}</a>
-                                @endforeach
-                            </div>
-                        @endif
-                    </td>
-                    <td class="text-secondary small">{{ ucfirst(str_replace('_', ' ', $requirement->stage)) }}</td>
-                    <td class="text-secondary small">{{ $doc?->submitted_at?->format('M d, Y') ?? 'Not yet submitted' }}</td>
-                    <td class="text-secondary small">
-                        {{ $doc?->latestReview?->remarks ?? '—' }}
-                    </td>
-                    <td>
-                        <span class="badge rounded-pill {{ $statusColor($label) }}">{{ $label }}</span>
-                    </td>
-                    <td class="text-end">
-                        @if ($repeating)
-                            @if ($doc?->status === 'completed')
-                                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
-                                    data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
-                                    Upload Signed Copy
-                                </button>
-                            @elseif ($doc?->status === 'approved')
-                                <span class="text-secondary small">Signed copy received</span>
-                            @elseif ($doc?->status === 'printed')
-                                <span class="text-secondary small">Awaiting signed copy</span>
-                            @else
-                                <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-sm btn-outline-primary">
-                                    View Log
-                                </a>
-                            @endif
-                        @elseif ($structured)
-                            @if ($sentToHte)
-                                <span class="text-secondary small">Delivered to your HTE's Evaluations Received</span>
-                            @elseif ($doc?->status === 'completed')
-                                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
-                                    data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
-                                    Upload Signed Copy
-                                </button>
-                            @elseif ($doc?->status === 'approved')
-                                <span class="text-secondary small">Signed copy received</span>
-                            @elseif (in_array($doc?->status, ['printed']))
-                                <span class="text-secondary small">Awaiting signed copy</span>
-                            @else
-                                <a href="{{ route('student.documents.fill', $requirement) }}" class="btn btn-sm btn-outline-primary">
-                                    {{ $doc ? 'Edit Form' : 'Fill Form' }}
-                                </a>
-                            @endif
-                        @else
-                            @if ($doc?->status === 'returned' && $doc->latestReview?->remarks)
-                                <div class="small text-danger mb-2 text-start">
-                                    <strong>Returned:</strong> {{ $doc->latestReview->remarks }}
-                                </div>
-                            @endif
+        if ($requirement->is_repeating) {
+            $label = match ($doc?->status) {
+                'draft' => $doc->entries->count().' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
+                'submitted', 'for_review' => 'For Review',
+                'returned' => 'Returned',
+                'printed' => 'Printed - Out for Signing',
+                'completed' => 'Signed Copy Upload Unlocked',
+                'approved' => 'Approved',
+                default => 'Not started',
+            };
+        } elseif ($structured) {
+            $sentToHte = in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
+                && \App\Support\EvaluationRouting::isSubmitted($doc);
+            $label = $sentToHte ? 'Sent to HTE' : match ($doc?->status) {
+                'submitted', 'for_review' => 'For Review',
+                'returned' => 'Returned',
+                'printed' => 'Printed - Out for Signing',
+                'completed' => 'Signed Copy Upload Unlocked',
+                'approved' => 'Approved',
+                default => 'Not submitted',
+            };
+        } else {
+            $label = match ($doc?->status) {
+                'approved' => 'Approved',
+                'submitted' => 'Submitted',
+                'for_review' => 'For Review',
+                'returned' => 'Returned',
+                default => 'Not submitted',
+            };
+        }
 
-                            @if (! $doc || $doc->status === 'returned')
-                                <button type="button" class="btn btn-sm {{ $doc?->status === 'returned' ? 'btn-primary' : 'btn-outline-primary' }}"
-                                    data-bs-toggle="modal" data-bs-target="#uploadModal"
-                                    data-requirement-id="{{ $requirement->id }}" data-requirement-name="{{ $requirement->name }}">
-                                    {{ $doc?->status === 'returned' ? 'Upload Corrected File' : 'Upload' }}
-                                </button>
-                            @elseif (in_array($doc->status, ['submitted', 'for_review']))
-                                <span class="text-secondary small">Awaiting instructor review</span>
-                            @elseif ($doc->status === 'approved')
-                                <span class="text-secondary small">Signed copy received</span>
-                            @else
-                                <span class="text-secondary small">{{ ucfirst($doc->status) }}</span>
-                            @endif
+        [$icon, $iconColor] = match (true) {
+            $sentToHte, $doc?->status === 'approved' => ['ti-circle-check-filled', 'text-success'],
+            $doc?->status === 'returned' => ['ti-arrow-back-up', 'text-danger'],
+            $doc?->status === 'completed' => ['ti-upload', 'text-primary'],
+            $doc?->status === 'printed' => ['ti-printer', 'text-primary'],
+            in_array($doc?->status, ['submitted', 'for_review'], true) => ['ti-clock', 'text-warning'],
+            $doc?->status === 'draft' => ['ti-pencil', 'text-primary'],
+            default => ['ti-circle', 'text-secondary'],
+        };
+
+        return compact('label', 'icon', 'iconColor', 'sentToHte', 'structured');
+    };
+
+    $selectedRow = $checklist->first(fn ($row) => $row['requirement']->id === $selectedId);
+    $doneCount = $checklist->filter(fn ($row) => in_array($info($row)['label'], ['Approved', 'Sent to HTE'], true))->count();
+@endphp
+
+@if ($checklist->isEmpty())
+    <div class="il-card text-center text-secondary py-5">No forms are available yet.</div>
+@else
+<div class="row g-3">
+    {{-- Left: the forms, like the Document Review forms list --}}
+    <div class="col-lg-4">
+        <div class="il-card p-0 overflow-hidden" style="position: sticky; top: 1rem;">
+            <div class="px-3 pt-3 pb-2 d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">OJT Requirements</span>
+                <span class="small text-secondary">{{ $doneCount }} / {{ $checklist->count() }} done</span>
+            </div>
+            <div class="list-group list-group-flush il-form-list">
+                @foreach ($stageLabels as $stageKey => $stageLabel)
+                    @php $stageRows = $checklist->filter(fn ($row) => $row['requirement']->stage === $stageKey); @endphp
+                    @continue ($stageRows->isEmpty())
+                    <div class="list-group-item bg-light small fw-semibold text-secondary py-1">{{ $stageLabel }}</div>
+                    @foreach ($stageRows as $row)
+                        @php
+                            $rowInfo = $info($row);
+                            $isOpen = $row['requirement']->id === $selectedId;
+                        @endphp
+                        <a href="{{ route('student.documents', ['form' => $row['requirement']->id]) }}"
+                           class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}"
+                           @if ($isOpen) aria-current="true" @endif>
+                            <i class="ti {{ $rowInfo['icon'] }} {{ $rowInfo['iconColor'] }} fs-5 flex-shrink-0"></i>
+                            <span class="flex-grow-1" style="min-width: 0;">
+                                <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">@if($row['requirement']->form_number && ! \Illuminate\Support\Str::startsWith($row['requirement']->name, 'Form '))Form {{ $row['requirement']->form_number }} &middot; @endif{{ $row['requirement']->name }}</span>
+                                <span class="d-block {{ $rowInfo['label'] === 'Returned' ? 'text-danger' : 'text-secondary' }}" style="font-size: 0.72rem;">{{ $rowInfo['label'] }}</span>
+                            </span>
+                            <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
+                        </a>
+                    @endforeach
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    {{-- Right: the open form --}}
+    <div class="col-lg-8">
+        @php
+            $doc = $selectedRow['document'];
+            $requirement = $selectedRow['requirement'];
+            $rowInfo = $info($selectedRow);
+            $structured = $rowInfo['structured'];
+            $repeating = $requirement->is_repeating;
+            $label = $rowInfo['label'];
+            $hasFile = $doc && filled($doc->file_path);
+            $previewable = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($doc->original_filename ?: $doc->file_path));
+            $next = match (true) {
+                $rowInfo['sentToHte'] => 'Delivered to your HTE\'s Evaluations Received. Nothing else to do on this form.',
+                $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',
+                $doc?->status === 'returned' => 'Your instructor returned this form. Correct it and submit again.',
+                $doc?->status === 'completed' => 'The signed paper copy is back. Upload a scan of it to finish this form (one upload only).',
+                $doc?->status === 'printed' => 'Your instructor printed this form for signing. Get it signed; the upload of the signed copy opens once it is back.',
+                in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
+                $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
+                $repeating => 'Start your log for this form.',
+                $structured => 'Fill in this form online and submit it for review.',
+                default => 'Upload this document for review.',
+            };
+        @endphp
+
+        <div class="il-card mb-3">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                <div style="min-width: 0;">
+                    <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing: 0.03em;">{{ $stageLabels[$requirement->stage] ?? '' }}</p>
+                    <h2 class="h5 fw-bold mb-1">@if($requirement->form_number && ! \Illuminate\Support\Str::startsWith($requirement->name, 'Form '))Form {{ $requirement->form_number }} &middot; @endif{{ $requirement->name }}</h2>
+                </div>
+                <span class="badge rounded-pill {{ $statusColor($label) }}">{{ $label }}</span>
+            </div>
+
+            <p class="small text-secondary mt-2 mb-3">{{ $next }}</p>
+
+            @if ($doc?->status === 'returned' && $doc->latestReview?->remarks)
+                <div class="alert alert-danger py-2 small">
+                    <strong><i class="ti ti-arrow-back-up"></i> Returned for correction:</strong> {{ $doc->latestReview->remarks }}
+                </div>
+            @endif
+
+            {{-- What the student can do now --}}
+            <div class="d-flex flex-wrap gap-2">
+                @if ($repeating)
+                    @if ($doc?->status === 'completed')
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
+                            data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
+                            <i class="ti ti-upload"></i> Upload Signed Copy
+                        </button>
+                    @elseif (! in_array($doc?->status, ['approved', 'printed'], true))
+                        <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
+                    @endif
+                @elseif ($structured)
+                    @if ($rowInfo['sentToHte'])
+                        {{-- nothing to do --}}
+                    @elseif ($doc?->status === 'completed')
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
+                            data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
+                            <i class="ti ti-upload"></i> Upload Signed Copy
+                        </button>
+                    @elseif (! in_array($doc?->status, ['approved', 'printed'], true))
+                        <a href="{{ route('student.documents.fill', $requirement) }}" class="btn btn-primary">
+                            <i class="ti ti-pencil"></i> {{ $doc ? 'Edit Form' : 'Fill Form' }}
+                        </a>
+                    @endif
+                @else
+                    @if (! $doc || $doc->status === 'returned')
+                        <button type="button" class="btn btn-primary"
+                            data-bs-toggle="modal" data-bs-target="#uploadModal"
+                            data-requirement-id="{{ $requirement->id }}" data-requirement-name="{{ $requirement->name }}">
+                            <i class="ti ti-upload"></i> {{ $doc?->status === 'returned' ? 'Upload Corrected File' : 'Upload' }}
+                        </button>
+                    @endif
+                @endif
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <div class="il-card h-100">
+                    <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">Details</p>
+                    <dl class="row small mb-0">
+                        <dt class="col-5 fw-normal text-secondary">Date submitted</dt>
+                        <dd class="col-7">{{ $doc?->submitted_at?->format('M d, Y') ?? 'Not yet submitted' }}</dd>
+                        <dt class="col-5 fw-normal text-secondary">Stage</dt>
+                        <dd class="col-7">{{ ucfirst(str_replace('_', ' ', $requirement->stage)) }}</dd>
+                        @if ($requirement->workflow_mode === 'print_sign')
+                            <dt class="col-5 fw-normal text-secondary">Process</dt>
+                            <dd class="col-7 mb-0">Fill online &rarr; reviewed &rarr; printed &amp; signed &rarr; upload the signed copy</dd>
                         @endif
-                    </td>
-                </tr>
-            @endforeach
-        </tbody>
-    </table>
+                    </dl>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="il-card h-100">
+                    <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">Instructor feedback</p>
+                    @php $feedback = $doc?->reviews?->filter(fn ($r) => filled($r->remarks)) ?? collect(); @endphp
+                    @forelse ($feedback->take(3) as $review)
+                        <div class="small {{ ! $loop->last ? 'border-bottom pb-2 mb-2' : '' }}">
+                            <span class="fw-semibold {{ $review->decision === 'returned' ? 'text-danger' : 'text-success' }}">{{ $review->decision === 'returned' ? 'Returned' : 'Approved' }}</span>
+                            <span class="text-secondary">&middot; {{ $review->reviewed_at?->format('M d, Y') }}</span>
+                            <div>{{ $review->remarks }}</div>
+                        </div>
+                    @empty
+                        <div class="small text-secondary">No feedback yet.</div>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+
+        @if ($hasFile || ($doc && $doc->attachments->isNotEmpty()))
+            <div class="il-card mb-3">
+                <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">Files</p>
+                @if ($hasFile)
+                    <a href="{{ $previewable ? route('student.documents.view', $doc) : route('student.documents.download', $doc) }}" target="_blank"
+                       class="d-flex align-items-center gap-2 border rounded p-2 mb-2 text-decoration-none text-reset">
+                        <i class="ti ti-file-type-pdf text-danger fs-5"></i>
+                        <span class="flex-grow-1 small fw-semibold text-break">{{ $doc->original_filename ?: 'Uploaded file' }}{{ $structured ? ' (signed copy)' : '' }}</span>
+                        <i class="ti ti-external-link text-secondary"></i>
+                    </a>
+                @endif
+                @foreach ($doc?->attachments ?? [] as $attachment)
+                    <a href="{{ route('student.documents.attachment', $attachment) }}" target="_blank"
+                       class="d-flex align-items-center gap-2 border rounded p-2 mb-2 text-decoration-none text-reset">
+                        <i class="ti ti-paperclip text-primary fs-5"></i>
+                        <span class="flex-grow-1 min-w-0">
+                            <span class="small fw-semibold d-block">{{ $attachment->label() }}</span>
+                            <span class="text-secondary text-break" style="font-size: 0.75rem;">{{ $attachment->original_filename }}</span>
+                        </span>
+                        <i class="ti ti-external-link text-secondary"></i>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
+        @if ($previewable)
+            <div class="il-card p-0 overflow-hidden">
+                <iframe src="{{ route('student.documents.view', $doc) }}" title="{{ $requirement->name }}" style="width: 100%; height: 70vh; border: 0; background: #f4f6f9;"></iframe>
+            </div>
+        @endif
+    </div>
 </div>
+@endif
+
+<style>
+    .il-form-list .list-group-item { border-left: 3px solid transparent; }
+    .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
+</style>
 
 {{-- Shared upload modal --}}
 <div class="modal fade" id="uploadModal" tabindex="-1" aria-hidden="true">

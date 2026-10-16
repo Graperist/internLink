@@ -105,12 +105,13 @@ class PostDeploymentFormsByRoleTest extends TestCase
     {
         $page = $this->actingAs($this->studentUser)->get('/student/documents')->assertOk();
 
-        // their own forms are listed and actionable
-        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION'] as $code) {
-            $page->assertSee(route('student.documents.fill', $this->req($code)), false);
+        // their own forms are listed, and each is actionable when opened
+        // (the page shows one form at a time, like Document Review)
+        foreach (['STUDENT_FEEDBACK_FORM' => 'fill', 'STUDENT_HTE_EVALUATION' => 'fill', 'INTERNSHIP_TIME_FRAME' => 'log', 'WEEKLY_REPORT' => 'log'] as $code => $action) {
+            $page->assertSee(route('student.documents', ['form' => $this->req($code)->id]), false);
+            $this->actingAs($this->studentUser)->get(route('student.documents', ['form' => $this->req($code)->id]))
+                ->assertSee(route('student.documents.'.$action, $this->req($code)), false);
         }
-        $page->assertSee(route('student.documents.log', $this->req('INTERNSHIP_TIME_FRAME')), false);
-        $page->assertSee(route('student.documents.log', $this->req('WEEKLY_REPORT')), false);
         $page->assertSee('Narrative Report');
 
         // the HTE's and the instructor's forms are not on the student's list at all

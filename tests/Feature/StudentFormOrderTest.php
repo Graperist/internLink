@@ -94,4 +94,57 @@ class StudentFormOrderTest extends TestCase
         $this->actingAs($user)->get(route('student.documents'))->assertOk()
             ->assertSeeInOrder(['Form 1 – Application', 'Form 19 – Weekly Report', 'Form 20 – Feedback', 'Narrative Report']);
     }
+
+    public function test_my_documents_shows_the_list_and_one_open_form(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake();
+        $role = Role::forceCreate(['code' => 'student', 'name' => 'student']);
+        $campus = Campus::forceCreate(['code' => 'ACC', 'name' => 'PSU - Alaminos City Campus', 'status' => 'active']);
+        $program = Program::forceCreate(['campus_id' => $campus->id, 'code' => 'BSIT', 'name' => 'BSIT', 'required_hours' => 486]);
+        $make = fn ($code, $name, $number) => DocumentRequirement::forceCreate([
+            'campus_id' => $campus->id, 'code' => $code, 'name' => $name, 'form_number' => $number, 'stage' => 'pre_deployment',
+            'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => true, 'is_required' => true, 'display_order' => 1,
+        ]);
+        $form1 = $make('F1', 'Form 1 – Application for Internship', '1');
+        $form2 = $make('F2', 'Form 2 – Certification of Units', '2');
+        $form3 = $make('F3', 'Form 3 – Consent and Waiver', '3');
+        $user = User::forceCreate([
+            'campus_id' => $campus->id, 'role_id' => $role->id, 'id_number' => '23-AC-0093', 'name' => 'Jasmine',
+            'email' => 'j@t.local', 'password' => Hash::make('x'), 'status' => 'active', 'must_change_password' => false,
+        ]);
+        $student = Student::forceCreate(['user_id' => $user->id, 'campus_id' => $campus->id, 'program_id' => $program->id, 'hours_rendered' => 0]);
+        $internship = Internship::forceCreate(['student_id' => $student->id, 'campus_id' => $campus->id, 'program_id' => $program->id, 'required_hours' => 486, 'status' => 'pre_deployment']);
+
+        \Illuminate\Support\Facades\Storage::put('f/form1.pdf', 'pdf');
+        $doc1 = \App\Models\Document::forceCreate(['internship_id' => $internship->id, 'document_requirement_id' => $form1->id, 'status' => 'approved', 'file_path' => 'f/form1.pdf', 'original_filename' => 'form1.pdf', 'submitted_at' => now()]);
+        $doc2 = \App\Models\Document::forceCreate(['internship_id' => $internship->id, 'document_requirement_id' => $form2->id, 'status' => 'returned', 'submitted_at' => now()]);
+        $instRole = Role::forceCreate(['code' => 'instructor', 'name' => 'instructor']);
+        $instUser = User::forceCreate([
+            'campus_id' => $campus->id, 'role_id' => $instRole->id, 'id_number' => 'ACC-INST-001', 'name' => 'Inst',
+            'email' => 'i@t.local', 'password' => Hash::make('x'), 'status' => 'active', 'must_change_password' => false,
+        ]);
+        $instructor = \App\Models\Instructor::forceCreate(['user_id' => $instUser->id, 'campus_id' => $campus->id, 'program_id' => $program->id]);
+        \App\Models\DocumentReview::forceCreate(['document_id' => $doc2->id, 'instructor_id' => $instructor->id, 'decision' => 'returned', 'remarks' => 'Wrong school year', 'reviewed_at' => now()]);
+
+        // Opens on the first form that needs the student: the returned Form 2.
+        $this->actingAs($user)->get(route('student.documents'))->assertOk()
+            ->assertSeeInOrder(['Form 1 – Application', 'Form 2 – Certification', 'Form 3 – Consent'])
+            ->assertSee('Returned for correction:')->assertSee('Wrong school year')
+            ->assertSee('Upload Corrected File');
+
+        // Opening Form 1 shows its file and the preview.
+        $this->actingAs($user)->get(route('student.documents', ['form' => $form1->id]))->assertOk()
+            ->assertSee('form1.pdf')
+            ->assertSee('<iframe src="'.route('student.documents.view', $doc1).'"', false)
+            ->assertSee('Approved. Nothing else to do on this form.');
+        $this->actingAs($user)->get(route('student.documents.view', $doc1))->assertOk();
+
+        // Another student can't open it.
+        $other = User::forceCreate([
+            'campus_id' => $campus->id, 'role_id' => $role->id, 'id_number' => '23-AC-0094', 'name' => 'Lucy',
+            'email' => 'l@t.local', 'password' => Hash::make('x'), 'status' => 'active', 'must_change_password' => false,
+        ]);
+        Student::forceCreate(['user_id' => $other->id, 'campus_id' => $campus->id, 'program_id' => $program->id, 'hours_rendered' => 0]);
+        $this->actingAs($other)->get(route('student.documents.view', $doc1))->assertForbidden();
+    }
 }

@@ -105,7 +105,7 @@ class DocumentController extends Controller
             ->values();
 
         $docsByCode = $internship
-            ? $internship->documents()->with(['requirement', 'latestReview', 'entries', 'attachments'])->get()->keyBy(fn ($d) => $d->requirement->code)
+            ? $internship->documents()->with(['requirement', 'latestReview', 'entries', 'attachments', 'reviews' => fn ($q) => $q->latest('reviewed_at')])->get()->keyBy(fn ($d) => $d->requirement->code)
             : collect();
 
         $checklist = $requirements->map(fn ($req) => [
@@ -113,7 +113,17 @@ class DocumentController extends Controller
             'document' => $docsByCode->get($req->code),
         ]);
 
-        return view('student.documents', compact('checklist', 'internship'));
+        // Like Document Review: the forms on the left, one open on the
+        // right. ?form= picks it; otherwise the first form that needs the
+        // student (returned, signed copy to upload, or not started yet).
+        $selectedId = (int) request('form');
+        if (! $checklist->contains(fn ($row) => $row['requirement']->id === $selectedId)) {
+            $needsStudent = $checklist->first(fn ($row) => ! $row['document']
+                || in_array($row['document']->status, ['returned', 'completed', 'draft'], true));
+            $selectedId = ($needsStudent ?? $checklist->first())['requirement']->id ?? null;
+        }
+
+        return view('student.documents', compact('checklist', 'internship', 'selectedId'));
     }
 
     /**
@@ -1143,6 +1153,15 @@ class DocumentController extends Controller
         abort_unless(Storage::exists($attachment->file_path), 404);
 
         return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
+    }
+
+    /** The student opens their own uploaded file in the browser. */
+    public function view(Document $document): StreamedResponse
+    {
+        abort_unless($document->internship->student_id === auth()->user()->student->id, 403);
+        abort_unless($document->file_path && Storage::exists($document->file_path), 404);
+
+        return Storage::response($document->file_path, $document->original_filename, [], 'inline');
     }
 
     public function download(Document $document): StreamedResponse
