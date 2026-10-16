@@ -7,6 +7,8 @@
     <title>@yield('title', 'Student Portal - PSU Intern-Link')</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ asset('css/internlink.css') }}?v={{ filemtime(public_path('css/internlink.css')) }}" rel="stylesheet">
+    {{-- Tabler Icons 2.47.0, bundled locally so the icons load even offline or when a CDN is blocked --}}
+    <link rel="stylesheet" href="{{ asset('vendor/tabler-icons/tabler-icons.min.css') }}">
 </head>
 <body class="il-shell-body">
     <div class="il-shell">
@@ -73,7 +75,6 @@
         </main>
     </div>
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     {{-- Invisible click tracker only. The audit pop-up itself is deliberately NOT included on student screens. --}}
     @include('partials.audit-tracker')

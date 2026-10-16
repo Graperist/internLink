@@ -8,7 +8,7 @@
  *
  * Bump VERSION whenever you change this file or offline.html.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'internlink-static-' + VERSION;
 const OFFLINE_URL = '/offline.html';
 
@@ -19,7 +19,7 @@ const PRECACHE = [
 ];
 
 // Only these are ever stored in the cache.
-const CACHEABLE_PATHS = ['/css/', '/js/', '/images/', '/build/'];
+const CACHEABLE_PATHS = ['/css/', '/js/', '/images/', '/build/', '/vendor/']; // /vendor/ = bundled Tabler Icons
 const CACHEABLE_HOSTS = ['cdn.jsdelivr.net'];
 
 self.addEventListener('install', (event) => {
