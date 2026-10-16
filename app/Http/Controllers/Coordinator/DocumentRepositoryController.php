@@ -189,11 +189,19 @@ class DocumentRepositoryController extends Controller
         return $files->values();
     }
 
+    /**
+     * How many files each stage should end up with, for the "x / y passed"
+     * counts. Only forms that are kept as a file count: the evaluations
+     * filled in online (Forms 13, 20, 21, 23a-c - review_only) never land
+     * in the repository, so counting them made post-deployment read 1 / 7
+     * for a student who had passed everything.
+     */
     private function stageTotals(int $campusId)
     {
         return DocumentRequirement::where('campus_id', $campusId)
             ->where('is_active', true)
             ->where('is_required', true)
+            ->where('workflow_mode', '!=', 'review_only')
             ->whereIn('stage', ['pre_deployment', 'post_deployment'])
             ->selectRaw('stage, count(*) as total')
             ->groupBy('stage')

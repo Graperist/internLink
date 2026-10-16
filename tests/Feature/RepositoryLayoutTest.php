@@ -149,4 +149,20 @@ class RepositoryLayoutTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('coordinator.repository', ['student' => $outsider->id]))->assertNotFound();
         $this->actingAs($this->coordinator)->get(route('coordinator.repository.view', $doc))->assertForbidden();
     }
+
+    public function test_counts_only_include_forms_kept_as_files(): void
+    {
+        $narrative = $this->requirement('NARRATIVE_REPORT', 'Narrative Report', '0', 'post_deployment');
+        $narrative->update(['form_number' => null, 'workflow_mode' => 'upload']);
+        foreach (['EVALUATION_FORM' => '13', 'STUDENT_FEEDBACK_FORM' => '20', 'TRAINING_SUPERVISOR_FEEDBACK' => '21'] as $code => $number) {
+            $this->requirement($code, "Form {$number} evaluation", $number, 'post_deployment')->update(['workflow_mode' => 'review_only']);
+        }
+        $student = $this->student('23-AC-0093', 'Jasmine Bejerano');
+        $this->passed($student, $narrative, 'narrative.pdf');
+
+        $this->actingAs($this->coordinator)->get(route('coordinator.repository'))->assertOk()
+            ->assertSee('1 / 1 passed')->assertDontSee('1 / 4 passed');
+        $this->actingAs($this->coordinator)->get(route('coordinator.repository', ['student' => $student->id]))->assertOk()
+            ->assertSee('Post-deployment 1 / 1 passed');
+    }
 }
