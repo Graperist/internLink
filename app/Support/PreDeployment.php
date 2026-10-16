@@ -25,7 +25,6 @@ class PreDeployment
             ->where('is_active', true)
             ->where('is_required', true)
             ->where('stage', 'pre_deployment')
-            ->where('code', '!=', 'MOA')
             ->whereIn('audience', ['student', 'hte', 'coordinator'])
             ->pluck('id');
     }

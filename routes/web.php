@@ -263,6 +263,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{requirement}/log/submit', [StudentDocumentController::class, 'submitLog'])->name('documents.log.submit');
         Route::post('/documents/{document}/upload-signed', [StudentDocumentController::class, 'uploadSigned'])->name('documents.upload-signed');
         Route::post('/documents', [StudentDocumentController::class, 'store'])->name('documents.store');
+        Route::post('/documents/{requirement}/moa', [StudentDocumentController::class, 'uploadMoa'])->name('documents.moa');
         Route::get('/documents/{document}/download', [StudentDocumentController::class, 'download'])->name('documents.download');
         Route::get('/documents/{document}/view', [StudentDocumentController::class, 'view'])->name('documents.view');
         Route::get('/documents/{document}/print', [StudentDocumentController::class, 'printable'])->name('documents.printable');

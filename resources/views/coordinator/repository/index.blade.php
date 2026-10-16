@@ -84,7 +84,7 @@
             @forelse ($students as $student)
                 @php
                     $files = $student->documents;
-                    $fileCount = $files->count() + $files->sum(fn ($d) => $d->attachments->count());
+                    $fileCount = $files->filter(fn ($d) => filled($d->file_path))->count() + $files->sum(fn ($d) => $d->attachments->count());
                     $preDone = $files->filter(fn ($d) => $d->requirement->stage === 'pre_deployment' && $d->requirement->is_required)->count();
                     $postDone = $files->filter(fn ($d) => $d->requirement->stage === 'post_deployment' && $d->requirement->is_required)->count();
                     $openUrl = route('coordinator.repository', array_filter(['student' => $student->id, 'program_id' => request('program_id')]));

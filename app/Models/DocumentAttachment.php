@@ -30,6 +30,9 @@ class DocumentAttachment extends Model
         'PARENT_CONSENT' => 'Attach a photocopy of the valid ID of the parent/guardian who signs this consent (front and back on one page or photo).',
     ];
 
+    /** Forms that take any number of uploaded scans (kind "moa_scan_1", "moa_scan_2", ...). */
+    public const MULTI_UPLOAD = ['MOA' => 'moa_scan'];
+
     public static function kindsFor(?string $requirementCode): array
     {
         return self::FOR_REQUIREMENT[$requirementCode] ?? [];
@@ -42,6 +45,10 @@ class DocumentAttachment extends Model
 
     public function label(): string
     {
+        if (preg_match('/^moa_scan_(\d+)$/', $this->kind, $m)) {
+            return 'Signed MOA - scan '.$m[1];
+        }
+
         foreach (self::FOR_REQUIREMENT as $kinds) {
             if (isset($kinds[$this->kind])) {
                 return $kinds[$this->kind];

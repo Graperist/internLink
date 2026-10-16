@@ -998,6 +998,75 @@ class DocumentController extends Controller
     }
 
     /**
+     * Form 10 - MOA: the MOA is processed outside InternLink, so the student
+     * uploads scans of the signed MOA. Several files can be uploaded at once
+     * and more can be added later (each upload is a new submission for the
+     * instructor); files already uploaded are kept.
+     */
+    public function uploadMoa(Request $request, DocumentRequirement $requirement): RedirectResponse
+    {
+        $student = auth()->user()->student;
+        $this->authorizeStudentRequirement($requirement, $student);
+        abort_unless(isset(DocumentAttachment::MULTI_UPLOAD[$requirement->code]), 404);
+        $internship = $student->currentInternship;
+        abort_unless($internship, 422, 'You need an internship record before uploading documents - contact your coordinator.');
+        abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
+
+        $request->validate([
+            'files' => ['required', 'array', 'min:1', 'max:10'],
+            'files.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ], [
+            'files.required' => 'Choose at least one scanned file of the signed MOA.',
+            'files.*.mimes' => 'Each file must be a PDF, JPG or PNG.',
+            'files.*.max' => 'Each file must be 10 MB or smaller.',
+        ]);
+
+        $prefix = DocumentAttachment::MULTI_UPLOAD[$requirement->code];
+        $wasReturned = false;
+
+        $document = DB::transaction(function () use ($request, $requirement, $internship, $student, $prefix, &$wasReturned) {
+            $document = Document::firstOrCreate(
+                ['internship_id' => $internship->id, 'document_requirement_id' => $requirement->id],
+                ['uploaded_by_user_id' => auth()->id(), 'status' => 'submitted', 'submitted_at' => now()]
+            );
+            $wasReturned = $document->status === 'returned';
+
+            $next = $document->attachments()->where('kind', 'like', $prefix.'_%')->get()
+                ->map(fn ($a) => (int) substr($a->kind, strlen($prefix) + 1))->max() ?? 0;
+
+            foreach ($request->file('files') as $file) {
+                DocumentAttachment::create([
+                    'document_id' => $document->id,
+                    'kind' => $prefix.'_'.(++$next),
+                    'file_path' => $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}"),
+                    'original_filename' => $file->getClientOriginalName(),
+                    'uploaded_by_user_id' => auth()->id(),
+                ]);
+            }
+
+            // Every upload is a new submission for the instructor to check.
+            $document->update(['uploaded_by_user_id' => auth()->id(), 'status' => 'submitted', 'submitted_at' => now()]);
+
+            return $document;
+        });
+
+        $count = count($request->file('files'));
+        \App\Models\Instructor::where('campus_id', $internship->campus_id)
+            ->where('program_id', $internship->program_id)
+            ->get()
+            ->each(fn ($instructor) => \App\Models\Notification::create([
+                'user_id' => $instructor->user_id,
+                'type' => 'document_status',
+                'title' => "{$student->user->name} uploaded {$count} ".\Illuminate\Support\Str::plural('scan', $count)." of the signed MOA",
+                'message' => 'Awaiting your review.',
+                'url' => route('instructor.documents', ['student' => $student->id, 'form' => $requirement->id], false),
+                'resolve_key' => 'document:'.$document->id,
+            ]));
+
+        return back()->with('status', $count === 1 ? 'Signed MOA scan uploaded and submitted for review.' : "{$count} signed MOA scans uploaded and submitted for review.");
+    }
+
+    /**
      * Plain upload path for requirements with no structured fields -
      * unchanged from the original implementation.
      */
@@ -1019,6 +1088,7 @@ class DocumentController extends Controller
             ->firstOrFail();
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
         abort_if($requirement->hasStructuredFields(), 422, 'This form must be filled out in-system rather than uploaded directly.');
+        abort_if(isset(DocumentAttachment::MULTI_UPLOAD[$requirement->code]), 422, 'Upload the signed MOA scans with "Upload Scanned MOA".');
 
         $document = $internship->documents()
             ->where('document_requirement_id', $requirement->id)

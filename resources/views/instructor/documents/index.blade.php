@@ -725,10 +725,22 @@
                                             </div>
                                         @endif
 
+                                        @if ($document->attachments->isNotEmpty())
+                                            <div class="mt-2 d-flex flex-wrap gap-2">
+                                                @foreach ($document->attachments->sortBy(fn ($a) => (int) preg_replace('/\D/', '', $a->kind)) as $attachment)
+                                                    <a href="{{ route('instructor.documents.attachment', $attachment) }}" target="_blank" class="badge rounded-pill text-bg-light border text-decoration-none fw-normal py-2 px-3" style="font-size: 0.78rem;" title="{{ $attachment->original_filename }}">
+                                                        <i class="ti ti-paperclip"></i> {{ $attachment->label() }}
+                                                    </a>
+                                                @endforeach
+                                            </div>
+                                        @endif
+
                                         <div class="mt-2 d-flex gap-2">
+                                            @if ($document->file_path)
                                             <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                 <i class="ti ti-eye"></i> View
                                             </a>
+                                            @endif
 
                                             @if (in_array($status, ['submitted', 'for_review']))
                                                 @if ($canAct)

@@ -23,7 +23,8 @@ class OfficialOjtFormsSeeder extends Seeder
             // Now attached to Form 3 (Consent and Waiver) itself.
             ['code' => 'PARENT_GUARDIAN_ID', 'name' => 'Photocopy of Parent/Guardian Valid ID', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 60, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
             ['code' => 'ENDORSEMENT_LETTER', 'name' => 'Form 6 – Endorsement Letter', 'stage' => 'pre_deployment', 'form_number' => '6', 'display_order' => 70, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
-            ['code' => 'MOA', 'name' => 'Form 10 – Memorandum of Agreement (Outside InternLink Scope)', 'stage' => 'pre_deployment', 'form_number' => '10', 'display_order' => 80, 'audience' => 'coordinator', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
+            // The MOA is processed outside InternLink; the student uploads scans of the signed MOA.
+            ['code' => 'MOA', 'name' => 'Form 10 – Memorandum of Agreement', 'stage' => 'pre_deployment', 'form_number' => '10', 'display_order' => 80, 'audience' => 'student', 'workflow_mode' => 'upload'],
             ['code' => 'OJT_RESUME', 'name' => 'Form 11 – Internship Resume', 'stage' => 'pre_deployment', 'form_number' => '11', 'display_order' => 90, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'INTERNSHIP_AGREEMENT', 'name' => 'Form 12 – Internship Agreement', 'stage' => 'pre_deployment', 'form_number' => '12', 'display_order' => 100, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'INTERNSHIP_RELEASE_FORM', 'name' => 'Form 15 – Internship Release Form', 'stage' => 'pre_deployment', 'form_number' => '15', 'display_order' => 110, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
@@ -66,6 +67,7 @@ class OfficialOjtFormsSeeder extends Seeder
             'CERTIFICATE_OF_UNITS_EARNED' => 'instructor',
             'PARENT_CONSENT' => 'instructor',
             'PARENT_GUARDIAN_ID' => 'instructor',
+            'MOA' => 'instructor',
             'ENDORSEMENT_LETTER' => 'instructor',
             'OJT_RESUME' => 'instructor',
             'INTERNSHIP_AGREEMENT' => 'instructor',

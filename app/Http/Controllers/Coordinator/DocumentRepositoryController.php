@@ -47,8 +47,9 @@ class DocumentRepositoryController extends Controller
         $query = Student::with(['user', 'program'])
             ->with(['documents' => fn ($q) => $q
                 ->where('documents.status', 'approved')
-                ->whereNotNull('documents.file_path')
-                ->where('documents.file_path', '!=', '')
+                // a file on record, or uploaded scans (Form 10 MOA)
+                ->where(fn ($f) => $f->where(fn ($p) => $p->whereNotNull('documents.file_path')->where('documents.file_path', '!=', ''))
+                    ->orWhereHas('attachments'))
                 ->whereHas('requirement', fn ($r) => $r->where('is_active', true))
                 ->with(['requirement', 'uploader.role', 'attachments'])
             ])
@@ -142,8 +143,7 @@ class DocumentRepositoryController extends Controller
             ->whereHas('internship', fn ($q) => $q->where('student_id', $student->id))
             ->whereHas('requirement', fn ($q) => $q->where('is_active', true))
             ->where('status', 'approved')
-            ->whereNotNull('file_path')
-            ->where('file_path', '!=', '')
+            ->where(fn ($f) => $f->where(fn ($p) => $p->whereNotNull('file_path')->where('file_path', '!=', ''))->orWhereHas('attachments'))
             ->get()
             ->sortBy(function ($document) use ($stageRank) {
                 $number = preg_match('/^(\d+)/', (string) $document->requirement->form_number, $m) ? (int) $m[1] : PHP_INT_MAX;
@@ -155,6 +155,30 @@ class DocumentRepositoryController extends Controller
         $files = collect();
         foreach ($documents as $document) {
             $approvedAt = $document->reviews->firstWhere('decision', 'approved')?->reviewed_at ?? $document->completed_at ?? $document->submitted_at;
+
+            // Uploaded as several scans (Form 10 MOA): one entry per scan,
+            // the first one standing for the form itself.
+            if (blank($document->file_path)) {
+                foreach ($document->attachments->sortBy(fn ($a) => (int) preg_replace('/\D/', '', $a->kind))->values() as $i => $attachment) {
+                    $files->push([
+                        'key' => 'a'.$attachment->id,
+                        'kind' => $i === 0 ? 'form' : 'attachment',
+                        'title' => $i === 0 ? $document->requirement->name : $attachment->label(),
+                        'parent' => $document->requirement->name,
+                        'stage' => $document->requirement->stage,
+                        'required' => $i === 0 && (bool) $document->requirement->is_required,
+                        'filename' => $attachment->original_filename,
+                        'date' => $i === 0 ? $approvedAt : $attachment->created_at,
+                        'uploader' => 'Student Intern',
+                        'previewable' => $attachment->isPreviewable(),
+                        'view_url' => route('coordinator.repository.attachment', $attachment),
+                        'download_url' => route('coordinator.repository.attachment', ['attachment' => $attachment, 'download' => 1]),
+                    ]);
+                }
+
+                continue;
+            }
+
             $files->push([
                 'key' => 'd'.$document->id,
                 'kind' => 'form',

@@ -12,9 +12,16 @@
     $isImageOrPdf = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($document->original_filename ?: $document->file_path));
 
     // What the left pane shows: the filled-in form, or the uploaded file.
+    // Scans uploaded as several files (Form 10 MOA): not one of the form's fixed attachments.
+    $fixedKinds = array_keys(\App\Models\DocumentAttachment::kindsFor($requirement->code));
+    $scans = $document->attachments->reject(fn ($a) => in_array($a->kind, $fixedKinds, true))
+        ->sortBy(fn ($a) => (int) preg_replace('/\D/', '', $a->kind))->values();
+    $firstScan = $scans->first(fn ($a) => $a->isPreviewable());
+
     $frameUrl = $structured && ! (in_array($status, ['completed', 'approved'], true) && $hasFile)
         ? route('instructor.documents.printable', ['document' => $document, 'embed' => 1])
-        : ($hasFile && $isImageOrPdf ? route('instructor.documents.view', $document) : null);
+        : ($hasFile && $isImageOrPdf ? route('instructor.documents.view', $document)
+            : ($firstScan ? route('instructor.documents.attachment', $firstScan) : null));
 
     $statusText = match ($status) {
         'submitted', 'for_review' => 'Turned in - for review',
@@ -128,7 +135,18 @@
                     </div>
                 @endif
             @endforeach
-            @if (! $structured && ! $hasFile)
+            @foreach ($scans as $scan)
+                <a href="{{ route('instructor.documents.attachment', $scan) }}" target="_blank"
+                   class="d-flex align-items-center gap-2 border rounded p-2 mb-2 text-decoration-none text-reset">
+                    <i class="ti ti-paperclip text-primary fs-5"></i>
+                    <span class="flex-grow-1 min-w-0">
+                        <span class="small fw-semibold d-block">{{ $scan->label() }}</span>
+                        <span class="text-secondary text-break" style="font-size: 0.75rem;">{{ $scan->original_filename }} &middot; {{ $scan->created_at?->format('M d, Y') }}</span>
+                    </span>
+                    <i class="ti ti-external-link text-secondary"></i>
+                </a>
+            @endforeach
+            @if (! $structured && ! $hasFile && $scans->isEmpty())
                 <div class="small text-secondary">No file uploaded.</div>
             @endif
         </div>

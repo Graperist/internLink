@@ -155,6 +155,7 @@
                 in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
                 $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
                 $repeating => 'Start your log for this form.',
+                isset(\App\Models\DocumentAttachment::MULTI_UPLOAD[$requirement->code]) => 'The MOA is processed outside InternLink. Upload scans of the signed MOA (you can upload several files, and add more later).',
                 $structured => 'Fill in this form online and submit it for review.',
                 default => 'Upload this document for review.',
             };
@@ -208,6 +209,12 @@
                             <i class="ti ti-pencil"></i> {{ $doc ? 'Edit Form' : 'Fill Form' }}
                         </a>
                     @endif
+                @elseif (isset(\App\Models\DocumentAttachment::MULTI_UPLOAD[$requirement->code]))
+                    {{-- Form 10 MOA: scans of the signed MOA, several files and submissions allowed --}}
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#moaUploadModal"
+                        data-action="{{ route('student.documents.moa', $requirement) }}">
+                        <i class="ti ti-upload"></i> {{ $doc && $doc->attachments->isNotEmpty() ? 'Upload More Scans' : 'Upload Scanned MOA' }}
+                    </button>
                 @else
                     @if (! $doc || $doc->status === 'returned')
                         <button type="button" class="btn btn-primary"
@@ -316,6 +323,33 @@
     </div>
 </div>
 
+{{-- Upload signed MOA scans (several files at once) --}}
+<div class="modal fade" id="moaUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="moaUploadForm" action="" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-header">
+                    <h2 class="modal-title h6 fw-bold">Upload scanned MOA</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-secondary">
+                        Upload scans or photos of the signed Memorandum of Agreement. You can choose several files
+                        (e.g. one per page) and upload more later; files already uploaded are kept.
+                    </p>
+                    <label class="form-label small fw-semibold" for="moa_files">Files (PDF, JPG, PNG — max 10MB each, up to 10 at a time)</label>
+                    <input type="file" name="files[]" id="moa_files" class="form-control" accept=".pdf,.jpg,.jpeg,.png" multiple required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {{-- Upload Signed Copy modal (structured forms, only reachable once Completed) --}}
 <div class="modal fade" id="signedUploadModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -348,6 +382,10 @@
         const button = event.relatedTarget;
         document.getElementById('uploadModalLabel').textContent = 'Upload — ' + button.getAttribute('data-requirement-name');
         document.getElementById('document_requirement_id').value = button.getAttribute('data-requirement-id');
+    });
+
+    document.getElementById('moaUploadModal').addEventListener('show.bs.modal', function (event) {
+        document.getElementById('moaUploadForm').action = event.relatedTarget.getAttribute('data-action');
     });
 
     document.getElementById('signedUploadModal').addEventListener('show.bs.modal', function (event) {
