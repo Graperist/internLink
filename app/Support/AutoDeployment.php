@@ -63,6 +63,12 @@ class AutoDeployment
             return null; // already pending at this HTE
         }
 
+        // Respect the slots the HTE gave the program this term (normally
+        // already checked by blockedReason() before the form was accepted).
+        if ($full = self::fullMessage($internship, $hte)) {
+            return 'No deployment was created: '.$full;
+        }
+
         DB::transaction(function () use ($internship, $existing, $hte) {
             if ($existing) {
                 $existing->update(['hte_id' => $hte->id]);
@@ -105,5 +111,49 @@ class AutoDeployment
         );
 
         return ($existing ? 'Placement updated' : 'Pending deployment created')." at {$hte->name}.";
+    }
+
+    /**
+     * Why an Application for OJT can't be accepted right now, or null.
+     * Checked BEFORE the instructor's Print for Signing / Approve changes
+     * the form, so a full agency never gets a printed application.
+     */
+    public static function blockedReason(Document $document): ?string
+    {
+        $document->loadMissing('requirement', 'fieldValues', 'internship.deployment');
+
+        if ($document->requirement?->code !== self::APPLICATION_CODE) {
+            return null;
+        }
+
+        $internship = $document->internship;
+        $existing = $internship->deployment;
+        if ($existing && $existing->status !== 'pending') {
+            return null;
+        }
+
+        $hte = Hte::where('campus_id', $internship->campus_id)
+            ->where('name', trim((string) $document->fieldValue('hte_name')))
+            ->first();
+
+        if (! $hte || ($existing && (int) $existing->hte_id === (int) $hte->id)) {
+            return null;
+        }
+
+        $full = self::fullMessage($internship, $hte);
+
+        return $full ? $full.' Return the application so the student can choose another partner agency, or add slots in Partner Agencies.' : null;
+    }
+
+    private static function fullMessage($internship, Hte $hte): ?string
+    {
+        [$academicYear, $semester] = Term::current();
+        $slot = \App\Http\Controllers\Instructor\HteController::availability(
+            $internship->campus_id, $internship->program_id, $academicYear, $semester
+        )[$hte->id] ?? null;
+
+        return $slot && $slot['full']
+            ? "{$hte->name} has no slots left this term ({$slot['taken']} of {$slot['slots']} taken)."
+            : null;
     }
 }

@@ -57,6 +57,26 @@ class HteController extends Controller
             $listing->interns_count = $internCounts[$listing->program_id.'|'.$listing->hte_id] ?? 0;
         }
 
+        // Are the existing slots enough? Compare the open slots on this
+        // term's list with the students who still have no placement. If
+        // they aren't, the program gathers more partner agencies and adds
+        // them to this list.
+        $isCurrentTerm = [$academicYear, $semester] === Term::current();
+        $summary = [
+            'agencies' => $listings->count(),
+            'slots' => (int) $listings->sum('slots'),
+            'placed' => (int) $listings->sum('interns_count'),
+            'open' => (int) $listings->sum(fn ($l) => $l->slots ? max($l->slots - $l->interns_count, 0) : 0),
+            'missing_slots' => $listings->whereNull('slots')->count(),
+            'unplaced' => $isCurrentTerm
+                ? $instructor->visibleStudents()
+                    ->when($programId, fn ($q) => $q->where('program_id', $programId))
+                    ->whereHas('currentInternship', fn ($q) => $q->where('status', 'pre_deployment'))
+                    ->whereDoesntHave('currentInternship.deployment')
+                    ->count()
+                : null,
+        ];
+
         [$prevYear, $prevSemester] = Term::previous($academicYear, $semester);
         $canCopy = $instructor->program_id !== null
             && HteListing::where('program_id', $instructor->program_id)->forTerm($prevYear, $prevSemester)->exists();
@@ -76,6 +96,8 @@ class HteController extends Controller
             'semesters' => Term::SEMESTERS,
             'previousTerm' => "{$prevSemester}, AY {$prevYear}",
             'canCopy' => $canCopy,
+            'summary' => $summary,
+            'isCurrentTerm' => $isCurrentTerm,
         ]);
     }
 
@@ -145,7 +167,7 @@ class HteController extends Controller
                 'hte_id' => $hte->id,
                 'academic_year' => $data['academic_year'],
                 'semester' => $data['semester'],
-                'slots' => $data['slots'] ?? null,
+                'slots' => $data['slots'],
                 'remarks' => $data['remarks'] ?? null,
                 'added_by_user_id' => auth()->id(),
             ]);
@@ -184,7 +206,7 @@ class HteController extends Controller
 
         DB::transaction(function () use ($data, $listing) {
             $listing->hte->update(collect($data)->only(array_keys(self::hteRules()))->all());
-            $listing->update(['slots' => $data['slots'] ?? null, 'remarks' => $data['remarks'] ?? null]);
+            $listing->update(['slots' => $data['slots'], 'remarks' => $data['remarks'] ?? null]);
         });
 
         AuditLogger::record('hte_listing.updated', "Updated partner agency {$listing->hte->name}.", auth()->user(), $request, $listing, $listing->campus_id);
@@ -303,7 +325,8 @@ class HteController extends Controller
     private static function listingRules(): array
     {
         return [
-            'slots' => ['nullable', 'integer', 'min:1', 'max:500'],
+            // Number of interns the HTE agreed to take this term.
+            'slots' => ['required', 'integer', 'min:1', 'max:500'],
             'remarks' => ['nullable', 'string', 'max:500'],
         ];
     }
@@ -353,6 +376,31 @@ class HteController extends Controller
         abort_if($instructor->program_id === null, 403, 'Set the program you teach in My Profile before adding partner agencies.');
 
         return $instructor;
+    }
+
+    /**
+     * Slots per HTE on a program's list for a term: what the HTE gave and
+     * how many of the program's interns are already placed there.
+     *
+     * @return array<int,array{slots:?int,taken:int,full:bool}> keyed by hte_id
+     */
+    public static function availability(int $campusId, int $programId, string $academicYear, string $semester): array
+    {
+        $counts = self::internCounts($campusId, $academicYear, $semester);
+
+        return HteListing::where('program_id', $programId)
+            ->forTerm($academicYear, $semester)
+            ->get()
+            ->mapWithKeys(function ($listing) use ($counts) {
+                $taken = $counts[$listing->program_id.'|'.$listing->hte_id] ?? 0;
+
+                return [$listing->hte_id => [
+                    'slots' => $listing->slots,
+                    'taken' => $taken,
+                    'full' => $listing->slots !== null && $taken >= $listing->slots,
+                ]];
+            })
+            ->all();
     }
 
     /** @return Collection<int,Hte> HTEs a program lists for a term (used by student forms) */

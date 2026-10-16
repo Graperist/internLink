@@ -993,7 +993,13 @@
                                 <select class="form-select" id="{{ $field->field_key }}" name="{{ $field->field_key }}" {{ $field->is_required ? 'required' : '' }}>
                                     <option value="" disabled {{ ! $selectedHte ? 'selected' : '' }}>Select a partner agency&hellip;</option>
                                     @forelse ($htes as $hte)
-                                        <option value="{{ $hte->name }}" {{ $selectedHte === $hte->name ? 'selected' : '' }}>{{ $hte->name }}</option>
+                                        @php
+                                            $slotInfo = ($hteAvailability ?? [])[$hte->id] ?? null;
+                                            $isFull = $slotInfo && $slotInfo['full'] && $selectedHte !== $hte->name;
+                                        @endphp
+                                        <option value="{{ $hte->name }}" {{ $selectedHte === $hte->name ? 'selected' : '' }} @disabled($isFull)>
+                                            {{ $hte->name }}{{ $slotInfo && $slotInfo['slots'] ? ' — '.($isFull ? 'full' : max($slotInfo['slots'] - $slotInfo['taken'], 0).' of '.$slotInfo['slots'].' slots open') : '' }}
+                                        </option>
                                     @empty
                                         <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                                     @endforelse

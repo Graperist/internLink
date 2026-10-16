@@ -292,6 +292,12 @@ class DocumentReviewController extends Controller
 
 
 
+        if ($validated['decision'] === 'approved' && ($blocked = \App\Support\AutoDeployment::blockedReason($document))) {
+            return redirect()
+                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->withErrors(['placement' => $blocked]);
+        }
+
         DocumentReview::create([
 
             'document_id' => $document->id,
@@ -379,6 +385,12 @@ class DocumentReviewController extends Controller
         abort_unless(in_array($document->status, ['submitted', 'for_review'], true), 422, 'Only a form awaiting review can be printed for signing.');
 
 
+
+        if ($blocked = \App\Support\AutoDeployment::blockedReason($document)) {
+            return redirect()
+                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->withErrors(['placement' => $blocked]);
+        }
 
         $document->update(['status' => 'printed', 'printed_at' => now()]);
 

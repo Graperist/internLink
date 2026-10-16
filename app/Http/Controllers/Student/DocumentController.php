@@ -160,6 +160,13 @@ class DocumentController extends Controller
             ? $this->partnerAgencyChoices($student, $internship)
             : collect();
 
+        // Slots per agency for the student's program this term, so a full
+        // agency shows as full and can't be chosen.
+        [$termYear, $termSemester] = \App\Support\Term::current();
+        $hteAvailability = $htes->isNotEmpty()
+            ? \App\Http\Controllers\Instructor\HteController::availability($student->campus_id, $student->program_id, $termYear, $termSemester)
+            : [];
+
         // Course/Major defaults for this student's own program. Each program
         // row is one course + optional major (see the coordinator's Programs
         // page), so e.g. BSBA-OM and BSBA-FM both show the course "Business
@@ -263,7 +270,7 @@ class DocumentController extends Controller
         }
 
         return view('student.documents.fill', compact(
-            'requirement', 'document', 'htes', 'courseMajorDefaults', 'courseOptions', 'majorOptionsByCourse', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
+            'requirement', 'document', 'htes', 'courseMajorDefaults', 'courseOptions', 'majorOptionsByCourse', 'hteAvailability', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
             'student', 'internship'
         ));
     }

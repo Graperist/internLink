@@ -88,6 +88,57 @@
     </form>
 </div>
 
+@php
+    $short = $summary['unplaced'] !== null ? max($summary['unplaced'] - $summary['open'], 0) : 0;
+@endphp
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="il-card h-100">
+            <div class="il-stat-number">{{ $summary['agencies'] }}</div>
+            <div class="text-secondary small">Partner agencies</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="il-card h-100">
+            <div class="il-stat-number">{{ $summary['slots'] }}</div>
+            <div class="text-secondary small">Slots given{{ $summary['missing_slots'] ? ' ('.$summary['missing_slots'].' not set)' : '' }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="il-card h-100">
+            <div class="il-stat-number">{{ $summary['open'] }}</div>
+            <div class="text-secondary small">Open slots &middot; {{ $summary['placed'] }} placed</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="il-card h-100 {{ $short > 0 ? 'border border-danger' : '' }}">
+            <div class="il-stat-number {{ $short > 0 ? 'text-danger' : '' }}">{{ $summary['unplaced'] ?? '—' }}</div>
+            <div class="text-secondary small">{{ $isCurrentTerm ? 'Students still to place' : 'Students to place (current term only)' }}</div>
+        </div>
+    </div>
+</div>
+
+@if ($short > 0)
+    <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="small">
+            <strong>Not enough slots.</strong> {{ $summary['unplaced'] }} {{ \Illuminate\Support\Str::plural('student', $summary['unplaced']) }}
+            still {{ $summary['unplaced'] === 1 ? 'needs' : 'need' }} a placement but only {{ $summary['open'] }} {{ $summary['open'] === 1 ? 'slot is' : 'slots are' }} open
+            &mdash; gather {{ $short }} more {{ \Illuminate\Support\Str::plural('slot', $short) }} from new partner agencies and add them to this list.
+        </div>
+        @if ($hasProgram)
+            <a href="{{ route('instructor.htes.create', $termQuery) }}" class="btn btn-sm btn-warning">
+                <i class="ti ti-plus"></i> Add another partner agency
+            </a>
+        @endif
+    </div>
+@endif
+@if ($summary['missing_slots'] > 0)
+    <div class="alert alert-light border small">
+        {{ $summary['missing_slots'] }} {{ \Illuminate\Support\Str::plural('agency', $summary['missing_slots']) }} on this list
+        {{ $summary['missing_slots'] === 1 ? 'has' : 'have' }} no slots recorded yet (carried over from older data). Edit them to add the slots the HTE gave.
+    </div>
+@endif
+
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h2 class="h6 fw-bold mb-0">
@@ -114,7 +165,7 @@
                     <th>Contact number</th>
                     @if ($isCoordinator && ! $programId)<th>Program</th>@endif
                     <th>MOA</th>
-                    <th class="text-center">Interns</th>
+                    <th class="text-center">Placed / slots</th>
                     <th></th>
                 </tr>
             </thead>
@@ -147,10 +198,15 @@
                         <td>
                             <span class="badge rounded-pill {{ $moaColors[$hte->moa_status] ?? 'text-bg-light' }}">{{ ucfirst($hte->moa_status) }}</span>
                         </td>
-                        <td class="text-center">
+                        <td class="text-center text-nowrap">
                             <span class="fw-semibold">{{ $listing->interns_count }}</span>
                             @if ($listing->slots)
                                 <span class="text-secondary small">/ {{ $listing->slots }}</span>
+                                @if ($listing->interns_count >= $listing->slots)
+                                    <div><span class="badge rounded-pill text-bg-secondary">Full</span></div>
+                                @endif
+                            @else
+                                <div class="small text-danger">slots not set</div>
                             @endif
                         </td>
                         <td class="text-end text-nowrap">
@@ -209,8 +265,8 @@
     @endif
 
     <p class="text-secondary small mt-3 mb-0">
-        <strong>Interns</strong> counts students of that program placed at the agency this term{{ $listings->contains(fn ($l) => $l->slots) ? ' (out of the slots it can take)' : '' }}.
-        Students choose from this list on their Application for OJT.
+        <strong>Placed / slots</strong>: that program's students placed at the agency this term, out of the slots the HTE gave.
+        Students choose from this list on their Application for OJT; a full agency can't be chosen.
         @if ($isCoordinator) You can view every program's list; add or edit entries for {{ $instructor->program?->code ?? 'the program you teach' }}. @endif
     </p>
 </div>

@@ -29,8 +29,9 @@
             <strong>{{ $listing->semester }}, AY {{ $listing->academic_year }}</strong>.
             Changes to the agency's details are shared with every program that lists it.
         @else
-            Added to <strong>your program, {{ $instructor->program->code }}</strong>. Fill in every detail so the
-            program can contact the agency about taking interns. Only the agency name and number of student-trainees
+            Added to <strong>your program's {{ $listing->semester }}, AY {{ $listing->academic_year }} list</strong>
+            ({{ $instructor->program->code }}). Use this when the agencies already on the list don't have enough slots:
+            enter the new partner's details and the number of slots it gave. Only the agency name and number of student-trainees
             are printed on the Masterlist of Partner Industries (FM-AA-INT-06).
         @endif
     </div>
@@ -79,9 +80,10 @@
         <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">For this term</p>
         <div class="row g-2 mb-4">
             <div class="col-md-4">
-                <label class="form-label small fw-semibold" for="slots">Interns it can take <span class="text-secondary fw-normal">(optional)</span></label>
+                <label class="form-label small fw-semibold" for="slots">Slots given by the HTE <span class="text-danger">*</span></label>
                 <input type="number" min="1" max="500" name="slots" id="slots" class="form-control"
-                       value="{{ old('slots', $listing->slots) }}" placeholder="e.g. 5">
+                       value="{{ old('slots', $listing->slots) }}" placeholder="e.g. 5" required>
+                <p class="il-form-hint mb-0">How many of your interns it will take this term.</p>
             </div>
             <div class="col-md-8">
                 <label class="form-label small fw-semibold" for="remarks">Remarks <span class="text-secondary fw-normal">(optional)</span></label>
