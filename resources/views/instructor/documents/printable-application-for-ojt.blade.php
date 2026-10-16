@@ -51,6 +51,7 @@
         .sig-line { border-top: 1px solid #000; width: 80%; margin: 0 auto 3px; padding-top: 2px; }
         .sig-name { font-weight: 700; font-size: 9px; }
         .sig-title { font-size: 8.5px; }
+        .sig-name { font-weight: 700; font-size: 9px; min-height: 12px; margin-top: 8px; }
         .approved-header { padding: 4px 8px; font-weight: 700; font-size: 10.5px; border-top: 1px solid #000; border-bottom: 1px solid #000; }
         .approved-block { text-align: center; padding: 14px 9px 11px; }
         .approved-name { display: inline-block; border-bottom: 1px solid #000; min-width: 280px; padding: 14px 6px 1px; margin-bottom: 3px; font-weight: 700; font-size: 9px; }
@@ -65,7 +66,9 @@
     $student = $internship?->student;
     $campus = $internship?->campus;
     $campusName = preg_replace('/^Pangasinan State University\s*[-,:]\s*/i', '', trim((string) ($campus?->name ?: ''))) ?: 'Alaminos City Campus';
-    $cedName = trim((string) ($campus?->ced_name ?: ''));
+    // Signatory names come from the records (Signatories helper).
+    $sig = \App\Support\Signatories::for($internship);
+    $cedName = $sig['ced'];
     $academicRows = [];
     for ($i = 1; $i <= 5; $i++) {
         $academicRows[] = [
@@ -168,7 +171,7 @@
         <div class="fit-line">This is to certify that he/she is <u style="color:#c00000;">qualified</u> to undergo internship.</div>
         <div class="cert-line">Certified and verified true and correct:</div>
         <div class="registrar-sig">
-            <div class="name">&nbsp;</div>
+            <div class="name">{!! $sig['registrar'] !== '' ? e($sig['registrar']) : '&nbsp;' !!}</div>
             <div>Registrar</div>
         </div>
     </div>
@@ -191,12 +194,12 @@
 
     <div class="approval-header">RECOMMENDING APPROVAL</div>
     <div class="approval-grid">
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Internship/Practicum Subject Instructor</div></div>
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Campus Internship Coordinator</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['instructor'] }}</div><div class="sig-line"></div><div class="sig-title">Internship/Practicum Subject Instructor</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['coordinator'] }}</div><div class="sig-line"></div><div class="sig-title">Campus Internship Coordinator</div></div>
     </div>
     <div class="approval-grid">
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Department Chair</div></div>
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">College Dean</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['department_chair'] }}</div><div class="sig-line"></div><div class="sig-title">Department Chair</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['college_dean'] }}</div><div class="sig-line"></div><div class="sig-title">College Dean</div></div>
     </div>
 
     <div class="approved-header">APPROVED BY:</div>

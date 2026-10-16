@@ -169,13 +169,20 @@
     </table>
 @endif
 
+@php $sig = \App\Support\Signatories::for($document->internship); @endphp
 <div class="signature-row">
     <div class="signature">
+        @if ($requirement->audience === 'instructor' && $sig['instructor'] !== '')
+            <div class="fw-bold" style="font-weight:700;">{{ $sig['instructor'] }}</div>
+        @endif
         <div class="line"></div>
         <div class="name">{{ $signatoryLabel }}</div>
         <div class="muted">{{ $preparedBy ?: '____________________________' }}</div>
     </div>
     <div class="signature">
+        @if ($sig['coordinator'] !== '')
+            <div style="font-weight:700;">{{ $sig['coordinator'] }}</div>
+        @endif
         <div class="line"></div>
         <div class="name">Campus Internship Coordinator</div>
         <div class="muted">Review / record copy</div>

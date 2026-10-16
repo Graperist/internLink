@@ -63,6 +63,7 @@
         </table>
     @endif
 
-    <div class="signature-line">Signature over Printed Name</div>
+    <div style="width:250px; text-align:center; font-weight:bold; margin-top:3rem;">{{ $document->internship?->student?->user?->name }}</div>
+    <div class="signature-line" style="margin-top:2px;">Signature over Printed Name</div>
 </body>
 </html>

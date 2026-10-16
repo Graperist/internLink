@@ -135,6 +135,11 @@
         .sig-line {
             border-bottom: 1px solid #000;
             height: 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 8.5px;
         }
 
         .sig-title {
@@ -348,7 +353,7 @@
                     <div class="sig-col">
                         <strong>PREPARED BY:</strong>
 
-                        <div class="sig-line"></div>
+                        <div class="sig-line">{{ $studentName }}</div>
 
                         <div class="sig-title">
                             Signature of Student-Intern
@@ -362,7 +367,8 @@
                     <div class="sig-col">
                         <strong>NOTED BY:</strong>
 
-                        <div class="sig-line"></div>
+                        {{-- On-site supervisor = the HTE's contact person on record --}}
+                        <div class="sig-line">{{ $deployment?->hte?->contact_person }}</div>
 
                         <div class="sig-title">
                             Signature over printed name of On-Site Supervisor

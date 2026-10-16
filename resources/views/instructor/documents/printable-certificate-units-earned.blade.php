@@ -259,7 +259,7 @@
     <div class="certification">
         <div class="cert-label">CERTIFIED TRUE AND CORRECT</div>
         <div class="registrar-line"></div>
-        <div class="registrar-name">Rosel L. Dela Criz, MIT</div>
+        <div class="registrar-name">{!! ($registrarName = \App\Support\Signatories::for($document->internship)['registrar']) !== '' ? e($registrarName) : '&nbsp;' !!}</div>
         <div class="registrar-title">Registrar</div>
     </div>
 </div>

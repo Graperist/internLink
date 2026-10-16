@@ -54,6 +54,13 @@
             <p class="il-form-hint">Leave blank if the course has no major. For a second major of the same course, add another program with its own code.</p>
         </div>
 
+        <div class="mb-3">
+            <label class="il-form-label" for="department_chair_name">Department Chair <span class="text-secondary fw-normal">(optional)</span></label>
+            <input type="text" class="form-control" id="department_chair_name" name="department_chair_name"
+                   value="{{ old('department_chair_name', $program->department_chair_name) }}" placeholder="e.g. Dr. Maria Santos">
+            <p class="il-form-hint">Printed automatically on this program's student forms (e.g. the Application for Internship).</p>
+        </div>
+
         <div class="d-flex gap-2 mt-3">
             <button type="submit" class="il-btn-primary">{{ $program->exists ? 'Save changes' : 'Add program' }}</button>
             <a href="{{ route('coordinator.programs.index') }}" class="il-btn-secondary text-decoration-none">Cancel</a>

@@ -87,6 +87,7 @@ class ProgramController extends Controller
                 Rule::unique('programs', 'code')->where('campus_id', $campusId)->ignore($program?->id)],
             'name' => ['required', 'string', 'max:255'],
             'major' => ['nullable', 'string', 'max:255'],
+            'department_chair_name' => ['nullable', 'string', 'max:255'],
             'required_hours' => ['required', 'integer', 'min:1', 'max:2000'],
         ], [
             'code.unique' => 'This campus already has a program with that code.',

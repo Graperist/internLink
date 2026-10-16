@@ -28,6 +28,7 @@ class CampusSettingsController extends Controller
         $validated = $request->validate([
             'ced_name' => ['nullable', 'string', 'max:255'],
             'college_dean_name' => ['nullable', 'string', 'max:255'],
+            'registrar_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         auth()->user()->campus->update($validated);

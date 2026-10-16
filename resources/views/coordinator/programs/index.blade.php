@@ -42,6 +42,7 @@
                     <th>Code</th>
                     <th>Course</th>
                     <th>Major</th>
+                    <th>Department Chair</th>
                     <th>Required hours</th>
                     <th>Instructors</th>
                     <th>Students</th>
@@ -54,6 +55,7 @@
                         <td class="fw-semibold">{{ $program->code }}</td>
                         <td>{{ $program->courseTitle() }}</td>
                         <td>{{ $program->majorLabel() === 'N/A' ? '—' : $program->majorLabel() }}</td>
+                        <td class="small">{{ $program->department_chair_name ?: '—' }}</td>
                         <td>
                             @if ($program->required_hours)
                                 {{ $program->required_hours }} hrs
@@ -82,7 +84,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="text-center text-secondary py-4">No programs yet. Add the first course offered for OJT.</td></tr>
+                    <tr><td colspan="8" class="text-center text-secondary py-4">No programs yet. Add the first course offered for OJT.</td></tr>
                 @endforelse
             </tbody>
         </table>
