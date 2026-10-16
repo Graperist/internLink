@@ -113,6 +113,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
         Route::post('/documents/remind', [DocumentReviewController::class, 'remind'])->name('documents.remind');
+        // Full view of one submitted form with the Return / Approve panel.
+        Route::get('/documents/{document}/open', [DocumentReviewController::class, 'show'])->name('documents.show');
         Route::post('/documents/{document}/review', [DocumentReviewController::class, 'review'])->name('documents.review');
         Route::post('/documents/{document}/print', [DocumentReviewController::class, 'printForSigning'])->name('documents.print');
         Route::get('/documents/{document}/printable', [DocumentReviewController::class, 'printable'])->name('documents.printable');

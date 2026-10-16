@@ -312,9 +312,12 @@
                                             <div class="fw-semibold small">Packet {{ $packet->packet_number ?? 1 }}</div>
                                             <div class="text-secondary" style="font-size:.75rem;">{{ $packet->entries->count() }} training days · {{ $statusLabelStructured($packetStatus) }}</div>
                                         </div>
-                                        @if ($packetStatus === 'approved')
-                                            <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary">Signed copy</a>
-                                        @endif
+                                        <div class="d-flex gap-1">
+                                            <a href="{{ route('instructor.documents.show', $packet) }}" class="btn btn-sm btn-outline-primary">Open</a>
+                                            @if ($packetStatus === 'approved')
+                                                <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary">Signed copy</a>
+                                            @endif
+                                        </div>
                                     </div>
                                     <div class="d-flex gap-2 flex-wrap mt-2">
                                         @if (in_array($packetStatus, ['submitted', 'for_review']))
@@ -646,18 +649,6 @@
                                                     </button>
                                                     @endif
                                                 @endif
-                                                @if ($canAct)
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#returnModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Return to Student
-                                                </button>
-                                                @endif
                                             @elseif ($status === 'returned')
                                                 <a
                                                     href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}"
@@ -680,18 +671,6 @@
                                                     data-document-id="{{ $document->id }}"
                                                 >
                                                     Approve
-                                                </button>
-                                                @endif
-                                                @if ($canAct)
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#returnModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Return
                                                 </button>
                                                 @endif
                                             @elseif ($status === 'completed')
@@ -754,6 +733,34 @@
                 </div>
             </div>
         @endforeach
+
+        {{-- Return right here, or open the full Classroom-style view --}}
+        @php
+            $openRequirement = $allRequirements->firstWhere('id', $selectedRequirementId);
+            $openDocument = $openRequirement && $openRequirement->code !== 'WEEKLY_REPORT'
+                ? $documentsByRequirement->get($selectedRequirementId) : null;
+            $openReturnable = $openDocument && in_array($openDocument->status, ['submitted', 'for_review', 'printed'], true);
+        @endphp
+        @if ($openDocument)
+            <div class="il-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 {{ $canAct && $openReturnable ? 'mb-3' : '' }}">
+                    <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Review</span>
+                    <a href="{{ route('instructor.documents.show', $openDocument) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="ti ti-arrows-maximize"></i> Open full view
+                    </a>
+                </div>
+                @if ($canAct && $openReturnable)
+                    <form method="POST" action="{{ route('instructor.documents.review', $openDocument) }}">
+                        @csrf
+                        <input type="hidden" name="decision" value="returned">
+                        <label class="form-label small fw-semibold" for="inline_remarks">Return to student with remarks</label>
+                        <textarea name="remarks" id="inline_remarks" class="form-control mb-2" rows="3" maxlength="2000"
+                                  placeholder="What needs to be corrected?" required></textarea>
+                        <button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-arrow-back-up"></i> Return to student</button>
+                    </form>
+                @endif
+            </div>
+        @endif
             </div>
         </div>
     @endif

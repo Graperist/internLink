@@ -406,7 +406,7 @@ class DocumentReviewController extends Controller
 
             return redirect()
 
-                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+                ->to($this->backUrl($document))
 
                 ->with('status', 'Document is already returned to the student.');
 
@@ -414,7 +414,12 @@ class DocumentReviewController extends Controller
 
 
 
-        abort_unless(in_array($document->status, ['submitted', 'for_review'], true), 422, 'This document is not awaiting review.');
+        // A form can be returned while waiting for review, and also while it
+        // is out for signing (printed) if the instructor spots an error
+        // before the signed copy comes back. Approving still needs review status.
+        $returnable = ['submitted', 'for_review', 'printed'];
+        abort_unless(in_array($document->status, $returnable, true), 422, 'This document is not awaiting review.');
+        abort_if($document->status === 'printed' && $request->input('decision') !== 'returned', 422, 'A form out for signing can only be returned.');
 
 
 
@@ -446,7 +451,7 @@ class DocumentReviewController extends Controller
 
         if ($validated['decision'] === 'approved' && ($blocked = \App\Support\AutoDeployment::blockedReason($document))) {
             return redirect()
-                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+                ->to($this->backUrl($document))
                 ->withErrors(['placement' => $blocked]);
         }
 
@@ -502,7 +507,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+            ->to($this->backUrl($document))
 
             ->with('status', trim('Document '.$validated['decision'].'. '.($placement ?? '')));
 
@@ -540,7 +545,7 @@ class DocumentReviewController extends Controller
 
         if ($blocked = \App\Support\AutoDeployment::blockedReason($document)) {
             return redirect()
-                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+                ->to($this->backUrl($document))
                 ->withErrors(['placement' => $blocked]);
         }
 
@@ -554,7 +559,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+            ->to($this->backUrl($document))
 
             ->with('status', trim('Marked as printed - out for signing. '.($placement ?? '')));
 
@@ -637,7 +642,8 @@ class DocumentReviewController extends Controller
 
 
 
-        if ($instructor->canActOn($document->internship)) {
+        // Shown inside the review viewer (?embed=1): no print dialog or button.
+        if ($instructor->canActOn($document->internship) && ! request()->boolean('embed')) {
             return view($view, compact('document'));
         }
 
@@ -692,7 +698,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
+            ->to($this->backUrl($document))
 
             ->with('status', 'Signed-copy upload unlocked for the student. Internship completion is unchanged.');
 
@@ -745,6 +751,58 @@ class DocumentReviewController extends Controller
     }
 
 
+
+    /**
+     * Full view of one submitted form (Google Classroom style): the form or
+     * file on the left, and on the right the files, previous remarks and the
+     * Return / Approve / Print for signing actions with a remarks box. Arrows
+     * move through this student's other submitted forms.
+     */
+    public function show(Document $document): View
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeViewer($document, $instructor);
+        $document->load('requirement.fieldDefinitions', 'internship.student.user', 'internship.student.program', 'latestReview', 'uploader');
+
+        abort_if(in_array($document->requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true), 404);
+
+        // This student's other submitted forms, in checklist order.
+        $siblings = Document::where('internship_id', $document->internship_id)
+            ->whereNotNull('status')
+            ->whereHas('requirement', fn ($r) => $r->where('is_active', true)->where('is_required', true)
+                ->whereIn('audience', ['student', 'coordinator'])
+                ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes()))
+            ->with('requirement')
+            ->get()
+            ->sortBy(fn ($d) => sprintf('%d|%05d|%s|%05d',
+                ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3][$d->requirement->stage] ?? 9,
+                $d->requirement->display_order ?? 0, $d->requirement->name, $d->packet_number ?? 0))
+            ->values();
+
+        $position = $siblings->search(fn ($d) => $d->id === $document->id);
+        $prevDocument = $position !== false && $position > 0 ? $siblings[$position - 1] : null;
+        $nextDocument = $position !== false && $position < $siblings->count() - 1 ? $siblings[$position + 1] : null;
+
+        $reviews = DocumentReview::where('document_id', $document->id)->with('instructor.user')->latest('reviewed_at')->get();
+
+        return view('instructor.documents.viewer', [
+            'document' => $document,
+            'student' => $document->internship->student,
+            'canAct' => $instructor->canActOn($document->internship),
+            'prevDocument' => $prevDocument,
+            'nextDocument' => $nextDocument,
+            'position' => ['index' => $position === false ? 1 : $position + 1, 'total' => max($siblings->count(), 1)],
+            'reviews' => $reviews,
+        ]);
+    }
+
+    /** After an action: back to the viewer if it came from there, else the student's page. */
+    private function backUrl(Document $document): string
+    {
+        return request()->input('return_to') === 'viewer'
+            ? route('instructor.documents.show', $document)
+            : route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id]);
+    }
 
     /** Acting on a document: own program only (the coordinator included). */
     private function authorizeInstructor(Document $document, $instructor): void

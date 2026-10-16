@@ -61,6 +61,7 @@ return [
         'instructor.announcements' => 'Opened Announcements',
         'instructor.documents' => 'Opened Document Review',
         'instructor.documents.printable' => 'Opened a printable form',
+        'instructor.documents.show' => 'Opened a submitted form for review',
         'instructor.documents.view' => 'Viewed a submitted document',
         'instructor.documents.download' => 'Downloaded a submitted document',
         'instructor.evaluations' => 'Opened Evaluations',

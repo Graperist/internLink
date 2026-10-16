@@ -518,4 +518,73 @@ class SharedPortalTest extends TestCase
         $this->assertDatabaseHas('notifications', ['user_id' => $mine->user_id, 'title' => 'Reminder: forms to submit']);
         $this->assertDatabaseMissing('notifications', ['user_id' => $other->user_id, 'title' => 'Reminder: forms to submit']);
     }
+
+    // ---------- Returning forms (student page + Classroom-style viewer) ----------
+
+    public function test_viewer_shows_the_form_with_a_return_panel(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $doc = $this->submittedApplication($student, $this->hte->name);
+
+        $this->actingAs($instructor)->get(route('instructor.documents.show', $doc))->assertOk()
+            ->assertSee('Remarks for the student')
+            ->assertSee('Return to student')
+            ->assertSee('print for signing')        // Form 1 is a print-and-sign form
+            ->assertSee("student 23-AC-0001's forms", false);
+
+        // Student page also offers the inline return box and the full view.
+        $this->actingAs($instructor)->get(route('instructor.documents', ['student' => $student->id]))
+            ->assertSee('Return to student with remarks')
+            ->assertSee(route('instructor.documents.show', $doc), false);
+    }
+
+    public function test_returning_from_the_viewer_saves_remarks_and_stays_on_the_viewer(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $doc = $this->submittedApplication($student, $this->hte->name);
+
+        $this->actingAs($instructor)->post(route('instructor.documents.review', $doc), [
+            'decision' => 'returned', 'remarks' => 'Please fill in your home address.', 'return_to' => 'viewer',
+        ])->assertRedirect(route('instructor.documents.show', $doc));
+
+        $this->assertSame('returned', $doc->fresh()->status);
+        $this->assertDatabaseHas('document_reviews', ['document_id' => $doc->id, 'decision' => 'returned', 'remarks' => 'Please fill in your home address.']);
+        $this->assertDatabaseHas('notifications', ['user_id' => $student->user_id]);
+
+        $this->actingAs($instructor)->get(route('instructor.documents.show', $doc))
+            ->assertSee('Previous remarks')->assertSee('Please fill in your home address.')
+            ->assertDontSee('Remarks for the student');   // nothing to return any more
+    }
+
+    public function test_a_form_out_for_signing_can_still_be_returned_but_not_approved(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $doc = $this->submittedApplication($student, $this->hte->name);
+        $doc->forceFill(['status' => 'printed'])->save();
+
+        $this->actingAs($instructor)->post(route('instructor.documents.review', $doc), ['decision' => 'approved'])->assertStatus(422);
+        $this->actingAs($instructor)->post(route('instructor.documents.review', $doc), ['decision' => 'returned', 'remarks' => 'Wrong signatory'])
+            ->assertRedirect();
+        $this->assertSame('returned', $doc->fresh()->status);
+    }
+
+    public function test_viewer_is_view_only_for_other_programs_and_embed_has_no_print_dialog(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bshm);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $doc = $this->submittedApplication($student, $this->hte->name);
+
+        $this->actingAs($coordinator)->get(route('instructor.documents.show', $doc))->assertOk()
+            ->assertSee('View only')->assertDontSee('Remarks for the student');
+
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $this->actingAs($instructor)->get(route('instructor.documents.printable', ['document' => $doc, 'embed' => 1]))
+            ->assertOk()->assertDontSee('onload="window.print()"', false);
+
+        $outsider = $this->teacher('instructor', 'ACC-INST-002', $this->bshm);
+        $this->actingAs($outsider)->get(route('instructor.documents.show', $doc))->assertForbidden();
+    }
 }
