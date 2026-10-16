@@ -138,4 +138,36 @@ class FormSignatoriesTest extends TestCase
         $this->assertSame('', $sig['department_chair']);
         $this->assertSame('', $sig['instructor']);
     }
+
+    public function test_consent_form_prints_its_signatories(): void
+    {
+        $coordinator = $this->user('coordinator', 'ACC-COORD-001', 'Mark Harley V. Bristol');
+        $instructor = $this->user('instructor', 'ACC-INST-001', 'Prof. Ian Instructor');
+        Instructor::forceCreate(['user_id' => $instructor->id, 'campus_id' => $this->campus->id, 'program_id' => $this->bsit->id]);
+        $this->campus->update(['address' => 'Alaminos City, Pangasinan']);
+
+        $internship = $this->internship();
+        $make = fn ($code, $name) => DocumentRequirement::forceCreate([
+            'campus_id' => $this->campus->id, 'code' => $code, 'name' => $name, 'stage' => 'pre_deployment',
+            'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_active' => true, 'is_required' => true, 'display_order' => 1,
+        ]);
+        $form1 = Document::forceCreate(['internship_id' => $internship->id, 'document_requirement_id' => $make('APPLICATION_FOR_OJT', 'Form 1')->id, 'status' => 'approved']);
+        DocumentFieldValue::forceCreate(['document_id' => $form1->id, 'field_key' => 'parent_guardian_name', 'value' => 'Maria Tabucol']);
+        $consent = Document::forceCreate(['internship_id' => $internship->id, 'document_requirement_id' => $make('PARENT_CONSENT', 'Form 3')->id, 'status' => 'submitted']);
+        foreach (['company_name' => 'BDO Unibank', 'signed_date' => '2026-10-03', 'address' => 'Sual, Pangasinan'] as $key => $value) {
+            DocumentFieldValue::forceCreate(['document_id' => $consent->id, 'field_key' => $key, 'value' => $value]);
+        }
+
+        $html = $this->actingAs($instructor)->get(route('instructor.documents.printable', $consent))->assertOk()
+            ->assertSeeInOrder(['Mark Harley V. Bristol', 'Campus Internship Coordinator'])
+            ->assertSeeInOrder(['Dr. Liza L. Quimson', 'Campus Executive Director'])
+            ->assertSeeInOrder(['Sieg Freed Tabucol', 'Signature over Printed Name of Student'])
+            ->assertSeeInOrder(['Maria Tabucol', 'Signature over Printed Name of Parent/Guardian'])
+            ->getContent();
+
+        // "Signed at Alaminos City, Pangasinan." - not "Pangasinan, Pangasinan"
+        $this->assertStringNotContainsString('Pangasinan</span>, Pangasinan', $html);
+        $this->assertMatchesRegularExpression('/Signed at <span class="line medium">Alaminos City<\/span>, Pangasinan/', $html);
+        $this->assertMatchesRegularExpression('/20<span class="line short">26<\/span>/', $html);
+    }
 }
