@@ -1,10 +1,10 @@
 @extends('layouts.instructor')
 
-@section('title', 'Add Intern - PSU Intern-Link')
+@section('title', 'Enroll Student - PSU Intern-Link')
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">Add intern</h1>
+    <h1 class="il-page-title">Enroll student</h1>
     <a href="{{ route('instructor.advisees') }}" class="il-btn-secondary text-decoration-none">
         <i class="ti ti-arrow-left"></i> Back to my students
     </a>
@@ -22,7 +22,7 @@
     @endif
 
     <div class="alert alert-light border small mb-4">
-        The intern is added to <strong>your program, {{ $instructor->program->code }}</strong>
+        The student is enrolled in <strong>your program, {{ $instructor->program->code }}</strong>
         ({{ $instructor->program->name }}{{ $instructor->program->major ? ' - '.$instructor->program->major : '' }})
         at {{ $instructor->campus->name }}.
     </div>
@@ -51,7 +51,7 @@
         </div>
 
         <div class="d-flex gap-2 mt-3">
-            <button type="submit" class="il-btn-primary">Create intern account</button>
+            <button type="submit" class="il-btn-primary">Enroll student</button>
             <a href="{{ route('instructor.advisees') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>

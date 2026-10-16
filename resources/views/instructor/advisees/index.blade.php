@@ -13,10 +13,10 @@
     @if ($hasProgram)
         <div class="d-flex gap-2">
             <a href="{{ route('instructor.interns.import') }}" class="btn btn-outline-secondary text-decoration-none">
-                <i class="ti ti-upload"></i> Import interns
+                <i class="ti ti-upload"></i> Bulk enroll (import)
             </a>
             <a href="{{ route('instructor.interns.create') }}" class="il-btn-primary text-decoration-none">
-                <i class="ti ti-plus"></i> Add intern
+                <i class="ti ti-user-plus"></i> Enroll student
             </a>
         </div>
     @endif
@@ -24,7 +24,7 @@
 
 @if ($isCoordinator && ! $hasProgram)
     <div class="alert alert-warning small">
-        You can see every student on the campus. To add interns and review documents for the program you teach,
+        You can see every student on the campus. To enroll students and review documents for the program you teach,
         <a href="{{ route('instructor.profile') }}" class="alert-link">set your program in My Profile</a>.
     </div>
 @endif
@@ -299,7 +299,7 @@
                         @if (request()->hasAny(['search', 'status', 'program_id']))
                             No students match this search or filter.
                         @else
-                            {{ $isCoordinator ? 'No students on this campus yet.' : 'No students are in your program yet. Use Add intern to create their accounts.' }}
+                            {{ $isCoordinator ? 'No students on this campus yet.' : 'No students are enrolled in your program yet. Use Enroll student to create their accounts.' }}
                         @endif
                     </td>
                 </tr>

@@ -451,4 +451,71 @@ class SharedPortalTest extends TestCase
             $this->actingAs($coordinator)->get(route($name))->assertOk();
         }
     }
+
+    // ---------- Document Review layout (Teams-style) ----------
+
+    public function test_document_review_opens_on_the_student_list(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $waiting = $this->student('23-AC-0001', $this->bsit);
+        $this->student('23-AC-0002', $this->bsit);
+        $this->submittedApplication($waiting, $this->hte->name);
+
+        $this->actingAs($instructor)->get(route('instructor.documents'))->assertOk()
+            ->assertSee('Pick a student to open their forms')
+            ->assertSee('23-AC-0001')->assertSee('23-AC-0002')
+            ->assertSee('1 to review')
+            ->assertDontSee('Medical Certificate');   // no forms on the list screen
+
+        $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => 'review']))
+            ->assertSee('23-AC-0001')->assertDontSee('23-AC-0002');
+    }
+
+    public function test_clicking_a_student_shows_only_that_student_with_the_form_open(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $a = $this->student('23-AC-0001', $this->bsit);
+        $b = $this->student('23-AC-0002', $this->bsit);
+        $doc = $this->submittedApplication($a, $this->hte->name);
+
+        $html = $this->actingAs($instructor)->get(route('instructor.documents', ['student' => $a->id]))->assertOk()
+            ->assertSee('All students')
+            ->assertSee('Student 1 of 2')
+            ->assertSee('Form 1 - Application')     // in the form list
+            ->assertSee('Medical Certificate')      // also listed
+            ->assertSee('Approve / Return')         // the waiting form is open by default
+            ->getContent();
+        // The page is about this one student.
+        $this->assertMatchesRegularExpression('#<h2 class="h5 fw-bold mb-1">\s*student 23-AC-0001#', $html);
+        $this->assertStringContainsString(route('instructor.documents', ['student' => $b->id]), $html); // next arrow
+
+        // Opening another form shows that one instead.
+        $this->actingAs($instructor)->get(route('instructor.documents', ['student' => $a->id, 'form' => $this->medical->id]))
+            ->assertOk()->assertSee('Not yet submitted.')->assertDontSee('Approve / Return');
+
+        // After an action you come back to the same student and form.
+        $this->actingAs($instructor)->post(route('instructor.documents.print', $doc))
+            ->assertRedirect(route('instructor.documents', ['student' => $a->id, 'form' => $this->application->id]));
+    }
+
+    public function test_a_student_outside_your_view_is_not_found(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bshm);
+        $other = $this->student('23-AC-0001', $this->bsit);
+
+        $this->actingAs($instructor)->get(route('instructor.documents', ['student' => $other->id]))->assertNotFound();
+    }
+
+    public function test_remind_selected_students_about_missing_forms(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $mine = $this->student('23-AC-0001', $this->bsit);
+        $other = $this->student('23-AC-0002', $this->bshm);
+
+        $this->actingAs($instructor)->post(route('instructor.documents.remind'), ['student_ids' => [$mine->id, $other->id]])
+            ->assertSessionHas('status', 'Reminder sent to 1 student.');
+
+        $this->assertDatabaseHas('notifications', ['user_id' => $mine->user_id, 'title' => 'Reminder: forms to submit']);
+        $this->assertDatabaseMissing('notifications', ['user_id' => $other->user_id, 'title' => 'Reminder: forms to submit']);
+    }
 }

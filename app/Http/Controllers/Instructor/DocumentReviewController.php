@@ -94,9 +94,21 @@ class DocumentReviewController extends Controller
 
 
 
-        $selectedId = $request->query('student', $advisees->first()?->id);
+        // Teams-style: Document Review opens on the student list; clicking a
+        // name opens that one student's forms (and nothing else).
+        if (! $request->filled('student')) {
+            return $this->studentList($request, $instructor, $advisees);
+        }
 
-        $student = $advisees->firstWhere('id', (int) $selectedId) ?? $advisees->first();
+        $student = $advisees->firstWhere('id', (int) $request->query('student'));
+        abort_unless($student, 404);
+
+        // Previous / next student, in the same name order as the list.
+        $ordered = $advisees->sortBy(fn ($a) => $a->user->name, SORT_NATURAL | SORT_FLAG_CASE)->values();
+        $position = $ordered->search(fn ($a) => $a->id === $student->id);
+        $prevStudent = $position > 0 ? $ordered[$position - 1] : null;
+        $nextStudent = $position < $ordered->count() - 1 ? $ordered[$position + 1] : null;
+        $studentPosition = ['index' => $position + 1, 'total' => $ordered->count()];
 
 
 
@@ -213,13 +225,153 @@ class DocumentReviewController extends Controller
 
         return view('instructor.documents.index', compact(
 
-            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets', 'canAct'
+            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets', 'canAct',
+            'prevStudent', 'nextStudent', 'studentPosition'
 
         ));
 
     }
 
 
+
+    /**
+     * The student list (first screen of Document Review): one row per
+     * student with how many forms wait for review, how many are approved,
+     * and a View link that opens only that student. Mirrors MS Teams'
+     * assignment list -> one student's work.
+     */
+    private function studentList(Request $request, $instructor, $advisees): View
+    {
+        $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
+            ->where('is_required', true)
+            ->where('is_active', true)
+            ->whereIn('audience', ['student', 'coordinator'])
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes())
+            ->get(['id', 'stage']);
+
+        $advisees->load('currentInternship.documents');
+
+        $rows = $advisees->map(function ($student) use ($requirements, $instructor) {
+            $internship = $student->currentInternship;
+            $applicable = $requirements->filter(fn ($r) => match (true) {
+                ! $internship, $internship->status === 'pre_deployment' => $r->stage === 'pre_deployment',
+                ! $internship->hasCompletedDeployment() => in_array($r->stage, ['pre_deployment', 'active'], true),
+                default => true,
+            });
+            $docs = $internship ? $internship->documents->whereIn('document_requirement_id', $applicable->pluck('id')) : collect();
+            $byStatus = fn (array $statuses) => $docs->whereIn('status', $statuses)->pluck('document_requirement_id')->unique()->count();
+
+            return (object) [
+                'student' => $student,
+                'required' => $applicable->count(),
+                'approved' => $byStatus(['approved']),
+                'to_review' => $byStatus(['submitted', 'for_review']),
+                'signing' => $byStatus(['printed', 'completed']),
+                'returned' => $byStatus(['returned']),
+                'missing' => max($applicable->count() - $docs->pluck('document_requirement_id')->unique()->count(), 0),
+                'last_submitted' => $docs->max('submitted_at'),
+                'can_act' => $instructor->canActOn($student),
+            ];
+        });
+
+        if ($search = trim((string) $request->query('search'))) {
+            $needle = mb_strtolower($search);
+            $rows = $rows->filter(fn ($r) => str_contains(mb_strtolower($r->student->user->name), $needle)
+                || str_contains(mb_strtolower((string) $r->student->user->id_number), $needle));
+        }
+        if ($instructor->isCoordinator() && ($programId = $request->query('program_id'))) {
+            $rows = $rows->where('student.program_id', (int) $programId);
+        }
+
+        $counts = [
+            'all' => $rows->count(),
+            'review' => $rows->filter(fn ($r) => $r->to_review > 0)->count(),
+            'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0)->count(),
+            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required)->count(),
+        ];
+
+        $tab = in_array($request->query('tab'), ['review', 'missing', 'complete'], true) ? $request->query('tab') : 'all';
+        $rows = match ($tab) {
+            'review' => $rows->filter(fn ($r) => $r->to_review > 0),
+            'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0),
+            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required),
+            default => $rows,
+        };
+
+        // Students with forms waiting on the reviewer first, then by name.
+        $rows = $rows->sortBy(fn ($r) => sprintf('%d|%s', $r->to_review > 0 ? 0 : 1, mb_strtolower($r->student->user->name)))->values();
+
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = 25;
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $rows->forPage($page, $perPage)->values(), $rows->count(), $perPage, $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        $programs = $instructor->isCoordinator()
+            ? \App\Models\Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
+            : collect();
+
+        return view('instructor.documents.list', [
+            'rows' => $paginator,
+            'counts' => $counts,
+            'tab' => $tab,
+            'programs' => $programs,
+            'instructor' => $instructor,
+        ]);
+    }
+
+    /**
+     * Bulk action from the student list: remind the selected students (own
+     * program only) which forms they still need to submit or correct.
+     */
+    public function remind(Request $request): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $data = $request->validate([
+            'student_ids' => ['required', 'array', 'min:1'],
+            'student_ids.*' => ['integer'],
+        ], ['student_ids.required' => 'Select at least one student first.']);
+
+        $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
+            ->where('is_required', true)->where('is_active', true)
+            ->where('audience', 'student')
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes())
+            ->get();
+
+        $sent = 0;
+        $instructor->visibleStudents()->with(['user', 'currentInternship.documents'])
+            ->whereIn('id', $data['student_ids'])->get()
+            ->filter(fn ($student) => $instructor->canActOn($student))
+            ->each(function ($student) use ($requirements, &$sent) {
+                $internship = $student->currentInternship;
+                $stages = ! $internship || $internship->status === 'pre_deployment'
+                    ? ['pre_deployment']
+                    : ($internship->hasCompletedDeployment() ? ['pre_deployment', 'active', 'post_deployment'] : ['pre_deployment', 'active']);
+                $docs = $internship?->documents->keyBy('document_requirement_id') ?? collect();
+
+                $outstanding = $requirements->whereIn('stage', $stages)
+                    ->filter(fn ($r) => ! $docs->has($r->id) || $docs[$r->id]->status === 'returned')
+                    ->pluck('name');
+
+                if ($outstanding->isEmpty()) {
+                    return;
+                }
+
+                Notification::create([
+                    'user_id' => $student->user_id,
+                    'type' => 'document_status',
+                    'title' => 'Reminder: forms to submit',
+                    'message' => 'Please submit or correct: '.$outstanding->take(6)->implode(', ').($outstanding->count() > 6 ? ', and '.($outstanding->count() - 6).' more' : '').'.',
+                    'url' => route('student.documents', [], false),
+                ]);
+                $sent++;
+            });
+
+        return back()->with('status', $sent
+            ? "Reminder sent to {$sent} ".\Illuminate\Support\Str::plural('student', $sent).'.'
+            : 'Nothing to remind - the selected students have no missing or returned forms (or are in another program).');
+    }
 
     /**
 
@@ -254,7 +406,7 @@ class DocumentReviewController extends Controller
 
             return redirect()
 
-                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
 
                 ->with('status', 'Document is already returned to the student.');
 
@@ -294,7 +446,7 @@ class DocumentReviewController extends Controller
 
         if ($validated['decision'] === 'approved' && ($blocked = \App\Support\AutoDeployment::blockedReason($document))) {
             return redirect()
-                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
                 ->withErrors(['placement' => $blocked]);
         }
 
@@ -350,7 +502,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
+            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
 
             ->with('status', trim('Document '.$validated['decision'].'. '.($placement ?? '')));
 
@@ -388,7 +540,7 @@ class DocumentReviewController extends Controller
 
         if ($blocked = \App\Support\AutoDeployment::blockedReason($document)) {
             return redirect()
-                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
                 ->withErrors(['placement' => $blocked]);
         }
 
@@ -402,7 +554,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
+            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
 
             ->with('status', trim('Marked as printed - out for signing. '.($placement ?? '')));
 
@@ -540,7 +692,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
+            ->route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id])
 
             ->with('status', 'Signed-copy upload unlocked for the student. Internship completion is unchanged.');
 

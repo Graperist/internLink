@@ -285,6 +285,10 @@ class EvaluationRoutingTest extends TestCase
         $this->actingAs($this->instructorUser)->get(route('instructor.documents'))->assertOk()
             ->assertDontSee($form20->requirement->name)
             ->assertDontSee($this->req('STUDENT_HTE_EVALUATION')->name);
+        // The student's own review page lists their forms - still not these two.
+        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $form20->internship->student_id]))->assertOk()
+            ->assertDontSee($form20->requirement->name)
+            ->assertDontSee($this->req('STUDENT_HTE_EVALUATION')->name);
 
         $this->actingAs($this->instructorUser)->post(route('instructor.documents.review', $form20), ['decision' => 'approved'])->assertForbidden();
     }

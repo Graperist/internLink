@@ -1,10 +1,10 @@
 @extends('layouts.instructor')
 
-@section('title', 'Import Interns - PSU Intern-Link')
+@section('title', 'Bulk Enroll Students - PSU Intern-Link')
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">Import interns</h1>
+    <h1 class="il-page-title">Bulk enroll students</h1>
     <a href="{{ route('instructor.advisees') }}" class="il-btn-secondary text-decoration-none">
         <i class="ti ti-arrow-left"></i> Back to my students
     </a>
@@ -12,7 +12,7 @@
 
 <div class="il-card" style="max-width: 760px;">
     <p class="text-secondary small mb-4">
-        Upload a CSV or Excel file to create several intern accounts at once. Every row is added to
+        Upload a CSV or Excel file to enroll several students at once. Every row is enrolled in
         <strong>your program, {{ $instructor->program->code }}</strong>, at {{ $instructor->campus->name }}.
     </p>
 
@@ -35,7 +35,7 @@
             Optional: <code>program_code</code> &mdash; if filled in, it must be {{ $instructor->program->code }}.
         </div>
 
-        <button type="submit" class="il-btn-primary">Upload &amp; create accounts</button>
+        <button type="submit" class="il-btn-primary">Upload &amp; enroll</button>
     </form>
 </div>
 @endsection

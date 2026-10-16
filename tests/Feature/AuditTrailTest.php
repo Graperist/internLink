@@ -184,7 +184,7 @@ class AuditTrailTest extends TestCase
             ->assertSessionHasErrors();
 
         $log = ActivityLog::where('action', 'action.post')->firstOrFail();
-        $this->assertSame('Added an intern - rejected (validation failed)', $log->description);
+        $this->assertSame('Enrolled a student - rejected (validation failed)', $log->description);
     }
 
     public function test_the_audit_endpoints_do_not_log_themselves(): void

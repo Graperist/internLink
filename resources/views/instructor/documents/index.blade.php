@@ -4,7 +4,23 @@
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">Document review</h1>
+    <div>
+        <a href="{{ route('instructor.documents') }}" class="small text-decoration-none"><i class="ti ti-arrow-left"></i> All students</a>
+        <h1 class="il-page-title mt-1">Document review</h1>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        @if ($prevStudent)
+            <a href="{{ route('instructor.documents', ['student' => $prevStudent->id]) }}" class="btn btn-sm btn-outline-secondary" title="Previous: {{ $prevStudent->user->name }}"><i class="ti ti-chevron-left"></i></a>
+        @else
+            <span class="btn btn-sm btn-outline-secondary disabled"><i class="ti ti-chevron-left"></i></span>
+        @endif
+        <span class="small text-secondary">Student {{ $studentPosition['index'] }} of {{ $studentPosition['total'] }}</span>
+        @if ($nextStudent)
+            <a href="{{ route('instructor.documents', ['student' => $nextStudent->id]) }}" class="btn btn-sm btn-outline-secondary" title="Next: {{ $nextStudent->user->name }}"><i class="ti ti-chevron-right"></i></a>
+        @else
+            <span class="btn btn-sm btn-outline-secondary disabled"><i class="ti ti-chevron-right"></i></span>
+        @endif
+    </div>
 </div>
 
 @if (session('status'))
@@ -29,9 +45,9 @@
     <div class="il-card mb-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-                <h2 class="h6 fw-bold mb-1">
-                    Pre-Deployment Requirements — {{ $student->user->name }}
-                    <span class="text-secondary fw-normal">{{ $student->user->id_number }}</span>
+                <h2 class="h5 fw-bold mb-1">
+                    {{ $student->user->name }}
+                    <span class="text-secondary fw-normal small">{{ $student->user->id_number }}</span>
                     <span class="badge rounded-pill text-bg-light text-secondary fw-semibold">{{ $student->program->code ?? '' }}</span>
                 </h2>
                 @unless ($canAct)
@@ -61,7 +77,7 @@
             @endphp
 
             <form method="GET" class="d-flex align-items-center gap-2 position-relative" id="adviseeSearchForm">
-                <label class="small text-secondary mb-0" for="adviseeSearchInput">Search</label>
+                <label class="small text-secondary mb-0" for="adviseeSearchInput">Jump to</label>
                 <input type="hidden" name="student" id="adviseeSearchValue" value="{{ $student->id }}">
                 <input
                     type="text"
@@ -186,29 +202,97 @@
                 default => 'Not Yet Filled',
             };
 
+            // Form labels ("Form 1", "Form 2", ...) computed once so the list
+            // and the open form agree.
+            $formLabels = [];
             $formNumber = 1;
+            foreach ($stageLabels as $stageKey => $stageLabel) {
+                foreach ($requirementsByStage->get($stageKey, collect()) as $req) {
+                    $formLabels[$req->id] = 'Form '.($req->form_number ?: $formNumber++);
+                }
+            }
+
+            // Which form is open: ?form=, else the first one waiting on the
+            // reviewer, else the first form.
+            $allRequirements = $requirementsByStage->flatten(1);
+            $selectedRequirementId = (int) request('form');
+            if (! $allRequirements->contains('id', $selectedRequirementId)) {
+                $waiting = $allRequirements->first(fn ($r) => in_array($documentsByRequirement->get($r->id)?->status, ['submitted', 'for_review', 'printed'], true));
+                $selectedRequirementId = ($waiting ?? $allRequirements->first())?->id;
+            }
+
+            $statusIcon = fn ($status) => match ($status) {
+                'approved' => ['ti-circle-check-filled', 'text-success'],
+                'submitted', 'for_review' => ['ti-alert-circle-filled', 'text-warning'],
+                'printed' => ['ti-printer', 'text-primary'],
+                'completed' => ['ti-upload', 'text-primary'],
+                'returned' => ['ti-arrow-back-up', 'text-danger'],
+                default => ['ti-circle', 'text-secondary'],
+            };
+            $approvedCount = $allRequirements->filter(fn ($r) => $documentsByRequirement->get($r->id)?->status === 'approved')->count();
         @endphp
 
+        <div class="row g-3">
+            {{-- Left: this student's forms, like the Teams assignment list --}}
+            <div class="col-lg-4">
+                <div class="il-card p-0 overflow-hidden" style="position: sticky; top: 1rem;">
+                    <div class="px-3 pt-3 pb-2 d-flex justify-content-between align-items-center">
+                        <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Forms</span>
+                        <span class="small text-secondary">{{ $approvedCount }} / {{ $allRequirements->count() }} approved</span>
+                    </div>
+                    <div class="list-group list-group-flush il-form-list">
+                        @foreach ($stageLabels as $stageKey => $stageLabel)
+                            @continue ($requirementsByStage->get($stageKey, collect())->isEmpty())
+                            <div class="list-group-item bg-light small fw-semibold text-secondary py-1">{{ $stageLabel }}</div>
+                            @foreach ($requirementsByStage->get($stageKey) as $req)
+                                @php
+                                    $reqDoc = $documentsByRequirement->get($req->id);
+                                    $reqStatus = $req->code === 'WEEKLY_REPORT' ? ($form19Packets->last()?->status) : $reqDoc?->status;
+                                    [$icon, $iconColor] = $statusIcon($reqStatus);
+                                    $isOpen = $req->id === $selectedRequirementId;
+                                @endphp
+                                <a href="{{ route('instructor.documents', ['student' => $student->id, 'form' => $req->id]) }}"
+                                   class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}"
+                                   @if ($isOpen) aria-current="true" @endif>
+                                    <i class="ti {{ $icon }} {{ $iconColor }} fs-5 flex-shrink-0"></i>
+                                    <span class="flex-grow-1" style="min-width: 0;">
+                                        <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">{{ $formLabels[$req->id] }} &middot; {{ $req->name }}</span>
+                                        <span class="d-block text-secondary" style="font-size: 0.72rem;">
+                                            {{ $req->hasStructuredFields() ? $statusLabelStructured($reqStatus) : $label($reqStatus) }}
+                                        </span>
+                                    </span>
+                                    <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
+                                </a>
+                            @endforeach
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
+            {{-- Right: only the open form --}}
+            <div class="col-lg-8">
         @foreach ($stageLabels as $stageKey => $stageLabel)
             @continue ($requirementsByStage->get($stageKey, collect())->isEmpty())
+            @continue (! $requirementsByStage->get($stageKey)->contains('id', $selectedRequirementId))
 
             <div class="il-card mb-3">
                 <p class="small fw-bold text-uppercase text-secondary mb-3" style="letter-spacing: 0.03em;">
-                    {{ $stageLabel }} ({{ $requirementsByStage->get($stageKey)->count() }} required)
+                    {{ $stageLabel }}
                 </p>
 
                 <div class="row g-3">
                     @foreach ($requirementsByStage->get($stageKey) as $requirement)
+                        @continue ($requirement->id !== $selectedRequirementId)
                         @php
                             $document = $documentsByRequirement->get($requirement->id);
                             $status = $document?->status;
                             $structured = $requirement->hasStructuredFields();
                         @endphp
-                        <div class="col-md-6">
-                            <div class="border rounded p-3 h-100">
+                        <div class="col-12">
+                            <div class="p-1">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <div class="fw-semibold small">
-                                        @if ($requirement->form_number)Form {{ $requirement->form_number }} · @else Form {{ $formNumber++ }} · @endif{{ $requirement->name }}
+                                    <div class="fw-bold">
+                                        {{ $formLabels[$requirement->id] }} · {{ $requirement->name }}
                                     </div>
                                     <span class="badge rounded-pill {{ $badgeColor($status) }}">
                                         {{ $structured ? ($statusLabelStructured($status)) : $label($status) }}
@@ -670,8 +754,15 @@
                 </div>
             </div>
         @endforeach
+            </div>
+        </div>
     @endif
 @endif
+
+<style>
+    .il-form-list .list-group-item { border-left: 3px solid transparent; }
+    .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
+</style>
 
 {{-- Shared review modal - populated per-card via the data-* attributes above --}}
 <div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true">

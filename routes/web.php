@@ -112,6 +112,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
+        Route::post('/documents/remind', [DocumentReviewController::class, 'remind'])->name('documents.remind');
         Route::post('/documents/{document}/review', [DocumentReviewController::class, 'review'])->name('documents.review');
         Route::post('/documents/{document}/print', [DocumentReviewController::class, 'printForSigning'])->name('documents.print');
         Route::get('/documents/{document}/printable', [DocumentReviewController::class, 'printable'])->name('documents.printable');
