@@ -254,7 +254,7 @@ class AdviseeController extends Controller
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, [
-                'Name', 'ID Number', 'Required Hours', 'HTE Assignment',
+                'Name', 'ID Number', 'Program', 'Required Hours', 'HTE Assignment',
                 'Documents Approved', 'Documents Required', 'Deployment Status',
             ]);
 
@@ -265,6 +265,7 @@ class AdviseeController extends Controller
                 fputcsv($handle, [
                     $student->user->name,
                     $student->user->id_number,
+                    $student->program?->code ?? '',
                     $internship?->required_hours ?? $student->program->required_hours,
                     $deployment?->hte?->name ?? '',
                     $student->approved_documents_count,

@@ -145,6 +145,7 @@
         <thead>
             <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
                 <th>Student</th>
+                @if ($isCoordinator)<th>Program</th>@endif
                 <th>Required hours</th>
                 <th>HTE assignment</th>
                 <th>Doc status</th>
@@ -211,11 +212,16 @@
                 <tr>
                     <td>
                         <div class="fw-semibold">{{ $student->user->name }}</div>
-                        <div class="text-secondary" style="font-size: 0.78rem;">
-                            {{ $student->user->id_number }}
-                            @if ($isCoordinator) &middot; {{ $student->program->code ?? '' }} @endif
-                        </div>
+                        <div class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</div>
                     </td>
+                    @if ($isCoordinator)
+                        <td>
+                            <span class="badge rounded-pill {{ $canAct ? 'text-bg-primary' : 'text-bg-light text-secondary border' }}">{{ $student->program->code ?? '—' }}</span>
+                            @if ($canAct)
+                                <div class="text-secondary" style="font-size: 0.72rem;">Your program</div>
+                            @endif
+                        </td>
+                    @endif
                     <td>{!! $requiredHours ? e($requiredHours).' hrs' : '<span class="text-danger small">Not set</span>' !!}</td>
                     <td>{{ $deployment?->hte?->name ?? '—' }}</td>
                     <td>
@@ -235,7 +241,7 @@
                         @endif
                     </td>
                     <td>
-                        @if ($missing > 0)
+                        @if ($missing > 0 && $canAct)
                             <a href="{{ route('instructor.documents', ['student' => $student->id]) }}" class="small fw-semibold text-decoration-none">
                                 Review Docs
                             </a>
@@ -258,8 +264,10 @@
                             @else
                                 <div class="small text-secondary mt-1">Start deployment unlocks once all pre-OJT requirements are approved.</div>
                             @endif
-                        @elseif (! $deployment && $internship)
+                        @elseif ($canAct && ! $deployment && $internship)
                             <div class="small text-secondary mt-1">Placement is created when you accept the Application for OJT.</div>
+                        @elseif (! $canAct)
+                            <div class="small text-secondary mt-1"><i class="ti ti-eye"></i> View only &mdash; {{ $student->program->code ?? 'their' }} instructor handles this student</div>
                         @endif
                         @if ($deployment && $deployment->status === 'active')
                             <div class="mt-2 small text-secondary">Verified: {{ number_format((float) $verifiedHours, 2) }} / {{ number_format((float) $requiredHours, 2) }} hrs</div>
@@ -287,7 +295,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="text-center text-secondary py-4">
+                    <td colspan="{{ $isCoordinator ? 7 : 6 }}" class="text-center text-secondary py-4">
                         @if (request()->hasAny(['search', 'status', 'program_id']))
                             No students match this search or filter.
                         @else

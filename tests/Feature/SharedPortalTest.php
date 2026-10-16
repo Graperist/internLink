@@ -158,6 +158,13 @@ class SharedPortalTest extends TestCase
         $this->actingAs($instructor)->get(route('instructor.advisees'))->assertOk()
             ->assertDontSee('23-AC-0001')->assertSee('23-AC-0002');
 
+        // Coordinator's list has a Program column, with other programs marked view only.
+        $this->actingAs($coordinator)->get(route('instructor.advisees'))
+            ->assertSee('<th>Program</th>', false)
+            ->assertSee('Your program')
+            ->assertSee('BSHM instructor handles this student');
+        $this->actingAs($instructor)->get(route('instructor.advisees'))->assertDontSee('<th>Program</th>', false);
+
         // Coordinator can filter the campus list by program.
         $this->actingAs($coordinator)->get(route('instructor.advisees', ['program_id' => $this->bshm->id]))
             ->assertDontSee('23-AC-0001')->assertSee('23-AC-0002');
