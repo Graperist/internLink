@@ -84,9 +84,13 @@ class DocumentController extends Controller
             ->with('fieldDefinitions')
             ->get()
             // Latest stage first: post-deployment, then active (e.g. the weekly
-            // report), then pre-deployment; alphabetical within each stage.
+            // report), then pre-deployment. Within a stage the forms follow
+            // their form number (1, 2, 3, 6, 11, 12, 15, 18 - "23a" after 23);
+            // items without a number come after the numbered forms.
             ->sortBy(fn ($req) => [
                 ['post_deployment' => 1, 'active' => 2, 'pre_deployment' => 3][$req->stage] ?? 4,
+                self::formNumberSortKey($req->form_number),
+                $req->display_order ?? 0,
                 $req->name,
             ])
             ->values();
@@ -1054,6 +1058,19 @@ class DocumentController extends Controller
         return redirect()->route('student.documents')->with('status', $wasReturned
             ? 'Corrected document uploaded and resubmitted for instructor review.'
             : 'Document uploaded and submitted for review.');
+    }
+
+    /**
+     * Sorts form numbers as numbers ("2" before "11"), with a letter suffix
+     * after the number ("23a" before "23b"); no number sorts last.
+     */
+    private static function formNumberSortKey(?string $formNumber): array
+    {
+        if (! preg_match('/^(\d+)\s*([a-z]*)$/i', trim((string) $formNumber), $m)) {
+            return [PHP_INT_MAX, ''];
+        }
+
+        return [(int) $m[1], strtolower($m[2])];
     }
 
     private const ATTACHMENT_MESSAGES = [

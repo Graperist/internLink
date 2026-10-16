@@ -93,7 +93,7 @@
                 @endphp
                 <tr>
                     <td>
-                        <div class="fw-semibold">@if($requirement->form_number)<span class="text-secondary me-1">Form {{ $requirement->form_number }}</span>· @endif{{ $requirement->name }}</div>
+                        <div class="fw-semibold">@if($requirement->form_number && ! \Illuminate\Support\Str::startsWith($requirement->name, 'Form '))<span class="text-secondary me-1">Form {{ $requirement->form_number }}</span>· @endif{{ $requirement->name }}</div>
                         @if ($doc?->original_filename)
                             <div class="text-secondary" style="font-size: 0.75rem;">{{ $doc->original_filename }}</div>
                         @endif
