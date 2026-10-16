@@ -110,6 +110,8 @@
 
         .wrap { white-space:normal; overflow-wrap:anywhere; }
         @media print { .no-print{display:none;} }
+            /* Signatory names are printed in capital letters on every form. */
+        .registrar-name { text-transform: uppercase; }
     </style>
 </head>
 <body onload="window.print()">

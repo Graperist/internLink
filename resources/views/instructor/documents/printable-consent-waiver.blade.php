@@ -65,7 +65,7 @@
     $campusShortName = trim($campusShortName) ?: 'Alaminos City';
 
     $studentName = $student?->user?->name ?: $v('full_name', '');
-    $studentAddress = $v('address', $student?->current_address ?? $student?->home_address ?? '');
+    $studentAddress = \App\Support\TextCase::fixCaps($v('address', $student?->current_address ?? $student?->home_address ?? ''));
     $course = $v('course', '') ?: ($student?->program?->courseTitle() ?? $student?->program?->name ?? '');
     $major = $student?->major?->name ?: $v('major', '');
 

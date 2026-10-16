@@ -57,6 +57,8 @@
         .approved-name { display: inline-block; border-bottom: 1px solid #000; min-width: 280px; padding: 14px 6px 1px; margin-bottom: 3px; font-weight: 700; font-size: 9px; }
         .no-print { margin-bottom: 8px; }
         @media print { .no-print { display: none; } body { max-width: none; } }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-name, .registrar-sig .name, .approved-name { text-transform: uppercase; }
     </style>
 </head>
 <body onload="window.print()">

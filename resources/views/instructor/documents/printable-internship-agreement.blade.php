@@ -89,6 +89,8 @@
             .no-print { display: none; }
             body { max-width: none; }
         }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig .name, .ack-table .line { text-transform: uppercase; }
     </style>
 </head>
 <body onload="window.print()">

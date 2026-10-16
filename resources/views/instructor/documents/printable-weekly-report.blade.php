@@ -154,6 +154,8 @@
             .no-print { display: none; }
             body { max-width: none; }
         }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-line { text-transform: uppercase; }
     </style>
 </head>
 <body>

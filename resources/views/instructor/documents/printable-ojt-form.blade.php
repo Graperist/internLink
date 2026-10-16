@@ -32,6 +32,8 @@
         .entry-table th, .entry-table td { border:1px solid #777; padding:5px; vertical-align:top; }
         .entry-table th { background:#f5f5f5; }
         @media print { .no-print { display:none; } body { max-width:none; } }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-person { text-transform: uppercase; }
     </style>
 </head>
 <body @if ($autoPrint ?? true) onload="window.print()" @endif>
@@ -173,7 +175,7 @@
 <div class="signature-row">
     <div class="signature">
         @if ($requirement->audience === 'instructor' && $sig['instructor'] !== '')
-            <div class="fw-bold" style="font-weight:700;">{{ $sig['instructor'] }}</div>
+            <div class="fw-bold sig-person" style="font-weight:700;">{{ $sig['instructor'] }}</div>
         @endif
         <div class="line"></div>
         <div class="name">{{ $signatoryLabel }}</div>
@@ -181,7 +183,7 @@
     </div>
     <div class="signature">
         @if ($sig['coordinator'] !== '')
-            <div style="font-weight:700;">{{ $sig['coordinator'] }}</div>
+            <div class="sig-person" style="font-weight:700;">{{ $sig['coordinator'] }}</div>
         @endif
         <div class="line"></div>
         <div class="name">Campus Internship Coordinator</div>
