@@ -515,13 +515,14 @@ class DocumentController extends Controller
         }
 
         // Form 1's Academic Credentials table: SEM and SY come from dropdowns
-        // (checked here too). Signature and Date are signed on paper.
+        // (checked here too). The student can add rows; SIGNATURE is signed on paper.
         $extraMessages = [];
         if ($requirement->code === 'APPLICATION_FOR_OJT') {
             for ($i = 1; $i <= \App\Support\Form1Academics::ROWS; $i++) {
-                unset($rules["academic_{$i}_signature"], $rules["academic_{$i}_date"]);
+                unset($rules["academic_{$i}_signature"]);
             }
-            $rules = array_merge($rules, array_intersect_key(\App\Support\Form1Academics::rules(), $rules));
+            // Rows beyond the five on the form are the ones the student added.
+            $rules = array_merge($rules, \App\Support\Form1Academics::rules());
             $extraMessages = \App\Support\Form1Academics::messages();
         }
 
@@ -533,6 +534,9 @@ class DocumentController extends Controller
         ]);
         foreach (array_keys($attachmentKinds) as $kind) {
             unset($validated['attachment_'.$kind]);
+        }
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            $validated = \App\Support\Form1Academics::compact($validated);
         }
 
         abort_if(
@@ -567,6 +571,15 @@ class DocumentController extends Controller
                     ['document_id' => $document->id, 'field_key' => $key],
                     ['value' => $value]
                 );
+            }
+
+            // Form 1: rows the student removed (and the old typed-in
+            // signature column) are cleared so they don't reappear.
+            if ($requirement->code === 'APPLICATION_FOR_OJT') {
+                $document->fieldValues()
+                    ->where('field_key', 'like', 'academic%')
+                    ->whereNotIn('field_key', array_keys($validated))
+                    ->delete();
             }
 
             foreach (array_keys($attachmentKinds) as $kind) {

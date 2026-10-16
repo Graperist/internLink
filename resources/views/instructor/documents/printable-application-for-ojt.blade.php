@@ -70,7 +70,10 @@
     $sig = \App\Support\Signatories::for($internship);
     $cedName = $sig['ced'];
     $academicRows = [];
-    for ($i = 1; $i <= 5; $i++) {
+    // The five rows of the official form, plus any rows the student added.
+    $academicRowCount = \App\Support\Form1Academics::rowCount(fn ($key) => $v($key, ''));
+    for ($i = 1; $i <= $academicRowCount; $i++) {
+        $academicDate = $v("academic_{$i}_date", '');
         $academicRows[] = [
             // Shortened to fit the narrow SEM column of the official form.
             'sem' => str_replace(['1st Semester', '2nd Semester'], ['1st Sem', '2nd Sem'], $v("academic_{$i}_sem", '')),
@@ -80,7 +83,7 @@
             'failing' => $v("academic_{$i}_failing", ''),
             'grade' => $v("academic_{$i}_grade", ''),
             'signature' => $v("academic_{$i}_signature", ''),
-            'date' => $v("academic_{$i}_date", ''),
+            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $academicDate) ? \Carbon\Carbon::parse($academicDate)->format('m/d/Y') : $academicDate,
         ];
     }
 @endphp

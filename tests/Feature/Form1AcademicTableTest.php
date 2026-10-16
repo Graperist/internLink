@@ -96,9 +96,11 @@ class Form1AcademicTableTest extends TestCase
             ->assertSee('name="academic_1_subject"', false)
             ->getContent();
 
-        // Signature and Date are signed by hand, not typed by the student.
+        // Date is picked from a calendar; Signature is signed by hand.
+        $this->assertStringContainsString('type="date" class="form-control form-control-sm " name="academic_1_date"', $html);
         $this->assertStringNotContainsString('name="academic_1_signature"', $html);
-        $this->assertStringNotContainsString('name="academic_1_date"', $html);
+        $this->assertStringContainsString('id="addAcademicRow"', $html);
+        $this->assertSame(5, preg_match_all('/name="academic_\d+_subject"/', $html), 'starts with the five rows of the form');
         $this->assertStringNotContainsString('Row 1 – sem', $html);
     }
 
@@ -133,5 +135,59 @@ class Form1AcademicTableTest extends TestCase
             ->assertSessionHasErrors(['academic_1_sem', 'academic_1_sy']);
 
         $this->assertSame(0, Document::count());
+    }
+
+    public function test_added_rows_are_saved_numbered_and_printed(): void
+    {
+        $rows = [];
+        // Rows 1-5 plus two added rows (6 and 8), with row 7 left blank.
+        foreach ([1, 2, 3, 4, 5, 6, 8] as $n) {
+            $rows["academic_{$n}_sem"] = '1st Semester';
+            $rows["academic_{$n}_sy"] = '2025-2026';
+            $rows["academic_{$n}_subject"] = "Subject {$n}";
+        }
+        $rows['academic_8_date'] = '2026-06-15';
+
+        $this->submit($rows)->assertSessionHasNoErrors();
+
+        $document = Document::sole();
+        $this->assertSame('Subject 6', $document->fieldValue('academic_6_subject'));
+        $this->assertSame('Subject 8', $document->fieldValue('academic_7_subject'), 'the blank row is dropped');
+        $this->assertSame('2026-06-15', $document->fieldValue('academic_7_date'));
+        $this->assertNull($document->fieldValue('academic_8_subject'));
+
+        $instructor = User::where('id_number', 'ACC-INST-001')->first();
+        $this->actingAs($instructor)->get(route('instructor.documents.printable', $document))->assertOk()
+            ->assertSee('Subject 6')->assertSee('Subject 8')->assertSee('06/15/2026');
+
+        $document->update(['status' => 'returned']);
+        $html = $this->actingAs($this->student->user)->get(route('student.documents.fill', $this->form1))->getContent();
+        $this->assertStringContainsString('name="academic_7_subject"', $html);
+        $this->assertStringNotContainsString('name="academic_8_subject"', $html);
+    }
+
+    public function test_removed_rows_are_cleared(): void
+    {
+        $this->submit([
+            'academic_6_sem' => '2nd Semester', 'academic_6_sy' => '2025-2026', 'academic_6_subject' => 'Extra subject',
+        ])->assertSessionHasNoErrors();
+        $document = Document::sole();
+        // Rows 1-5 were blank, so the added row becomes row 1.
+        $this->assertSame('Extra subject', $document->fieldValue('academic_1_subject'));
+
+        $document->update(['status' => 'returned']);
+        $this->actingAs($this->student->user)->post(route('student.documents.fill.store', $this->form1), ['surname' => 'RO'])
+            ->assertSessionHasNoErrors();
+
+        $document->refresh()->load('fieldValues');
+        $this->assertNull($document->fieldValue('academic_1_subject'));
+        $this->assertSame(0, $document->fieldValues()->where('field_key', 'like', 'academic%')->whereNotNull('value')->count());
+        $this->assertSame(0, $document->fieldValues()->where('field_key', 'like', 'academic_6%')->count());
+    }
+
+    public function test_an_invalid_date_is_rejected(): void
+    {
+        $this->submit(['academic_1_sem' => '1st Semester', 'academic_1_sy' => '2026-2027', 'academic_1_subject' => 'IT 401', 'academic_1_date' => 'not-a-date'])
+            ->assertSessionHasErrors('academic_1_date');
     }
 }

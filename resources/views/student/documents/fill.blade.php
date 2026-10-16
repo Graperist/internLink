@@ -10,7 +10,7 @@
     </a>
 </div>
 
-<div class="il-card" style="max-width: 640px;">
+<div class="il-card" style="max-width: {{ $requirement->code === 'APPLICATION_FOR_OJT' ? '920px' : '640px' }};">
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
