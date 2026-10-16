@@ -530,7 +530,7 @@ class SharedPortalTest extends TestCase
         $this->actingAs($instructor)->get(route('instructor.documents.show', $doc))->assertOk()
             ->assertSee('Remarks for the student')
             ->assertSee('Return to student')
-            ->assertSee('print for signing')        // Form 1 is a print-and-sign form
+            ->assertSee('approve for printing')     // Form 1 is a print-and-sign form
             ->assertSee("student 23-AC-0001's forms", false);
 
         // Student page also offers the inline return box and the full view.

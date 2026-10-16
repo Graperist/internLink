@@ -35,8 +35,8 @@
     ];
     $statusColor = fn ($label) => match ($label) {
         'Approved', 'Submitted', 'For Review', 'Sent to HTE' => 'text-bg-primary',
-        'Printed - Out for Signing' => 'text-bg-info',
-        'Signed Copy Upload Unlocked' => 'text-bg-success',
+        'Ready to Print' => 'text-bg-info',
+        'Signed Copy Uploaded' => 'text-bg-primary',
         'Returned' => 'text-bg-danger',
         default => 'text-bg-warning',
     };
@@ -53,8 +53,8 @@
                 'draft' => $doc->entries->count().' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
                 'submitted', 'for_review' => 'For Review',
                 'returned' => 'Returned',
-                'printed' => 'Printed - Out for Signing',
-                'completed' => 'Signed Copy Upload Unlocked',
+                'printed' => 'Ready to Print',
+                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Ready to Print', // no file yet: an older form still waiting for its upload
                 'approved' => 'Approved',
                 default => 'Not started',
             };
@@ -64,8 +64,8 @@
             $label = $sentToHte ? 'Sent to HTE' : match ($doc?->status) {
                 'submitted', 'for_review' => 'For Review',
                 'returned' => 'Returned',
-                'printed' => 'Printed - Out for Signing',
-                'completed' => 'Signed Copy Upload Unlocked',
+                'printed' => 'Ready to Print',
+                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Ready to Print', // no file yet: an older form still waiting for its upload
                 'approved' => 'Approved',
                 default => 'Not submitted',
             };
@@ -82,7 +82,8 @@
         [$icon, $iconColor] = match (true) {
             $sentToHte, $doc?->status === 'approved' => ['ti-circle-check-filled', 'text-success'],
             $doc?->status === 'returned' => ['ti-arrow-back-up', 'text-danger'],
-            $doc?->status === 'completed' => ['ti-upload', 'text-primary'],
+            $doc?->status === 'completed' && filled($doc->file_path) => ['ti-clock', 'text-warning'],
+            $doc?->status === 'completed' => ['ti-printer', 'text-primary'],
             $doc?->status === 'printed' => ['ti-printer', 'text-primary'],
             in_array($doc?->status, ['submitted', 'for_review'], true) => ['ti-clock', 'text-warning'],
             $doc?->status === 'draft' => ['ti-pencil', 'text-primary'],
@@ -148,8 +149,9 @@
                 $rowInfo['sentToHte'] => 'Delivered to your HTE\'s Evaluations Received. Nothing else to do on this form.',
                 $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',
                 $doc?->status === 'returned' => 'Your instructor returned this form. Correct it and submit again.',
-                $doc?->status === 'completed' => 'The signed paper copy is back. Upload a scan of it to finish this form (one upload only).',
-                $doc?->status === 'printed' => 'Your instructor printed this form for signing. Get it signed; the upload of the signed copy opens once it is back.',
+                $doc?->status === 'completed' && $hasFile => 'Signed copy uploaded. Waiting for your instructor to approve it.',
+                $doc?->status === 'completed' => 'Print this form, have it signed by the signatories, then upload a scan of the signed copy.',
+                $doc?->status === 'printed' => 'Approved for printing. Print this form, have it signed by the signatories, then upload a scan of the signed copy.',
                 in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
                 $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
                 $repeating => 'Start your log for this form.',
@@ -178,23 +180,30 @@
             {{-- What the student can do now --}}
             <div class="d-flex flex-wrap gap-2">
                 @if ($repeating)
-                    @if ($doc?->status === 'completed')
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
+                    @if ($requirement->code === 'WEEKLY_REPORT')
+                        {{-- Form 19 is printed and uploaded packet by packet on its log page --}}
+                        <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
+                    @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
+                        <a href="{{ route('student.documents.printable', $doc) }}" target="_blank" class="btn btn-primary"><i class="ti ti-printer"></i> Print Form</a>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
                             data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
                             <i class="ti ti-upload"></i> Upload Signed Copy
                         </button>
-                    @elseif (! in_array($doc?->status, ['approved', 'printed'], true))
+                    @elseif (! in_array($doc?->status, ['approved', 'completed'], true))
                         <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
                     @endif
                 @elseif ($structured)
                     @if ($rowInfo['sentToHte'])
                         {{-- nothing to do --}}
-                    @elseif ($doc?->status === 'completed')
-                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
+                    @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
+                        <a href="{{ route('student.documents.printable', $doc) }}" target="_blank" class="btn btn-primary"><i class="ti ti-printer"></i> Print Form</a>
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
                             data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
                             <i class="ti ti-upload"></i> Upload Signed Copy
                         </button>
-                    @elseif (! in_array($doc?->status, ['approved', 'printed'], true))
+                    @elseif (in_array($doc?->status, ['completed', 'approved'], true))
+                        <a href="{{ route('student.documents.printable', $doc) }}" target="_blank" class="btn btn-outline-secondary"><i class="ti ti-printer"></i> Print again</a>
+                    @else
                         <a href="{{ route('student.documents.fill', $requirement) }}" class="btn btn-primary">
                             <i class="ti ti-pencil"></i> {{ $doc ? 'Edit Form' : 'Fill Form' }}
                         </a>
@@ -222,7 +231,7 @@
                         <dd class="col-7">{{ ucfirst(str_replace('_', ' ', $requirement->stage)) }}</dd>
                         @if ($requirement->workflow_mode === 'print_sign')
                             <dt class="col-5 fw-normal text-secondary">Process</dt>
-                            <dd class="col-7 mb-0">Fill online &rarr; reviewed &rarr; printed &amp; signed &rarr; upload the signed copy</dd>
+                            <dd class="col-7 mb-0">Fill online &rarr; instructor checks it &rarr; you print it &amp; have it signed &rarr; upload the signed copy &rarr; approved</dd>
                         @endif
                     </dl>
                 </div>
@@ -319,7 +328,8 @@
                 </div>
                 <div class="modal-body">
                     <p class="small text-secondary">
-                        Upload a scan of the physically signed copy. This can only be done once for this form.
+                        Upload a scan or photo of the printed form after all the signatories have signed it.
+                        Your instructor checks it and approves it.
                     </p>
                     <label class="form-label small fw-semibold">File (PDF, JPG, PNG — max 10MB)</label>
                     <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>

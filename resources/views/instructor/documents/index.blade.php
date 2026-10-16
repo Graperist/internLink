@@ -196,8 +196,8 @@
             $statusLabelStructured = fn ($status) => match ($status) {
                 'submitted', 'for_review' => 'Filled Online - For Review',
                 'returned' => 'Returned',
-                'printed' => 'Printed - Out for Signing',
-                'completed' => 'Signed Copy Upload Unlocked',
+                'printed' => 'Approved for Printing - With Student',
+                'completed' => 'Signed Copy Uploaded - For Approval',
                 'approved' => 'Approved',
                 default => 'Not Yet Filled',
             };
@@ -217,7 +217,7 @@
             $allRequirements = $requirementsByStage->flatten(1);
             $selectedRequirementId = (int) request('form');
             if (! $allRequirements->contains('id', $selectedRequirementId)) {
-                $waiting = $allRequirements->first(fn ($r) => in_array($documentsByRequirement->get($r->id)?->status, ['submitted', 'for_review', 'printed'], true));
+                $waiting = $allRequirements->first(fn ($r) => in_array($documentsByRequirement->get($r->id)?->status, ['submitted', 'for_review', 'completed'], true));
                 $selectedRequirementId = ($waiting ?? $allRequirements->first())?->id;
             }
 
@@ -225,7 +225,7 @@
                 'approved' => ['ti-circle-check-filled', 'text-success'],
                 'submitted', 'for_review' => ['ti-alert-circle-filled', 'text-warning'],
                 'printed' => ['ti-printer', 'text-primary'],
-                'completed' => ['ti-upload', 'text-primary'],
+                'completed' => ['ti-alert-circle-filled', 'text-warning'],
                 'returned' => ['ti-arrow-back-up', 'text-danger'],
                 default => ['ti-circle', 'text-secondary'],
             };
@@ -322,12 +322,16 @@
                                     <div class="d-flex gap-2 flex-wrap mt-2">
                                         @if (in_array($packetStatus, ['submitted', 'for_review']))
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Print for signing</button></form>@endif
+                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve for printing</button></form>@endif
                                         @elseif ($packetStatus === 'printed')
-                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Confirm signed paper returned</button></form>@endif
+                                            <span class="text-secondary small">With the student for printing and signatures.</span>
                                         @elseif ($packetStatus === 'completed')
-                                            <span class="text-secondary small">Awaiting student's one-time signed-copy upload.</span>
+                                            @if ($packet->file_path)
+                                                <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View signed copy</a>
+                                                @if ($canAct)<form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve signed copy</button></form>@endif
+                                            @else
+                                                <span class="text-secondary small">Waiting for the student's signed-copy upload.</span>
+                                            @endif
                                         @elseif ($packetStatus === 'approved')
                                             <span class="text-success small">Signed copy received.</span>
                                         @elseif ($packetStatus === 'returned')
@@ -631,7 +635,7 @@
                                                         data-bs-target="#printModal"
                                                         data-document-id="{{ $document->id }}"
                                                     >
-                                                        Print for Signing
+                                                        Approve for Printing
                                                     </button>
                                                     @endif
                                                 @else
@@ -662,19 +666,26 @@
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                     View Printable
                                                 </a>
-                                                @if ($canAct)
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#completeModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                >
-                                                    Approve
-                                                </button>
-                                                @endif
+                                                <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures.</span>
                                             @elseif ($status === 'completed')
-                                                <span class="text-secondary" style="font-size: 0.78rem;">Awaiting student's signed-copy upload.</span>
+                                                @if ($document->file_path)
+                                                    <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                        <i class="ti ti-file-check"></i> View signed copy
+                                                    </a>
+                                                    @if ($canAct)
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-primary"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#completeModal"
+                                                        data-document-id="{{ $document->id }}"
+                                                    >
+                                                        Approve signed copy
+                                                    </button>
+                                                    @endif
+                                                @else
+                                                    <span class="text-secondary" style="font-size: 0.78rem;">Waiting for the student's signed-copy upload.</span>
+                                                @endif
                                             @elseif ($status === 'approved')
                                                 <a href="{{ route('instructor.documents.download', $document) }}" class="btn btn-sm btn-outline-secondary">
                                                     <i class="ti ti-download"></i> Signed copy
@@ -753,7 +764,7 @@
             $openRequirement = $allRequirements->firstWhere('id', $selectedRequirementId);
             $openDocument = $openRequirement && $openRequirement->code !== 'WEEKLY_REPORT'
                 ? $documentsByRequirement->get($selectedRequirementId) : null;
-            $openReturnable = $openDocument && in_array($openDocument->status, ['submitted', 'for_review', 'printed'], true);
+            $openReturnable = $openDocument && in_array($openDocument->status, ['submitted', 'for_review', 'printed', 'completed'], true);
         @endphp
         @if ($openDocument)
             <div class="il-card">
@@ -848,38 +859,38 @@
             <form method="POST" id="printForm" action="">
                 @csrf
                 <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Print for signing</h2>
+                    <h2 class="modal-title h6 fw-bold">Approve for printing</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-secondary mb-0">
-                        This confirms the entered data looks correct and marks the form as printed and out for
-                        physical signature routing. The student can no longer edit it after this point.
+                        This confirms the entered data looks correct. The student is told to print the form,
+                        have it signed by the signatories and upload the signed copy. They can no longer edit it after this point.
                     </p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Confirm and print</button>
+                    <button type="submit" class="btn btn-primary">Approve for printing</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-{{-- Approve modal (structured forms) - unlocks the student's signed-copy upload --}}
+{{-- Approve modal (structured forms) - approves the signed copy the student uploaded --}}
 <div class="modal fade" id="completeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" id="completeForm" action="">
                 @csrf
                 <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Approve document</h2>
+                    <h2 class="modal-title h6 fw-bold">Approve signed copy</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-secondary mb-0">
-                        Confirm the signed physical copies have been returned to you and everything checks out.
-                        This unlocks the student's one-time upload of the scanned, signed document.
+                        Confirm the uploaded copy is complete and signed by all the signatories.
+                        This approves the form. To ask for a new copy, return it with remarks instead.
                     </p>
                 </div>
                 <div class="modal-footer">

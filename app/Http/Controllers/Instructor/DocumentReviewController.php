@@ -265,8 +265,8 @@ class DocumentReviewController extends Controller
                 'student' => $student,
                 'required' => $applicable->count(),
                 'approved' => $byStatus(['approved']),
-                'to_review' => $byStatus(['submitted', 'for_review']),
-                'signing' => $byStatus(['printed', 'completed']),
+                'to_review' => $byStatus(['submitted', 'for_review', 'completed']),
+                'signing' => $byStatus(['printed']),
                 'returned' => $byStatus(['returned']),
                 'missing' => max($applicable->count() - $docs->pluck('document_requirement_id')->unique()->count(), 0),
                 'last_submitted' => $docs->max('submitted_at'),
@@ -417,9 +417,12 @@ class DocumentReviewController extends Controller
         // A form can be returned while waiting for review, and also while it
         // is out for signing (printed) if the instructor spots an error
         // before the signed copy comes back. Approving still needs review status.
-        $returnable = ['submitted', 'for_review', 'printed'];
+        $returnable = ['submitted', 'for_review', 'printed', 'completed'];
+        // Students print their own forms: a form approved for printing
+        // (printed) or whose signed copy was uploaded (completed) can still
+        // be returned. The signed copy itself is approved with "complete".
         abort_unless(in_array($document->status, $returnable, true), 422, 'This document is not awaiting review.');
-        abort_if($document->status === 'printed' && $request->input('decision') !== 'returned', 422, 'A form out for signing can only be returned.');
+        abort_if(in_array($document->status, ['printed', 'completed'], true) && $request->input('decision') !== 'returned', 422, 'A form in the signing step can only be returned here.');
 
 
 
@@ -470,6 +473,14 @@ class DocumentReviewController extends Controller
         ]);
 
 
+
+        // Returning a signed copy clears it, so the student can correct the
+        // form, print it again and upload the new signed copy.
+        if ($validated['decision'] === 'returned' && $document->requirement->workflow_mode === 'print_sign' && $document->file_path) {
+            $oldFile = $document->file_path;
+            $document->update(['file_path' => null, 'original_filename' => null, 'completed_at' => null]);
+            Storage::delete($oldFile);
+        }
 
         $document->update(['status' => $validated['decision']]);
 
@@ -557,11 +568,12 @@ class DocumentReviewController extends Controller
 
 
 
+        $this->notifyStudent($document, "{$document->requirement->name} approved for printing",
+            "Your {$document->requirement->name} looks good. Print it from My Documents, have it signed by the signatories, then upload the signed copy.", true);
+
         return redirect()
-
             ->to($this->backUrl($document))
-
-            ->with('status', trim('Marked as printed - out for signing. '.($placement ?? '')));
+            ->with('status', trim('Approved for printing - the student will print it, have it signed and upload the signed copy. '.($placement ?? '')));
 
     }
 
@@ -595,50 +607,7 @@ class DocumentReviewController extends Controller
 
         // still falls back to the generic label/value printable view below.
 
-        $dedicatedViews = [
-
-            'APPLICATION_FOR_OJT' => 'instructor.documents.printable-application-for-ojt',
-
-            'CERTIFICATE_OF_UNITS_EARNED' => 'instructor.documents.printable-certificate-units-earned',
-
-            'ENDORSEMENT_LETTER' => 'instructor.documents.printable-endorsement-letter',
-
-
-
-            'PARENT_CONSENT' => 'instructor.documents.printable-consent-waiver',
-
-            'OJT_RESUME' => 'instructor.documents.printable-ojt-resume',
-
-            'INTERNSHIP_AGREEMENT' => 'instructor.documents.printable-internship-agreement',
-
-            'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE' => 'instructor.documents.printable-internship-academic-practicum',
-
-            'DAILY_JOURNAL' => 'instructor.documents.printable-daily-journal',
-
-            'WEEKLY_REPORT' => 'instructor.documents.printable-weekly-report',
-            'INTERNSHIP_TIME_FRAME' => 'instructor.documents.printable-internship-time-frame',
-
-            'STUDENT_FEEDBACK_FORM' => 'instructor.documents.printable-student-feedback',
-
-            'STUDENT_HTE_EVALUATION' => 'instructor.documents.printable-student-hte-evaluation',
-
-            'INTERNSHIP_RELEASE_FORM' => 'instructor.documents.printable-internship-release-form',
-
-            'TRAINING_LIABILITY' => 'instructor.documents.printable-training-agreement',
-
-            'EVALUATION_FORM' => 'instructor.documents.printable-form13',
-
-            'TRAINING_SUPERVISOR_FEEDBACK' => 'instructor.documents.printable-training-supervisor-feedback',
-
-            'PARTNER_AGENCY_EVAL_SELF' => 'instructor.documents.printable-partner-agency-eval-self',
-
-            'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
-
-        ];
-
-
-
-        $view = $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
+        $view = self::printableView($document);
 
 
 
@@ -671,40 +640,60 @@ class DocumentReviewController extends Controller
 
      */
 
-    public function markCompleted(Document $document): RedirectResponse
-
+    /** The official printable template of a form (also used for the student's Print). */
+    public static function printableView(Document $document): string
     {
-
-        $instructor = auth()->user()->instructor;
-
-        $this->authorizeInstructor($document, $instructor);
-
-        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
-
-        abort_unless($document->status === 'printed', 422, 'Only a form that has been printed for signing can be unlocked for signed-copy upload.');
-        abort_if($document->file_path, 422, 'A signed copy has already been uploaded for this form.');
-
-        // This completes the physical-signature handoff only. It does NOT
-        // complete the student's internship/deployment.
-        $document->update(['status' => 'completed', 'completed_at' => now()]);
-
-
-
-        $this->notifyStudent($document, "{$document->requirement->name} ready for upload",
-
-            "Your signed {$document->requirement->name} is ready - upload the scanned copy from My Documents.", true);
-
-
-
-        return redirect()
-
-            ->to($this->backUrl($document))
-
-            ->with('status', 'Signed-copy upload unlocked for the student. Internship completion is unchanged.');
-
+        $dedicatedViews = [
+            'APPLICATION_FOR_OJT' => 'instructor.documents.printable-application-for-ojt',
+            'CERTIFICATE_OF_UNITS_EARNED' => 'instructor.documents.printable-certificate-units-earned',
+            'ENDORSEMENT_LETTER' => 'instructor.documents.printable-endorsement-letter',
+            'PARENT_CONSENT' => 'instructor.documents.printable-consent-waiver',
+            'OJT_RESUME' => 'instructor.documents.printable-ojt-resume',
+            'INTERNSHIP_AGREEMENT' => 'instructor.documents.printable-internship-agreement',
+            'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE' => 'instructor.documents.printable-internship-academic-practicum',
+            'DAILY_JOURNAL' => 'instructor.documents.printable-daily-journal',
+            'WEEKLY_REPORT' => 'instructor.documents.printable-weekly-report',
+            'INTERNSHIP_TIME_FRAME' => 'instructor.documents.printable-internship-time-frame',
+            'STUDENT_FEEDBACK_FORM' => 'instructor.documents.printable-student-feedback',
+            'STUDENT_HTE_EVALUATION' => 'instructor.documents.printable-student-hte-evaluation',
+            'INTERNSHIP_RELEASE_FORM' => 'instructor.documents.printable-internship-release-form',
+            'TRAINING_LIABILITY' => 'instructor.documents.printable-training-agreement',
+            'EVALUATION_FORM' => 'instructor.documents.printable-form13',
+            'TRAINING_SUPERVISOR_FEEDBACK' => 'instructor.documents.printable-training-supervisor-feedback',
+            'PARTNER_AGENCY_EVAL_SELF' => 'instructor.documents.printable-partner-agency-eval-self',
+            'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
+        ];
+                return $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
     }
 
+    public function markCompleted(Document $document): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeInstructor($document, $instructor);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
+        abort_unless($document->status === 'completed' && $document->file_path, 422, 'Waiting for the student to upload the signed copy.');
 
+        // Final step of print-and-sign: the student printed the form, had it
+        // signed and uploaded the scan; the instructor approves that copy.
+        // This does NOT complete the student's internship/deployment.
+        DocumentReview::create([
+            'document_id' => $document->id,
+            'instructor_id' => $instructor->id,
+            'decision' => 'approved',
+            'remarks' => null,
+            'reviewed_at' => now(),
+        ]);
+        $document->update(['status' => 'approved']);
+
+        \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->internship);
+
+        $this->notifyStudent($document, "{$document->requirement->name} approved",
+            "Your signed {$document->requirement->name} has been approved by your subject instructor.");
+
+        return redirect()
+            ->to($this->backUrl($document))
+            ->with('status', 'Signed copy approved. Internship completion is unchanged.');
+    }
 
     public function download(Document $document): StreamedResponse
 

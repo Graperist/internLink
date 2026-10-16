@@ -12,9 +12,9 @@
         $packetStatus = fn ($packet) => $packet?->status ?? 'draft';
         $statusText = fn ($status) => match ($status) {
             'submitted', 'for_review' => 'Awaiting instructor review',
-            'printed' => 'Printed — awaiting physical signatures',
-            'completed' => 'Signed-copy upload unlocked',
-            'approved' => 'Signed copy received',
+            'printed' => 'Approved — print it and have it signed',
+            'completed' => 'Signed copy uploaded — waiting for approval',
+            'approved' => 'Approved',
             'returned' => 'Returned for correction',
             default => 'Draft — editable',
         };
@@ -23,7 +23,7 @@
     <div class="il-page-header">
         <div>
             <h1 class="il-page-title">Form 19 – Practicum/Internship Weekly Report</h1>
-            <p class="text-secondary mb-0">Add daily entries. Four consecutive weeks are grouped into one Form 19 packet with its own review, physical-signing confirmation, and one-time signed-copy upload.</p>
+            <p class="text-secondary mb-0">Add daily entries. Four consecutive weeks are grouped into one Form 19 packet. Each packet is checked by your instructor, then you print it, have it signed and upload the signed copy.</p>
         </div>
         <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">
             <i class="ti ti-arrow-left"></i> Back to My Documents
@@ -64,14 +64,17 @@
                                 @csrf
                                 <button type="submit" class="btn btn-sm btn-primary">Submit packet for review</button>
                             </form>
-                        @elseif ($packet->status === 'completed')
+                        @elseif ($packet->status === 'printed' || ($packet->status === 'completed' && ! $packet->file_path))
+                            <a href="{{ route('student.documents.printable', $packet) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-printer"></i> Print packet</a>
                             <form method="POST" action="{{ route('student.documents.upload-signed', $packet) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
                                 @csrf
                                 <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">
                                 <button type="submit" class="btn btn-sm btn-primary">Upload signed copy</button>
                             </form>
+                        @elseif ($packet->status === 'completed')
+                            <span class="badge text-bg-warning">Waiting for approval</span>
                         @elseif ($packet->status === 'approved')
-                            <span class="badge text-bg-success">Upload locked</span>
+                            <span class="badge text-bg-success">Approved</span>
                         @endif
                     </div>
                 </div>

@@ -120,7 +120,7 @@
                                 @elseif ($row->returned > 0)
                                     <span class="text-danger small"><i class="ti ti-arrow-back-up"></i> {{ $row->returned }} returned</span>
                                 @elseif ($row->signing > 0)
-                                    <span class="text-secondary small"><i class="ti ti-signature"></i> {{ $row->signing }} out for signing</span>
+                                    <span class="text-secondary small"><i class="ti ti-printer"></i> {{ $row->signing }} with student to print &amp; sign</span>
                                 @else
                                     <span class="text-secondary small"><i class="ti ti-clock"></i> Waiting on student</span>
                                 @endif

@@ -119,7 +119,7 @@ class DocumentController extends Controller
         $selectedId = (int) request('form');
         if (! $checklist->contains(fn ($row) => $row['requirement']->id === $selectedId)) {
             $needsStudent = $checklist->first(fn ($row) => ! $row['document']
-                || in_array($row['document']->status, ['returned', 'completed', 'draft'], true));
+                || in_array($row['document']->status, ['returned', 'printed', 'draft'], true));
             $selectedId = ($needsStudent ?? $checklist->first())['requirement']->id ?? null;
         }
 
@@ -963,13 +963,17 @@ class DocumentController extends Controller
                 // Lock and re-check inside the transaction so duplicate requests
                 // cannot replace a signed copy after the first upload succeeds.
                 $locked = Document::query()->lockForUpdate()->findOrFail($document->id);
-                abort_unless($locked->status === 'completed', 403, 'Your instructor must confirm that the signed physical form has returned before upload.');
-                abort_if($locked->file_path !== null, 422, 'A signed copy has already been uploaded. Contact your instructor if a correction is needed.');
+                // The student prints the form once the instructor approved it
+                // for printing, has it signed, and uploads the scan here. The
+                // instructor then approves (or returns) the signed copy.
+                abort_unless(in_array($locked->status, ['printed', 'completed'], true), 403, 'Your instructor has to approve this form for printing first.');
+                abort_if($locked->file_path !== null, 422, 'A signed copy has already been uploaded and is waiting for your instructor.');
 
                 $locked->update([
                     'file_path' => $path,
                     'original_filename' => $file->getClientOriginalName(),
-                    'status' => 'approved',
+                    'status' => 'completed',
+                    'completed_at' => now(),
                 ]);
             });
         } catch (\Throwable $exception) {
@@ -977,9 +981,20 @@ class DocumentController extends Controller
             throw $exception;
         }
 
-        \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->fresh()->internship);
+        $document->refresh();
+        \App\Models\Instructor::where('campus_id', $document->internship->campus_id)
+            ->where('program_id', $document->internship->program_id)
+            ->get()
+            ->each(fn ($instructor) => \App\Models\Notification::create([
+                'user_id' => $instructor->user_id,
+                'type' => 'document_status',
+                'title' => "{$student->user->name} uploaded the signed {$document->requirement->name}",
+                'message' => 'Check the signed copy and approve it.',
+                'url' => route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id], false),
+                'resolve_key' => 'document:'.$document->id,
+            ]));
 
-        return redirect()->route('student.documents')->with('status', 'Signed copy uploaded and locked. This does not complete your internship.');
+        return back()->with('status', 'Signed copy uploaded. Your instructor will check and approve it.');
     }
 
     /**
@@ -1153,6 +1168,24 @@ class DocumentController extends Controller
         abort_unless(Storage::exists($attachment->file_path), 404);
 
         return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
+    }
+
+    /**
+     * The student prints their own form once the instructor approved it for
+     * printing, to bring it to the signatories. Same official template the
+     * instructor sees.
+     */
+    public function printable(Document $document)
+    {
+        $student = auth()->user()->student;
+        abort_unless($student && $document->internship->student_id === $student->id, 403);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 404);
+        abort_unless(in_array($document->status, ['printed', 'completed', 'approved'], true), 403,
+            'Your instructor has to approve this form for printing first.');
+
+        $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user');
+
+        return view(\App\Http\Controllers\Instructor\DocumentReviewController::printableView($document), compact('document'));
     }
 
     /** The student opens their own uploaded file in the browser. */

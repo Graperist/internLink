@@ -12,26 +12,27 @@
     $isImageOrPdf = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($document->original_filename ?: $document->file_path));
 
     // What the left pane shows: the filled-in form, or the uploaded file.
-    $frameUrl = $structured && ! ($status === 'approved' && $hasFile)
+    $frameUrl = $structured && ! (in_array($status, ['completed', 'approved'], true) && $hasFile)
         ? route('instructor.documents.printable', ['document' => $document, 'embed' => 1])
         : ($hasFile && $isImageOrPdf ? route('instructor.documents.view', $document) : null);
 
     $statusText = match ($status) {
         'submitted', 'for_review' => 'Turned in - for review',
         'returned' => 'Returned to student',
-        'printed' => 'Printed - out for signing',
-        'completed' => 'Signed copy upload unlocked',
+        'printed' => 'Approved for printing - with student',
+        'completed' => $hasFile ? 'Signed copy uploaded - for approval' : 'Waiting for signed copy',
         'approved' => 'Approved',
         default => ucfirst((string) $status),
     };
     $statusClass = match ($status) {
         'submitted', 'for_review' => 'text-bg-warning',
+        'completed' => $hasFile ? 'text-bg-warning' : 'text-bg-light border',
         'returned' => 'text-bg-danger',
         'approved' => 'text-bg-success',
         default => 'text-bg-light border',
     };
     $awaiting = in_array($status, ['submitted', 'for_review'], true);
-    $canReturn = $canAct && in_array($status, ['submitted', 'for_review', 'printed'], true);
+    $canReturn = $canAct && in_array($status, ['submitted', 'for_review', 'printed', 'completed'], true);
     $backToStudent = route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id]);
 @endphp
 
@@ -167,7 +168,7 @@
                     <form method="POST" action="{{ route('instructor.documents.print', $document) }}">
                         @csrf
                         <input type="hidden" name="return_to" value="viewer">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-printer"></i> Looks good &mdash; print for signing</button>
+                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-printer"></i> Looks good &mdash; approve for printing</button>
                     </form>
                 @elseif ($awaiting)
                     <form method="POST" action="{{ route('instructor.documents.review', $document) }}">
@@ -177,18 +178,21 @@
                         <button type="submit" class="btn btn-primary w-100"><i class="ti ti-circle-check"></i> Approve</button>
                     </form>
                 @elseif ($status === 'printed')
+                    <p class="small text-secondary mb-0">With the student: they print the form, have it signed and upload the signed copy.</p>
+                @elseif ($status === 'completed' && $hasFile)
                     <form method="POST" action="{{ route('instructor.documents.complete', $document) }}">
                         @csrf
                         <input type="hidden" name="return_to" value="viewer">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-circle-check"></i> Signed paper is back &mdash; approve</button>
+                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-circle-check"></i> Signed copy checks out &mdash; approve</button>
                     </form>
-                    <p class="small text-secondary mt-2 mb-0">This unlocks the student's one-time upload of the signed copy.</p>
+                    <p class="small text-secondary mt-2 mb-0">Returning it clears the uploaded copy so the student can upload a new one.</p>
                 @endif
             @else
                 <p class="small text-secondary mb-0">
                     @switch($status)
                         @case('returned') Returned &mdash; waiting for the student's corrected resubmission. @break
-                        @case('completed') Waiting for the student's one-time upload of the signed copy. @break
+                        @case('completed') Waiting for the student's signed-copy upload. @break
+                        @case('printed') With the student for printing and signatures. @break
                         @case('approved') Approved. Nothing left to do on this form. @break
                         @default Nothing to review on this form right now.
                     @endswitch
