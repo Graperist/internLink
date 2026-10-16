@@ -90,10 +90,16 @@ class StudentPrintsFormsTest extends TestCase
         // 2. The student sees Print Form + Upload Signed Copy and can print it.
         $this->actingAs($this->student->user)->get(route('student.documents', ['form' => $this->form->id]))->assertOk()
             ->assertSee('Ready to Print')
-            ->assertSee(route('student.documents.printable', $this->document), false)
+            ->assertSee('Download Form')
+            ->assertSee(route('student.documents.printable', ['document' => $this->document, 'download' => 1]), false)
             ->assertSee('Upload Signed Copy');
         $this->actingAs($this->student->user)->get(route('student.documents.printable', $this->document))->assertOk()
             ->assertSee('Sual, Pangasinan');
+        // Download: the same page saved as a PDF in the browser, no print dialog.
+        $this->actingAs($this->student->user)->get(route('student.documents.printable', ['document' => $this->document, 'download' => 1]))->assertOk()
+            ->assertSee('vendor/html2pdf/html2pdf.bundle.min.js', false)
+            ->assertSee('Internship Resume - Jasmine.pdf', false)
+            ->assertDontSee('onload="window.print()"', false);
 
         // 3. The student uploads the signed copy; it waits for the instructor.
         $this->upload()->assertRedirect();

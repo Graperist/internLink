@@ -12,7 +12,7 @@
         $packetStatus = fn ($packet) => $packet?->status ?? 'draft';
         $statusText = fn ($status) => match ($status) {
             'submitted', 'for_review' => 'Awaiting instructor review',
-            'printed' => 'Approved — print it and have it signed',
+            'printed' => 'Approved — download, print and have it signed',
             'completed' => 'Signed copy uploaded — waiting for approval',
             'approved' => 'Approved',
             'returned' => 'Returned for correction',
@@ -65,7 +65,7 @@
                                 <button type="submit" class="btn btn-sm btn-primary">Submit packet for review</button>
                             </form>
                         @elseif ($packet->status === 'printed' || ($packet->status === 'completed' && ! $packet->file_path))
-                            <a href="{{ route('student.documents.printable', $packet) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-printer"></i> Print packet</a>
+                            <a href="{{ route('student.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-download"></i> Download packet</a>
                             <form method="POST" action="{{ route('student.documents.upload-signed', $packet) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
                                 @csrf
                                 <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">

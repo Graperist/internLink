@@ -1254,8 +1254,26 @@ class DocumentController extends Controller
             'Your instructor has to approve this form for printing first.');
 
         $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user');
+        $view = \App\Http\Controllers\Instructor\DocumentReviewController::printableView($document);
 
-        return view(\App\Http\Controllers\Instructor\DocumentReviewController::printableView($document), compact('document'));
+        if (! request()->boolean('download')) {
+            return view($view, compact('document'));
+        }
+
+        // Download: the same official page, saved as a PDF in the browser
+        // (so it looks exactly like the printout) instead of the print dialog.
+        $html = view($view, ['document' => $document, 'autoPrint' => false])->render();
+        $html = str_replace('<body onload="window.print()">', '<body>', $html);
+        $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
+
+        $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
+            .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+            .' - '.$student->user->name));
+
+        $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
+        $html = str_ireplace('</body>', $script.'</body>', $html);
+
+        return response($html);
     }
 
     /** The student opens their own uploaded file in the browser. */
