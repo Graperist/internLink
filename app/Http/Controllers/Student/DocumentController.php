@@ -497,6 +497,23 @@ class DocumentController extends Controller
                 ->with('status', 'Consent and Waiver submitted for instructor review.');
         }
 
+        // Form 15: the student picks the partner agency (hte_id); its name
+        // and address are taken from the HTE record, like Form 12, so they
+        // cannot be altered and always match the Partner Agencies list.
+        if ($requirement->code === 'INTERNSHIP_RELEASE_FORM') {
+            $picked = $request->validate([
+                'hte_id' => ['required', 'integer', Rule::exists('htes', 'id')->where(fn ($q) => $q->where('campus_id', $student->campus_id))],
+            ], [
+                'hte_id.required' => 'Select your cooperating company/agency/firm.',
+                'hte_id.exists' => 'Please select a valid partner agency.',
+            ]);
+            $hte = Hte::find($picked['hte_id']);
+            $request->merge([
+                'company_name' => $hte->name,
+                'company_address' => filled($hte->address) ? $hte->address : $request->input('company_address'),
+            ]);
+        }
+
         $rules = [];
         foreach ($requirement->fieldDefinitions as $field) {
             // These legacy Endorsement Letter fields are no longer part of
