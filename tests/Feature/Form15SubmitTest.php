@@ -93,4 +93,25 @@ class Form15SubmitTest extends TestCase
             ->assertSessionHasErrors('hte_id');
         $this->assertSame(0, Document::count());
     }
+
+    public function test_form18_submits_with_the_chosen_partner_agency(): void
+    {
+        $form18 = DocumentRequirement::forceCreate([
+            'campus_id' => $this->form15->campus_id, 'code' => 'TRAINING_LIABILITY', 'name' => 'Form 18 – Training Agreement and Liability Waiver', 'form_number' => '18',
+            'stage' => 'pre_deployment', 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_active' => true, 'is_required' => true, 'display_order' => 120,
+        ]);
+        foreach (['student_name', 'company_name', 'parent_guardian_name', 'overtime_acknowledged', 'parent_guardian_consent', 'liability_acknowledged', 'signed_city', 'signed_date'] as $n => $key) {
+            DocumentFieldDefinition::forceCreate(['document_requirement_id' => $form18->id, 'field_key' => $key, 'label' => $key, 'field_type' => 'text', 'is_required' => true, 'sort_order' => $n]);
+        }
+
+        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form18), [
+            'student_name' => 'Lucy Ro', 'hte_id' => $this->hte->id, 'parent_guardian_name' => 'Kate',
+            'overtime_acknowledged' => '1', 'parent_guardian_consent' => '1', 'liability_acknowledged' => '1',
+            'signed_city' => 'Alaminos City', 'signed_date' => '2026-10-17',
+        ])->assertSessionHasNoErrors()->assertRedirect();
+
+        $document = Document::where('document_requirement_id', $form18->id)->sole();
+        $this->assertSame('FAREHEAVEN BOARDING HOUSE', $document->fieldValue('company_name'));
+        $this->assertNull($document->fieldValue('company_address'));
+    }
 }

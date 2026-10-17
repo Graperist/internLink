@@ -497,10 +497,12 @@ class DocumentController extends Controller
                 ->with('status', 'Consent and Waiver submitted for instructor review.');
         }
 
-        // Form 15: the student picks the partner agency (hte_id); its name
-        // and address are taken from the HTE record, like Form 12, so they
-        // cannot be altered and always match the Partner Agencies list.
-        if ($requirement->code === 'INTERNSHIP_RELEASE_FORM') {
+        // Forms 15 and 18: the student picks the partner agency (hte_id); its
+        // name (and address, where the form has one) come from the HTE
+        // record, like Form 12, so they cannot be altered and always match
+        // the Partner Agencies list.
+        if (in_array($requirement->code, ['INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY', 'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE'], true)
+            && $requirement->fieldDefinitions->contains('field_key', 'company_name')) {
             $picked = $request->validate([
                 'hte_id' => ['required', 'integer', Rule::exists('htes', 'id')->where(fn ($q) => $q->where('campus_id', $student->campus_id))],
             ], [
@@ -508,10 +510,10 @@ class DocumentController extends Controller
                 'hte_id.exists' => 'Please select a valid partner agency.',
             ]);
             $hte = Hte::find($picked['hte_id']);
-            $request->merge([
-                'company_name' => $hte->name,
-                'company_address' => filled($hte->address) ? $hte->address : $request->input('company_address'),
-            ]);
+            $request->merge(['company_name' => $hte->name]);
+            if ($requirement->fieldDefinitions->contains('field_key', 'company_address')) {
+                $request->merge(['company_address' => filled($hte->address) ? $hte->address : $request->input('company_address')]);
+            }
         }
 
         $rules = [];
