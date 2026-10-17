@@ -16,10 +16,13 @@
         </p>
     </div>
 @else
+    @if ($deployment->status === 'pending')
+        @include('student._deployment-blockers', ['internship' => $deployment->internship])
+    @endif
     <div class="il-card">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="h6 fw-bold mb-0">My Host Training Establishment</h2>
-            <span class="badge rounded-pill text-bg-primary">{{ $deployment->status === 'pending' ? 'Placed - starts once your pre-OJT requirements are approved' : ucfirst($deployment->status) }}</span>
+            <span class="badge rounded-pill text-bg-primary">{{ $deployment->status === 'pending' ? 'Placed - not started yet' : ucfirst($deployment->status) }}</span>
         </div>
 
         <div class="p-3 mb-3" style="background: #f4f6f9; border-radius: 10px;">

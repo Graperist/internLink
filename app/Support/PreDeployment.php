@@ -52,6 +52,44 @@ class PreDeployment
         ) < '.$ids->count();
     }
 
+    /**
+     * The required pre-deployment forms the student still needs approved,
+     * with where each one stands - shown to the student while their
+     * deployment waits to start.
+     *
+     * @return Collection<int,array{name:string,status:string}>
+     */
+    public static function outstanding(Internship $internship): Collection
+    {
+        $ids = self::requirementIds($internship->campus_id);
+        $requirements = DocumentRequirement::whereIn('id', $ids)->get()
+            ->sortBy(fn ($r) => [(int) preg_replace('/\D.*/', '', (string) ($r->form_number ?: '999')), $r->display_order]);
+        $documents = $internship->documents()->whereIn('document_requirement_id', $ids)->get()->keyBy('document_requirement_id');
+
+        return $requirements
+            ->reject(fn ($r) => $documents->get($r->id)?->status === 'approved')
+            ->map(function ($r) use ($documents) {
+                $doc = $documents->get($r->id);
+
+                return [
+                    'id' => $r->id,
+                    'name' => $r->name,
+                    'status' => match ($doc?->status) {
+                        null => 'Not submitted yet',
+                        'draft' => 'Not submitted yet',
+                        'submitted', 'for_review' => 'Waiting for your instructor\'s review',
+                        'returned' => 'Returned - correct it and submit again',
+                        'printed' => 'Download, print, have it signed and upload the signed copy',
+                        'completed' => filled($doc->file_path) ? 'Signed copy uploaded - waiting for your instructor\'s approval' : 'Upload the signed copy',
+                        default => ucfirst($doc->status),
+                    },
+                    'waiting_on' => in_array($doc?->status, ['submitted', 'for_review'], true)
+                        || ($doc?->status === 'completed' && filled($doc->file_path)) ? 'instructor' : 'student',
+                ];
+            })
+            ->values();
+    }
+
     public static function isComplete(Internship $internship): bool
     {
         $ids = self::requirementIds($internship->campus_id);

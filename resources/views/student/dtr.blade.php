@@ -59,6 +59,9 @@
 @endif
 
 @if(!$deployment || $deployment->status !== 'active')
+    @if ($deployment?->status === 'pending')
+        @include('student._deployment-blockers', ['internship' => $deployment->internship])
+    @endif
     <div class="il-card"><p class="text-secondary mb-0">You don't have an active deployment yet, so there's nothing to log. Check <a href="{{ route('student.hte') }}">My HTE Info</a> once your subject instructor starts your deployment.</p></div>
 @else
 <div class="il-card">
