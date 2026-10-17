@@ -101,6 +101,7 @@ class ReportController extends Controller
     public function partnerIndustries(Request $request): View
     {
         [$defaultYear, $defaultSemester] = Term::current();
+        $request->merge(['academic_year' => Term::normalizeAcademicYear($request->query('academic_year'))]);
         $data = $request->validate([
             'semester' => ['nullable', 'in:'.implode(',', Term::SEMESTERS)],
             'academic_year' => ['nullable', 'string', 'max:20'],
@@ -148,6 +149,7 @@ class ReportController extends Controller
      */
     public function directory(Request $request): View
     {
+        $request->merge(['academic_year' => Term::normalizeAcademicYear($request->query('academic_year'))]);
         $data = $request->validate([
             'semester' => ['nullable', 'in:2nd Semester'],
             'academic_year' => ['nullable', 'string', 'max:20'],

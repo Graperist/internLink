@@ -124,11 +124,12 @@ class HteController extends Controller
     {
         $instructor = $this->instructorWithProgram();
 
+        $request->merge(['academic_year' => Term::normalizeAcademicYear($request->input('academic_year'))]);
         $data = $request->validate(array_merge([
             'existing_hte_id' => ['nullable', 'integer', Rule::exists('htes', 'id')->where('campus_id', $instructor->campus_id)],
             'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
                 if (! Term::isValidAcademicYear($value)) {
-                    $fail('Choose a valid academic year.');
+                    $fail('Type the academic year like 2026-2027 (or just 2026).');
                 }
             }],
             'semester' => ['required', Rule::in(Term::SEMESTERS)],
@@ -239,6 +240,7 @@ class HteController extends Controller
     public function copyPrevious(Request $request): RedirectResponse
     {
         $instructor = $this->instructorWithProgram();
+        $request->merge(['academic_year' => Term::normalizeAcademicYear($request->input('academic_year'))]);
         $data = $request->validate([
             'academic_year' => ['required', 'string'],
             'semester' => ['required', Rule::in(Term::SEMESTERS)],
@@ -335,7 +337,7 @@ class HteController extends Controller
     private function term(Request $request): array
     {
         [$defaultYear, $defaultSemester] = Term::current();
-        $year = $request->query('academic_year', $request->input('academic_year'));
+        $year = Term::normalizeAcademicYear($request->query('academic_year', $request->input('academic_year')));
         $semester = $request->query('semester', $request->input('semester'));
 
         return [

@@ -45,11 +45,7 @@
     <form method="GET" class="row g-2 align-items-end">
         <div class="col-md-3">
             <label class="form-label small fw-semibold mb-1" for="f_ay">Academic year</label>
-            <select name="academic_year" id="f_ay" class="form-select" onchange="this.form.submit()">
-                @foreach ($academicYears as $year)
-                    <option value="{{ $year }}" @selected($year === $academicYear)>{{ $year }}</option>
-                @endforeach
-            </select>
+            @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'f_ay', 'value' => $academicYear, 'required' => true, 'autoSubmit' => true])
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-semibold mb-1" for="f_sem">Semester</label>

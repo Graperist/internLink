@@ -45,11 +45,7 @@
             <div class="row g-2 mb-4">
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold" for="academic_year">Academic year</label>
-                    <select name="academic_year" id="academic_year" class="form-select" required>
-                        @foreach ($academicYears as $year)
-                            <option value="{{ $year }}" @selected(old('academic_year', $listing->academic_year) === $year)>{{ $year }}</option>
-                        @endforeach
-                    </select>
+                    @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $listing->academic_year), 'required' => true, 'readonly' => $listing->exists])
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold" for="semester">Semester</label>

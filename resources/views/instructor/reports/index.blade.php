@@ -64,11 +64,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_ay">Academic Year</label>
-                        <select class="form-select form-select-sm" id="mpi_ay" name="academic_year">
-                            @foreach (\App\Support\Term::academicYearOptions() as $option)
-                                <option value="{{ $option }}" @selected($option === $mpiYear)>{{ $option }}</option>
-                            @endforeach
-                        </select>
+                        @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'mpi_ay', 'value' => $mpiYear, 'small' => true])
                     </div>
                 </div>
                 <div class="mt-auto">
@@ -94,8 +90,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="dsi_ay">Academic Year</label>
-                        <input type="text" class="form-control form-control-sm" id="dsi_ay" name="academic_year"
-                               value="{{ $academicYear }}" maxlength="20">
+                        @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'dsi_ay', 'value' => $academicYear, 'small' => true])
                     </div>
                 </div>
                 <div class="mt-auto">

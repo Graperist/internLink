@@ -45,6 +45,27 @@ class Term
         return $startYear.'-'.($startYear + 1);
     }
 
+    /**
+     * Reads a typed academic year: "2026" (the first year), "2026-2027",
+     * "2026 - 2027", "2026/2027" or "2026-27" all become "2026-2027".
+     * Anything else is returned unchanged (and fails isValidAcademicYear).
+     */
+    public static function normalizeAcademicYear(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if (preg_match('/^(\d{4})$/', $value, $m)) {
+            return self::academicYear((int) $m[1]);
+        }
+        if (preg_match('/^(\d{4})\s*[-\/–]\s*(\d{2}|\d{4})$/u', $value, $m)) {
+            $start = (int) $m[1];
+            $end = strlen($m[2]) === 2 ? (int) (substr($m[1], 0, 2).$m[2]) : (int) $m[2];
+
+            return $end === $start + 1 ? self::academicYear($start) : $value;
+        }
+
+        return $value === '' ? null : $value;
+    }
+
     public static function isValidAcademicYear(?string $value): bool
     {
         return (bool) preg_match('/^(\d{4})-(\d{4})$/', (string) $value, $m) && (int) $m[2] === (int) $m[1] + 1;

@@ -379,4 +379,31 @@ class PartnerAgencyRepositoryTest extends TestCase
         $this->actingAs($hm)->post(route('instructor.documents.print', $requirementDoc))->assertSessionHasNoErrors();
         $this->assertSame($open->hte_id, $student->fresh()->currentInternship->deployment->hte_id);
     }
+
+    public function test_academic_year_is_typed_and_any_year_works(): void
+    {
+        $this->assertSame('2036-2037', Term::normalizeAcademicYear('2036'));
+        $this->assertSame('2036-2037', Term::normalizeAcademicYear('2036-37'));
+        $this->assertSame('2036-2037', Term::normalizeAcademicYear(' 2036 / 2037 '));
+        $this->assertSame('2036-2040', Term::normalizeAcademicYear('2036-2040'));   // not consecutive: left as typed
+        $this->assertFalse(Term::isValidAcademicYear(Term::normalizeAcademicYear('2036-2040')));
+
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+
+        // Ten years from now: typing just the first year adds the listing for 2036-2037.
+        $this->actingAs($instructor)->post(route('instructor.htes.store'), $this->details + [
+            'academic_year' => '2036', 'semester' => '1st Semester',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('2036-2037', HteListing::sole()->academic_year);
+
+        $this->actingAs($instructor)->post(route('instructor.htes.store'), $this->details + [
+            'name' => 'Other Agency', 'academic_year' => '2036-2040', 'semester' => '1st Semester',
+        ])->assertSessionHasErrors('academic_year');
+
+        // The list page takes a typed year too, and shows it in a text box.
+        $this->actingAs($instructor)->get(route('instructor.htes', ['academic_year' => '2036', 'semester' => '1st Semester']))->assertOk()
+            ->assertSee('1st Semester, AY 2036-2037')
+            ->assertSee('type="text" name="academic_year" id="f_ay"', false)
+            ->assertSee('value="2036-2037"', false);
+    }
 }
