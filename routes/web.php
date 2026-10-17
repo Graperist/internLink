@@ -261,6 +261,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::delete('/documents/{requirement}/log/entry/{entry}', [StudentDocumentController::class, 'destroyEntry'])->whereNumber('entry')->name('documents.log.entry.destroy');
         Route::delete('/documents/{requirement}/log/week/{weekStart}', [StudentDocumentController::class, 'destroyWeek'])->name('documents.log.week.destroy');
         Route::post('/documents/{requirement}/log/submit', [StudentDocumentController::class, 'submitLog'])->name('documents.log.submit');
+        // Form 19: each four-week packet is submitted on its own.
+        Route::post('/documents/{requirement}/log/packet/{packet}/submit', [StudentDocumentController::class, 'submitLog'])->whereNumber('packet')->name('documents.log.packet.submit');
         Route::post('/documents/{document}/upload-signed', [StudentDocumentController::class, 'uploadSigned'])->name('documents.upload-signed');
         Route::post('/documents', [StudentDocumentController::class, 'store'])->name('documents.store');
         Route::post('/documents/{requirement}/moa', [StudentDocumentController::class, 'uploadMoa'])->name('documents.moa');
