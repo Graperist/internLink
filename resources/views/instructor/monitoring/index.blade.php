@@ -8,7 +8,7 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">Time Frame Monitoring</h1>
-        <p class="text-secondary small mb-0">Form 17 – Internship Time Frame. Days approved by the HTE supervisor count right away; return a day if it needs correcting.</p>
+        <p class="text-secondary small mb-0">Form 17 – Internship Time Frame. Days appear here once the HTE supervisor approves them; the supervisor returns any day that needs correcting.</p>
     </div>
 </div>
 
@@ -36,11 +36,7 @@
                             </div>
                             <div class="text-end flex-shrink-0">
                                 <div class="small fw-semibold">{{ $fmt($row['approved']) }} / {{ $fmt($row['required']) }} h</div>
-                                <div style="font-size:.72rem;">
-                                    @if ($row['waiting'])<span class="text-warning">{{ $row['waiting'] }} waiting</span>@endif
-                                    @if ($row['declined'])<span class="text-danger ms-1">{{ $row['declined'] }} declined</span>@endif
-                                    @if (! $row['waiting'] && ! $row['declined'])<span class="text-secondary">{{ $row['last'] ? 'Last '.\Carbon\Carbon::parse($row['last'])->format('M d') : 'No days yet' }}</span>@endif
-                                </div>
+                                <div class="text-secondary" style="font-size:.72rem;">{{ $row['count'] }} approved {{ \Illuminate\Support\Str::plural('day', $row['count']) }}{{ $row['last'] ? ' · last '.\Carbon\Carbon::parse($row['last'])->format('M d') : '' }}</div>
                             </div>
                         </div>
                         <div class="progress mt-2" style="height:5px;"><div class="progress-bar {{ $percent >= 100 ? 'bg-success' : '' }}" style="width: {{ $percent }}%"></div></div>
@@ -70,7 +66,7 @@
                 <table class="table align-middle small mb-0">
                     <thead>
                         <tr class="text-secondary" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;">
-                            <th>Date</th><th>Morning</th><th>Afternoon</th><th class="text-end">Hours</th><th>Status</th><th></th>
+                            <th>Date</th><th>Morning</th><th>Afternoon</th><th class="text-end">Hours</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -80,36 +76,14 @@
                                 <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
                                 <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
                                 <td class="text-end fw-semibold">{{ $fmt($day->hours_logged) }}</td>
-                                <td>
-                                    <span class="badge rounded-pill {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$day->status] ?? 'text-bg-warning' }}">{{ $day->statusLabel() }}</span>
-                                    @if ($day->status === 'flagged')
-                                        <div class="text-secondary mt-1" style="font-size:.72rem;">{{ $day->flag_reason }}{{ $day->decliner ? ' — '.$day->decliner->name : '' }}</div>
-                                    @endif
-                                </td>
-                                <td class="text-end">
-                                    @if ($day->status === 'approved')
-                                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#returnDay{{ $day->id }}">Return</button>
-                                        <div class="modal fade text-start" id="returnDay{{ $day->id }}" tabindex="-1" aria-hidden="true">
-                                            <div class="modal-dialog modal-dialog-centered">
-                                                <form method="POST" action="{{ route('instructor.monitoring.return', $day) }}" class="modal-content">
-                                                    @csrf
-                                                    <div class="modal-header"><h5 class="modal-title">Return {{ $day->log_date->format('M d, Y') }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                                                    <div class="modal-body">
-                                                        <p class="small text-secondary">{{ $day->period('am') ?: '—' }} · {{ $day->period('pm') ?: '—' }} · {{ $fmt($day->hours_logged) }} hours. The student corrects it and sends it to the supervisor again. Its hours are taken off until it is approved again.</p>
-                                                        <label class="form-label small fw-semibold">Reason</label>
-                                                        <input type="text" name="flag_reason" class="form-control" maxlength="255" required placeholder="e.g. Afternoon time out is missing">
-                                                    </div>
-                                                    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-danger">Return to student</button></div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    @endif
-                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="text-center text-secondary py-4">No days entered yet.</td></tr>
+                            <tr><td colspan="4" class="text-center text-secondary py-4">No approved days yet.</td></tr>
                         @endforelse
                     </tbody>
+                    @if ($days->isNotEmpty())
+                        <tfoot><tr><td colspan="3" class="text-end fw-semibold">Total approved</td><td class="text-end fw-bold">{{ $fmt($selected['approved']) }}</td></tr></tfoot>
+                    @endif
                 </table>
             </div>
         </div>

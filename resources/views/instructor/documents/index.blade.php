@@ -349,10 +349,9 @@
                                         {{-- Form 17 is filled from the days the HTE supervisor approved in Time Frame (DTR) --}}
                                         @php
                                             $tfDays = $internship?->deployment
-                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->orderBy('log_date')->get()
+                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->where('status', 'approved')->orderBy('log_date')->get()
                                                 : collect();
-                                            $tfApproved = $tfDays->where('status', 'approved');
-                                            $tfOpen = $tfDays->count() - $tfApproved->count();
+                                            $tfApproved = $tfDays; // only supervisor-approved days reach the instructor
                                         @endphp
                                         <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 320px; overflow-y: auto;">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
@@ -361,9 +360,6 @@
                                                 </span>
                                                 <a href="{{ route('instructor.monitoring', ['student' => $student->id]) }}" class="small">Open in Time Frame</a>
                                             </div>
-                                            @if ($tfOpen > 0)
-                                                <div class="text-warning small mb-1">{{ $tfOpen }} {{ \Illuminate\Support\Str::plural('day', $tfOpen) }} not approved yet (waiting or declined) - not on the printout.</div>
-                                            @endif
                                             <table class="table table-sm mb-0" style="font-size: 0.75rem;">
                                                 <thead><tr class="text-secondary"><th>Date</th><th>Morning</th><th>Afternoon</th><th class="text-end">Hours</th></tr></thead>
                                                 <tbody>

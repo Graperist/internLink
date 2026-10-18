@@ -110,7 +110,6 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
 
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
-        Route::post('/monitoring/days/{dtr}/return', [MonitoringController::class, 'returnDay'])->name('monitoring.return');
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
         Route::post('/documents/remind', [DocumentReviewController::class, 'remind'])->name('documents.remind');

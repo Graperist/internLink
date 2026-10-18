@@ -198,20 +198,17 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($otherUser)->post("/hte/dtr/{$dtr->id}/verify")->assertForbidden();
     }
 
-    public function test_instructor_sees_the_days_and_can_return_one(): void
+    public function test_instructor_sees_only_approved_days_and_cannot_return_them(): void
     {
-        $dtr = $this->makeDtr(['status' => 'approved']);
-        $this->student->update(['hours_rendered' => 8]);
+        $this->makeDtr(['status' => 'approved']);
+        $this->makeDtr(['log_date' => '2026-10-03', 'am_in' => '07:15', 'am_out' => '11:15', 'pm_in' => null, 'pm_out' => null, 'hours_logged' => 4]);   // waiting
+        $this->makeDtr(['log_date' => '2026-10-01', 'am_in' => '09:45', 'am_out' => '11:45', 'pm_in' => null, 'pm_out' => null, 'hours_logged' => 2, 'status' => 'flagged', 'flag_reason' => 'Absent']);
 
         $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->student->id)->assertOk()
-            ->assertSee('Time Frame Monitoring')->assertSee('1:00 PM - 5:00 PM')->assertSee('Approved');
+            ->assertSee('Time Frame Monitoring')->assertSee('1:00 PM - 5:00 PM')->assertSee('1 approved day')
+            ->assertDontSee('7:15 AM')->assertDontSee('9:45 AM')->assertDontSee('Return');
 
-        $this->actingAs($this->instructorUser)->post("/instructor/monitoring/days/{$dtr->id}/return", ['flag_reason' => 'Afternoon is wrong'])->assertRedirect();
-        $dtr->refresh();
-        $this->assertSame('flagged', $dtr->status);
-        $this->assertSame($this->instructorUser->id, $dtr->declined_by_user_id);
-        $this->assertEquals(0, (float) $this->student->fresh()->hours_rendered);
-        $this->assertTrue(Notification::where('user_id', $this->studentUser->id)->where('resolve_key', 'dtr:'.$dtr->id)->exists());
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('instructor.monitoring.return'));
     }
 
     public function test_form_17_is_sent_once_every_day_is_approved_and_prints_the_approved_days(): void
@@ -236,7 +233,7 @@ class DtrVerificationTest extends TestCase
 
         // It is in Document Review for the instructor, with the approved days.
         $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->student->id.'&form='.$requirement->id)->assertOk()
-            ->assertSee('Form 17 – Internship Time Frame')->assertSee('2 approved days')->assertSee('11.5 hours')->assertSee('8:00 AM - 11:30 AM')->assertSee('Approve for Printing');
+            ->assertSee('Form 17 – Internship Time Frame')->assertSee('2 approved days')->assertSee('11.5 hours')->assertSee('8:00 AM - 11:30 AM')->assertSee('Approve for Printing')->assertDontSee('not approved yet');
 
         // The old log page sends the student to the time frame.
         $this->actingAs($this->studentUser)->get("/student/documents/{$requirement->id}/log")->assertRedirect('/student/dtr');
