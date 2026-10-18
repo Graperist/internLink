@@ -234,6 +234,10 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable")->assertOk()
             ->assertSee('INTERNSHIP TIME FRAME')->assertSee('Oct 02, 2026')->assertSee('Friday')->assertSee('Oct 03, 2026')->assertSee('11.5');
 
+        // It is in Document Review for the instructor, with the approved days.
+        $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->student->id.'&form='.$requirement->id)->assertOk()
+            ->assertSee('Form 17 – Internship Time Frame')->assertSee('2 approved days')->assertSee('11.5 hours')->assertSee('8:00 AM - 11:30 AM')->assertSee('Approve for Printing');
+
         // The old log page sends the student to the time frame.
         $this->actingAs($this->studentUser)->get("/student/documents/{$requirement->id}/log")->assertRedirect('/student/dtr');
     }

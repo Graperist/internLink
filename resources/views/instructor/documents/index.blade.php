@@ -256,7 +256,7 @@
                                    @if ($isOpen) aria-current="true" @endif>
                                     <i class="ti {{ $icon }} {{ $iconColor }} fs-5 flex-shrink-0"></i>
                                     <span class="flex-grow-1" style="min-width: 0;">
-                                        <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">{{ $formLabels[$req->id] }} &middot; {{ $req->name }}</span>
+                                        <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">@unless (\Illuminate\Support\Str::startsWith($req->name, 'Form ')){{ $formLabels[$req->id] }} &middot; @endunless{{ $req->name }}</span>
                                         <span class="d-block text-secondary" style="font-size: 0.72rem;">
                                             {{ $req->hasStructuredFields() ? $statusLabelStructured($reqStatus) : $label($reqStatus) }}
                                         </span>
@@ -286,13 +286,13 @@
                         @php
                             $document = $documentsByRequirement->get($requirement->id);
                             $status = $document?->status;
-                            $structured = $requirement->hasStructuredFields();
+                            $structured = $requirement->hasStructuredFields() || $requirement->code === 'INTERNSHIP_TIME_FRAME'; // Form 17 is built from the Time Frame days
                         @endphp
                         <div class="col-12">
                             <div class="p-1">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div class="fw-bold">
-                                        {{ $formLabels[$requirement->id] }} · {{ $requirement->name }}
+                                        @unless (\Illuminate\Support\Str::startsWith($requirement->name, 'Form ')){{ $formLabels[$requirement->id] }} · @endunless{{ $requirement->name }}
                                     </div>
                                     <span class="badge rounded-pill {{ $badgeColor($status) }}">
                                         {{ $structured ? ($statusLabelStructured($status)) : $label($status) }}
@@ -345,7 +345,42 @@
                         @elseif ($structured)
                                     {{-- Structured fill-in-system workflow --}}
                                     @if ($document)
-                                        @if ($requirement->is_repeating)
+                                        @if ($requirement->code === 'INTERNSHIP_TIME_FRAME')
+                                        {{-- Form 17 is filled from the days the HTE supervisor approved in Time Frame (DTR) --}}
+                                        @php
+                                            $tfDays = $internship?->deployment
+                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->orderBy('log_date')->get()
+                                                : collect();
+                                            $tfApproved = $tfDays->where('status', 'approved');
+                                            $tfOpen = $tfDays->count() - $tfApproved->count();
+                                        @endphp
+                                        <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 320px; overflow-y: auto;">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="text-secondary fw-semibold" style="font-size: 0.72rem; text-transform: uppercase;">
+                                                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} &middot; {{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }} hours
+                                                </span>
+                                                <a href="{{ route('instructor.monitoring', ['student' => $student->id]) }}" class="small">Open in Time Frame</a>
+                                            </div>
+                                            @if ($tfOpen > 0)
+                                                <div class="text-warning small mb-1">{{ $tfOpen }} {{ \Illuminate\Support\Str::plural('day', $tfOpen) }} not approved yet (waiting or declined) - not on the printout.</div>
+                                            @endif
+                                            <table class="table table-sm mb-0" style="font-size: 0.75rem;">
+                                                <thead><tr class="text-secondary"><th>Date</th><th>Morning</th><th>Afternoon</th><th class="text-end">Hours</th></tr></thead>
+                                                <tbody>
+                                                    @forelse ($tfApproved as $day)
+                                                        <tr>
+                                                            <td class="text-nowrap">{{ $day->log_date->format('M d, Y') }} <span class="text-secondary">{{ $day->log_date->format('D') }}</span></td>
+                                                            <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
+                                                            <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
+                                                            <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->hours_logged) }}</td>
+                                                        </tr>
+                                                    @empty
+                                                        <tr><td colspan="4" class="text-secondary">No approved days yet.</td></tr>
+                                                    @endforelse
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        @elseif ($requirement->is_repeating)
                                             <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 220px; overflow-y: auto;">
                                                 <div class="text-secondary fw-semibold mb-1" style="font-size: 0.72rem; text-transform: uppercase;">
                                                     {{ $document->entries->count() }} {{ $requirement->entry_cadence === 'weekly' ? 'week(s)' : 'day(s)' }} logged (view only)
