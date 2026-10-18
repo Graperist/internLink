@@ -11,19 +11,13 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Concerns\Importable;
-use Maatwebsite\Excel\Concerns\SkipsOnError;
-use Maatwebsite\Excel\Concerns\SkipsOnFailure;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
-use Maatwebsite\Excel\Validators\Failure;
 use Throwable;
 
 /**
  * Bulk-provisions Student Intern accounts from an uploaded spreadsheet.
  *
- * Expected columns (see public/templates/student_import_template.csv):
+ * Read with App\Support\SpreadsheetRows (.csv or .xlsx). Expected columns
+ * (see public/templates/student_import_template.csv):
  *   id_number, name, email, program_code (optional)
  *
  * Interns are added by their subject instructor, so every row goes into the
@@ -31,10 +25,8 @@ use Throwable;
  * file. If a row does fill in program_code, it must match that program, so
  * a sheet meant for another program is caught instead of silently imported.
  */
-class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, SkipsOnError, SkipsOnFailure
+class StudentsImport
 {
-    use Importable;
-
     /** @var array<int, array{row:int,name:string,id_number:string,temporary_password:string}> */
     public array $created = [];
 
@@ -53,6 +45,9 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
 
         foreach ($rows as $index => $row) {
             $excelRow = $index + 2; // +1 for zero-index, +1 for the header row
+            if ($row === null) {
+                continue;   // a blank row in the sheet
+            }
 
             $idNumber = trim((string) ($row['id_number'] ?? ''));
             $name = trim((string) ($row['name'] ?? ''));
@@ -61,6 +56,11 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
 
             if ($idNumber === '' || $name === '' || $email === '') {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Missing required field(s).'];
+                continue;
+            }
+
+            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->skipped[] = ['row' => $excelRow, 'reason' => "Email {$email} is not a valid email address."];
                 continue;
             }
 
@@ -124,30 +124,6 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
             } catch (Throwable $e) {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Unexpected error: '.$e->getMessage()];
             }
-        }
-    }
-
-    public function rules(): array
-    {
-        return [
-            'id_number' => ['required'],
-            'name' => ['required'],
-            'email' => ['required', 'email'],
-        ];
-    }
-
-    public function onError(Throwable $e): void
-    {
-        $this->skipped[] = ['row' => 0, 'reason' => $e->getMessage()];
-    }
-
-    public function onFailure(Failure ...$failures): void
-    {
-        foreach ($failures as $failure) {
-            $this->skipped[] = [
-                'row' => $failure->row(),
-                'reason' => implode(' ', $failure->errors()),
-            ];
         }
     }
 }

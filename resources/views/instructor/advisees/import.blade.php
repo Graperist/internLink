@@ -28,7 +28,7 @@
     <form method="POST" action="{{ route('instructor.interns.import.store') }}" enctype="multipart/form-data">
         @csrf
         <label for="file" class="form-label small fw-semibold">Spreadsheet file (.csv or .xlsx, max 5MB)</label>
-        <input type="file" name="file" id="file" class="form-control mb-3" accept=".csv,.xlsx,.xls" required>
+        <input type="file" name="file" id="file" class="form-control mb-3" accept=".csv,.xlsx" required>
 
         <div class="small text-secondary mb-3">
             Required columns: <code>id_number</code>, <code>name</code>, <code>email</code>.

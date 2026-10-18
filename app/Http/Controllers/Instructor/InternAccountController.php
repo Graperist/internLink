@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Maatwebsite\Excel\Facades\Excel;
+use App\Support\SpreadsheetRows;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -127,11 +127,25 @@ class InternAccountController extends Controller
         $instructor = $this->instructorWithProgram();
 
         $request->validate([
-            'file' => ['required', 'file', 'mimes:csv,txt,xlsx,xls', 'max:5120'],
-        ]);
+            'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:5120'],
+        ], ['file.mimes' => 'Upload a .csv or .xlsx file. (For an old .xls file, open it in Excel and save it as .xlsx or .csv.)']);
+
+        $file = $request->file('file');
+        try {
+            $rows = SpreadsheetRows::read($file->getRealPath(), $file->getClientOriginalExtension() ?: $file->extension());
+        } catch (\Throwable $e) {
+            return back()->withErrors(['file' => $e instanceof \RuntimeException ? $e->getMessage() : 'The file could not be read. Save it as .csv or .xlsx and try again.']);
+        }
+        if (! $rows) {
+            return back()->withErrors(['file' => 'The file has no rows. Use the template: id_number, name, email, program_code.']);
+        }
+        $missing = array_diff(['id_number', 'name', 'email'], array_keys(collect($rows)->filter()->first() ?? []));
+        if ($missing) {
+            return back()->withErrors(['file' => 'The heading row is missing: '.implode(', ', $missing).'. Use the template: id_number, name, email, program_code.']);
+        }
 
         $import = new StudentsImport($instructor);
-        Excel::import($import, $request->file('file'));
+        $import->collection(collect($rows));
 
         return redirect()->route('instructor.advisees')->with('import_results', [
             'created' => $import->created,
