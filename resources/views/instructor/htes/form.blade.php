@@ -105,10 +105,6 @@
             'contact_phone' => $h->contact_phone,
             'contact_email' => $h->contact_email,
             'moa_status' => $h->moa_status,
-            'latitude' => $h->latitude,
-            'longitude' => $h->longitude,
-            'geofence_radius_m' => $h->geofence_radius_m,
-            'max_gps_accuracy_m' => $h->max_gps_accuracy_m,
         ]]);
     @endphp
     <script>

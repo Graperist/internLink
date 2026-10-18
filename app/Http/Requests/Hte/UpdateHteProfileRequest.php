@@ -15,8 +15,7 @@ class UpdateHteProfileRequest extends FormRequest
      * Deliberately excludes moa_status - the partnership approval state
      * stays coordinator-only. Everything else here is company/site detail
      * the HTE's own on-site supervisor is the actual authority on, since
-     * they're the ones physically there (same DTR location-security
-     * fields as Coordinator\StoreHteRequest, minus moa_status).
+     * they're the ones physically there.
      */
     public function rules(): array
     {
@@ -26,11 +25,6 @@ class UpdateHteProfileRequest extends FormRequest
             'contact_person' => ['nullable', 'string', 'max:255'],
             'contact_email' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:50'],
-
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'geofence_radius_m' => ['nullable', 'numeric', 'between:10,1000'],
-            'max_gps_accuracy_m' => ['nullable', 'numeric', 'between:5,500'],
         ];
     }
 }

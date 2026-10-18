@@ -22,6 +22,7 @@ class Dtr extends Model
     protected $fillable = [
         'deployment_id', 'verified_by', 'log_date',
         'time_in', 'time_out', 'original_time_in', 'original_time_out',
+        'am_in', 'am_out', 'pm_in', 'pm_out', 'declined_by_user_id',
         'hours_logged', 'notes', 'status',
         'flagged_by', 'flagged_at', 'flag_reason', 'flag_note', 'flag_target',
         'resolved_by', 'resolved_at',
@@ -53,6 +54,39 @@ class Dtr extends Model
     public function verifier() { return $this->belongsTo(HteRepresentative::class, 'verified_by'); }
     public function flagger() { return $this->belongsTo(HteRepresentative::class, 'flagged_by'); }
     public function resolver() { return $this->belongsTo(User::class, 'resolved_by'); }
+    public function decliner() { return $this->belongsTo(User::class, 'declined_by_user_id'); }
+
+    /** Form 17 wording for the student, HTE and instructor. */
+    public function statusLabel(): string
+    {
+        return match ($this->status) {
+            'approved' => 'Approved',
+            'flagged' => 'Declined',
+            default => 'Waiting for supervisor',
+        };
+    }
+
+    /** "8:00 AM - 12:00 PM" for the morning or afternoon, or "" */
+    public function period(string $which): string
+    {
+        $in = $this->{$which.'_in'};
+        $out = $this->{$which.'_out'};
+        if (blank($in) && blank($out)) {
+            $hasSplit = filled($this->am_in) || filled($this->am_out) || filled($this->pm_in) || filled($this->pm_out);
+            if ($hasSplit || blank($this->time_in)) {
+                return '';
+            }
+            // Entries from the old clock-in/clock-out DTR have only time_in/time_out:
+            // shown under the morning or afternoon by when the clock-in was.
+            $isMorning = \Carbon\Carbon::parse($this->time_in)->format('H') < 12;
+            if (($which === 'am') !== $isMorning) {
+                return '';
+            }
+            [$in, $out] = [$this->time_in, $this->time_out];
+        }
+
+        return \App\Support\TimeFrame::clock($in).' - '.(filled($out) ? \App\Support\TimeFrame::clock($out) : 'no time out');
+    }
 
     public function isClockInVerified(): bool
     {

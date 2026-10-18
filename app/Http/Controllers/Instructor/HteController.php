@@ -317,10 +317,6 @@ class HteController extends Controller
             'contact_phone' => ['required', 'string', 'max:50'],
             'contact_email' => ['nullable', 'email', 'max:255'],
             'moa_status' => ['required', Rule::in(['pending', 'active', 'expired'])],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'geofence_radius_m' => ['required', 'numeric', 'between:10,1000'],
-            'max_gps_accuracy_m' => ['required', 'numeric', 'between:5,500'],
         ];
     }
 

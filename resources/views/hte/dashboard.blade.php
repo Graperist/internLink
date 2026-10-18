@@ -31,7 +31,7 @@
 <div class="il-hero mb-3">
     <p class="il-hero-title">Good morning, {{ auth()->user()->name }}!</p>
     <p class="il-hero-subtitle">
-        You have {{ $pendingDtrCount }} DTR {{ $pendingDtrCount === 1 ? 'entry' : 'entries' }} pending verification from your assigned interns.
+        You have {{ $pendingDtrCount }} {{ $pendingDtrCount === 1 ? 'day' : 'days' }} of internship time waiting for your approval.
     </p>
 </div>
 
@@ -49,7 +49,7 @@
                 <div class="il-stat-number">{{ $pendingDtrCount }}</div>
                 @if($pendingDtrCount > 0)<span class="il-mini-badge warning">Action Needed</span>@endif
             </div>
-            <div class="text-secondary small">DTR Pending Verification</div>
+            <div class="text-secondary small">Days Waiting for Approval</div>
         </a>
     </div>
     <div class="col-6 col-xl-3">
@@ -67,16 +67,16 @@
 </div>
 
 <div class="il-card p-0 overflow-hidden">
-    <div class="hte-section-heading">Today's Attendance</div>
+    <div class="hte-section-heading">Waiting for Your Approval</div>
     <div class="table-responsive">
         <table class="table mb-0 align-middle hte-table">
             <thead>
                 <tr>
                     <th>Student</th>
                     <th>Program</th>
-                    <th>Time In</th>
-                    <th>Time Out</th>
-                    <th>Location</th>
+                    <th>Date</th>
+                    <th>Morning / Afternoon</th>
+                    <th>Hours</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -97,21 +97,21 @@
                             </div>
                         </td>
                         <td>{{ $student->program->code ?? '—' }}</td>
-                        <td>{{ $dtr->time_in ? \Carbon\Carbon::parse($dtr->time_in)->format('g:i A') : '—' }}</td>
-                        <td>{{ $dtr->time_out ? \Carbon\Carbon::parse($dtr->time_out)->format('g:i A') : '—' }}</td>
-                        <td>{{ $dtr->deployment->hte->name ?? '—' }}</td>
+                        <td>{{ $dtr->log_date?->format('M d, Y') }}</td>
+                        <td class="small">{{ $dtr->period('am') ?: '—' }}<br>{{ $dtr->period('pm') ?: '—' }}</td>
+                        <td class="fw-semibold">{{ \App\Support\TimeFrame::format($dtr->hours_logged) }}</td>
                         <td>
                             @if($dtr->status === 'approved')
-                                <span class="il-status-pill approved">Verified</span>
+                                <span class="il-status-pill approved">Approved</span>
                             @elseif($dtr->status === 'flagged')
-                                <span class="il-status-pill flagged">Flagged</span>
+                                <span class="il-status-pill flagged">Declined</span>
                             @else
-                                <span class="il-status-pill active">Active</span>
+                                <span class="il-status-pill pending">Waiting</span>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="text-center text-secondary py-5">No attendance records have been logged today.</td></tr>
+                    <tr><td colspan="6" class="text-center text-secondary py-5">No days waiting for your approval.</td></tr>
                 @endforelse
             </tbody>
         </table>

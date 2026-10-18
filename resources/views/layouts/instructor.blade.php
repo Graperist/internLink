@@ -62,8 +62,8 @@
                 <a href="{{ route('instructor.documents') }}" class="il-nav-link {{ request()->routeIs('instructor.documents*') ? 'active' : '' }}">
                     <i class="ti ti-file-text"></i> Document Review
                 </a>
-                <a href="{{ route('instructor.monitoring') }}" class="il-nav-link {{ request()->routeIs('instructor.monitoring') ? 'active' : '' }}">
-                    <i class="ti ti-clock"></i> Monitoring
+                <a href="{{ route('instructor.monitoring') }}" class="il-nav-link {{ request()->routeIs('instructor.monitoring*') ? 'active' : '' }}">
+                    <i class="ti ti-clock"></i> Time Frame
                 </a>
                 <a href="{{ route('instructor.evaluations') }}" class="il-nav-link {{ request()->routeIs('instructor.evaluations*') ? 'active' : '' }}">
                     <i class="ti ti-star"></i> Evaluations

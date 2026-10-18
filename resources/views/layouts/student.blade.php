@@ -41,7 +41,7 @@
                     <i class="ti ti-layout-dashboard"></i> Dashboard
                 </a>
                 <a href="{{ route('student.dtr') }}" class="il-nav-link {{ request()->routeIs('student.dtr*') ? 'active' : '' }}">
-                    <i class="ti ti-clock"></i> Daily Time Record
+                    <i class="ti ti-clock"></i> Time Frame (DTR)
                 </a>
                 <a href="{{ route('student.documents') }}" class="il-nav-link {{ request()->routeIs('student.documents*') ? 'active' : '' }}">
                     <i class="ti ti-file-text"></i> My Documents

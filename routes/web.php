@@ -110,6 +110,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
 
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
+        Route::post('/monitoring/days/{dtr}/return', [MonitoringController::class, 'returnDay'])->name('monitoring.return');
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
         Route::post('/documents/remind', [DocumentReviewController::class, 'remind'])->name('documents.remind');
@@ -248,9 +249,10 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/dashboard', [StudentDashboardController::class, 'index'])->name('dashboard');
 
         Route::get('/dtr', [DtrController::class, 'index'])->name('dtr');
-        Route::post('/dtr/clock-in', [DtrController::class, 'clockIn'])->name('dtr.clock-in');
-        Route::post('/dtr/clock-out', [DtrController::class, 'clockOut'])->name('dtr.clock-out');
-        Route::put('/dtr/{dtr}/resolve', [DtrController::class, 'resolveFlag'])->name('dtr.resolve');
+        // Form 17 - Internship Time Frame (the DTR): typed AM/PM time in/out per date.
+        Route::post('/dtr', [DtrController::class, 'store'])->name('dtr.store');
+        Route::delete('/dtr/{dtr}', [DtrController::class, 'destroy'])->name('dtr.destroy');
+        Route::post('/dtr/submit-form-17', [DtrController::class, 'submitForm'])->name('dtr.submit');
 
         Route::get('/documents', [StudentDocumentController::class, 'index'])->name('documents');
         Route::get('/documents/{requirement}/fill', [StudentDocumentController::class, 'create'])->name('documents.fill');

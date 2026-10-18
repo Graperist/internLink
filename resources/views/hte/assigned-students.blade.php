@@ -16,7 +16,7 @@
                     <th>Hours Rendered</th>
                     <th>Required Hours</th>
                     <th>Evaluation</th>
-                    <th>DTR History</th>
+                    <th>Time Frame</th>
                 </tr>
             </thead>
             <tbody>
@@ -49,7 +49,7 @@
                         </td>
                         <td>
                             <a href="{{ route('hte.students.dtr-history', $deployment) }}" class="btn btn-sm btn-outline-secondary">
-                                <i class="ti ti-history"></i> View History
+                                <i class="ti ti-history"></i> View Days
                             </a>
                         </td>
                     </tr>

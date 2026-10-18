@@ -92,8 +92,11 @@
     }
 
     $requiredHours = $internship->required_hours ?? $student->program?->required_hours;
-    $entries = $document->entries->sortBy('entry_date')->values();
-    $total = $entries->sum(fn ($entry) => (float) $entry->value('hours'));
+    // The days the HTE supervisor approved in the student's Time Frame (DTR).
+    $entries = $deployment
+        ? \App\Models\Dtr::where('deployment_id', $deployment->id)->where('status', 'approved')->orderBy('log_date')->get()
+        : collect();
+    $total = $entries->sum(fn ($day) => (float) $day->hours_logged);
     $blankRows = max(0, 28 - $entries->count()); // the paper form has 28 rows
     $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 2, '.', ''), '0'), '.');
 
@@ -149,9 +152,9 @@
     <tr><th>DATE</th><th>DAY</th><th>NUMBER OF HOURS</th></tr>
     @foreach ($entries as $entry)
         <tr>
-            <td class="center">{{ $entry->entry_date->format('M d, Y') }}</td>
-            <td class="center">{{ $entry->entry_date->format('l') }}</td>
-            <td class="center">{{ $fmt($entry->value('hours')) }}</td>
+            <td class="center">{{ $entry->log_date->format('M d, Y') }}</td>
+            <td class="center">{{ $entry->log_date->format('l') }}</td>
+            <td class="center">{{ $fmt($entry->hours_logged) }}</td>
         </tr>
     @endforeach
     @for ($i = 0; $i < $blankRows; $i++)

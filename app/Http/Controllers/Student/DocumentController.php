@@ -673,9 +673,13 @@ class DocumentController extends Controller
      * log, "Submit for Review" moves the whole thing into the same
      * submitted -> printed -> completed -> upload cycle as flat forms.
      */
-    public function showLog(DocumentRequirement $requirement): View
+    public function showLog(DocumentRequirement $requirement): View|RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -703,9 +707,13 @@ class DocumentController extends Controller
         return view('student.documents.log', compact('requirement', 'document', 'canEdit', 'packets', 'entries', 'internship'));
     }
 
-    public function createEntry(DocumentRequirement $requirement): View
+    public function createEntry(DocumentRequirement $requirement): View|RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -733,6 +741,10 @@ class DocumentController extends Controller
     public function storeEntry(Request $request, DocumentRequirement $requirement): RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -936,6 +948,10 @@ class DocumentController extends Controller
     public function submitLog(DocumentRequirement $requirement, ?int $packet = null): RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);

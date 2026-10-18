@@ -3,324 +3,203 @@
 namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
+use App\Models\Document;
+use App\Models\DocumentRequirement;
 use App\Models\Dtr;
+use App\Models\HteRepresentative;
 use App\Models\Instructor;
 use App\Models\Notification;
-use App\Services\DtrLocationService;
+use App\Support\TimeFrame;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
+/**
+ * Form 17 - Internship Time Frame, which is also the student's DTR.
+ *
+ * The student types the morning and afternoon time in/out for each date;
+ * the system totals the hours (the lunch break is not counted). The HTE
+ * supervisor approves or declines each day: approved hours count right
+ * away, a declined day comes back here to be corrected. No location check.
+ * When the days are approved, the student submits Form 17 for printing and
+ * it follows the usual print-and-sign steps.
+ */
 class DtrController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
+    {
+        $student = auth()->user()->student;
+        $internship = $student?->currentInternship;
+        $deployment = $internship?->deployment;
+
+        $days = $deployment
+            ? Dtr::where('deployment_id', $deployment->id)->with('decliner')->orderByDesc('log_date')->get()
+            : collect();
+
+        $editing = $request->filled('edit')
+            ? $days->first(fn ($d) => $d->id === (int) $request->query('edit') && $d->status !== 'approved')
+            : null;
+
+        $requirement = $internship ? DocumentRequirement::where('campus_id', $internship->campus_id)->where('code', 'INTERNSHIP_TIME_FRAME')->first() : null;
+        $form17 = $requirement ? $internship->documents()->where('document_requirement_id', $requirement->id)->first() : null;
+
+        $totals = [
+            'approved' => (float) $days->where('status', 'approved')->sum('hours_logged'),
+            'pending' => (float) $days->where('status', 'pending')->sum('hours_logged'),
+            'required' => (float) ($internship?->required_hours ?? $student?->program?->required_hours ?? 0),
+            'declined' => $days->where('status', 'flagged')->count(),
+            'waiting' => $days->where('status', 'pending')->count(),
+        ];
+
+        return view('student.dtr', compact('deployment', 'days', 'editing', 'totals', 'requirement', 'form17', 'internship'));
+    }
+
+    /** Add a day, or correct one that is waiting or was declined. */
+    public function store(Request $request): RedirectResponse
     {
         $student = auth()->user()->student;
         $deployment = $student?->currentInternship?->deployment;
-        $todaysDtr = $deployment ? Dtr::where('deployment_id', $deployment->id)->whereDate('log_date', today())->first() : null;
-        // Only show the Resolve Flag / Edit DTR action for the current day.
-        // Past flagged entries remain part of the DTR/audit history and are not deleted,
-        // but they are no longer presented as an outstanding student action.
-        $flaggedEntries = $deployment ? Dtr::where('deployment_id', $deployment->id)
-            ->where('status', 'flagged')
-            ->whereDate('log_date', '>=', today())
-            ->with('deployment.hte')
-            ->latest('log_date')
-            ->latest('id')
-            ->get() : collect();
-        // Full time in/out history for this student's current deployment, not just
-        // the corrected (audit) entries — so the student can see every day they've
-        // clocked in/out, not only the ones an HTE later flagged and corrected.
-        $dtrHistory = $deployment ? Dtr::where('deployment_id', $deployment->id)
-            ->with('deployment.hte')->latest('log_date')->latest('id')->get() : collect();
-
-        return view('student.dtr', compact('deployment', 'todaysDtr', 'flaggedEntries', 'dtrHistory'));
-    }
-
-    public function clockIn(Request $request, DtrLocationService $locationService): RedirectResponse
-    {
-        $validated = $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'accuracy' => ['required', 'numeric', 'min:0', 'max:100000'],
-            'captured_at' => ['required', 'integer', 'min:1'],
-            'confirm_outside_geofence' => ['nullable', 'boolean'],
-        ]);
-
-        $deployment = auth()->user()->student->currentInternship?->deployment;
         abort_unless($deployment && $deployment->status === 'active', 422, 'You are not currently deployed.');
 
-        $existing = Dtr::where('deployment_id', $deployment->id)
-            ->whereDate('log_date', today())
-            ->first();
-
-        abort_if($existing && $existing->time_in, 422, 'You already clocked in today.');
-
-        $hte = $deployment->hte;
-        abort_unless(
-            $hte && $hte->latitude !== null && $hte->longitude !== null,
-            422,
-            'Your HTE location has not been configured by the coordinator yet.'
-        );
-
-        $location = $locationService->evaluate(
-            $hte,
-            (float) $validated['latitude'],
-            (float) $validated['longitude'],
-            (float) $validated['accuracy'],
-            (int) $validated['captured_at']
-        );
-
-        // A location mismatch is never silent. If the captured point is outside
-        // the designated HTE geofence, the student must explicitly confirm that
-        // they want to continue. Stale/invalid timestamps remain hard failures.
-        abort_if(
-            in_array('stale_location_timestamp', $location['flags'], true),
-            422,
-            'The captured location is too old. Please try again.'
-        );
-        abort_if(
-            in_array('invalid_location_timestamp', $location['flags'], true),
-            422,
-            'The captured location timestamp is invalid. Please try again.'
-        );
-
-        if (in_array('outside_geofence', $location['flags'], true)) {
-            abort_unless(
-                $request->boolean('confirm_outside_geofence'),
-                422,
-                'Your location is outside your designated HTE. Please confirm that you want to continue.'
-            );
-        }
-
-        Dtr::updateOrCreate(
-            ['deployment_id' => $deployment->id, 'log_date' => today()],
-            [
-                'time_in' => now()->format('H:i:s'),
-                'clock_in_latitude' => $validated['latitude'],
-                'clock_in_longitude' => $validated['longitude'],
-                'clock_in_accuracy' => $validated['accuracy'],
-                'clock_in_distance_m' => $location['distance_m'],
-                'clock_in_location_status' => $location['status'],
-                'clock_in_location_flags' => $location['flags'],
-                'clock_in_captured_at' => $location['captured_at'],
-                'status' => 'pending',
-            ]
-        );
-
-        if (in_array('outside_geofence', $location['flags'], true)) {
-            $message = 'WARNING: Your captured location is outside your designated HTE geofence ('.number_format($location['distance_m'], 1).' m away; allowed radius is '.number_format((float) ($hte->geofence_radius_m ?? 100), 0).' m). Your attendance was recorded and sent for HTE review. Please make sure you are at your designated HTE when clocking in.';
-        } elseif ($location['status'] === 'verified') {
-            $message = 'Location verified within your HTE geofence.';
-        } else {
-            $message = 'Your location is within the HTE geofence, but GPS accuracy is above the normal threshold. Your attendance was recorded and requires HTE verification.';
-        }
-
-        return redirect()->route('student.dtr')
-            ->with('status', 'Clocked in at '.now()->format('g:i A').'. '.$message);
-    }
-
-    public function clockOut(Request $request, DtrLocationService $locationService): RedirectResponse
-    {
-        $validated = $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'accuracy' => ['required', 'numeric', 'min:0', 'max:100000'],
-            'captured_at' => ['required', 'integer', 'min:1'],
-            'confirm_outside_geofence' => ['nullable', 'boolean'],
+        $time = ['nullable', 'date_format:H:i'];
+        $data = $request->validate([
+            'dtr_id' => ['nullable', 'integer'],
+            'log_date' => ['required', 'date', 'before_or_equal:today'],
+            'am_in' => $time, 'am_out' => $time, 'pm_in' => $time, 'pm_out' => $time,
+            'notes' => ['nullable', 'string', 'max:500'],
+        ], [
+            'log_date.before_or_equal' => 'You can only enter a date that has already happened.',
+            '*.date_format' => 'Enter the time like 08:00.',
         ]);
 
-        $deployment = auth()->user()->student->currentInternship?->deployment;
-        abort_unless($deployment, 422, 'You are not currently deployed.');
-
-        $hte = $deployment->hte;
-        abort_unless(
-            $hte && $hte->latitude !== null && $hte->longitude !== null,
-            422,
-            'Your HTE location has not been configured by the coordinator yet.'
-        );
-
-        $location = $locationService->evaluate(
-            $hte,
-            (float) $validated['latitude'],
-            (float) $validated['longitude'],
-            (float) $validated['accuracy'],
-            (int) $validated['captured_at']
-        );
-
-        // An outside-geofence clock-out is also recorded so the student is
-        // informed and the HTE can review the attendance rather than losing
-        // the time-out entirely. Timestamp integrity remains a hard failure.
-        abort_if(
-            in_array('stale_location_timestamp', $location['flags'], true),
-            422,
-            'The captured location is too old. Please try again.'
-        );
-        abort_if(
-            in_array('invalid_location_timestamp', $location['flags'], true),
-            422,
-            'The captured location timestamp is invalid. Please try again.'
-        );
-
-        if (in_array('outside_geofence', $location['flags'], true)) {
-            abort_unless(
-                $request->boolean('confirm_outside_geofence'),
-                422,
-                'Your location is outside your designated HTE. Please confirm that you want to continue.'
-            );
+        $date = Carbon::parse($data['log_date'])->startOfDay();
+        if ($deployment->start_date && $date->lt($deployment->start_date->copy()->startOfDay())) {
+            throw ValidationException::withMessages(['log_date' => 'This date is before your deployment started ('.$deployment->start_date->format('M d, Y').').']);
+        }
+        if ($deployment->end_date && $date->gt($deployment->end_date->copy()->endOfDay())) {
+            throw ValidationException::withMessages(['log_date' => 'This date is after your deployment ends ('.$deployment->end_date->format('M d, Y').').']);
         }
 
-        $dtr = Dtr::where('deployment_id', $deployment->id)
-            ->whereDate('log_date', today())
-            ->first();
+        $result = TimeFrame::compute($data['am_in'] ?? null, $data['am_out'] ?? null, $data['pm_in'] ?? null, $data['pm_out'] ?? null);
+        if ($result['errors']) {
+            throw ValidationException::withMessages($result['errors']);
+        }
 
-        abort_unless($dtr && $dtr->time_in, 422, 'Clock in before clocking out.');
-        abort_if($dtr->time_out, 422, 'You already clocked out today.');
+        $existing = Dtr::where('deployment_id', $deployment->id)->whereDate('log_date', $date)->first();
+        if ($existing && (int) ($data['dtr_id'] ?? 0) !== $existing->id) {
+            throw ValidationException::withMessages(['log_date' => 'You already entered '.$date->format('M d, Y').'. Edit that day instead.']);
+        }
+        if ($existing && $existing->status === 'approved') {
+            throw ValidationException::withMessages(['log_date' => 'This day is already approved by your supervisor and can no longer be changed.']);
+        }
+        if (! $existing && filled($data['dtr_id'] ?? null)) {
+            // Editing a day but the date was changed to a free date: move it.
+            $existing = Dtr::where('deployment_id', $deployment->id)->whereKey($data['dtr_id'])->where('status', '!=', 'approved')->first();
+        }
 
-        $timeIn = Carbon::parse($dtr->time_in);
-        $clockOutNow = now();
-        $hours = round($timeIn->diffInMinutes($clockOutNow) / 60, 2);
-
-        $dtr->update([
-            'time_out' => $clockOutNow->format('H:i:s'),
-            'clock_out_latitude' => $validated['latitude'],
-            'clock_out_longitude' => $validated['longitude'],
-            'clock_out_accuracy' => $validated['accuracy'],
-            'clock_out_distance_m' => $location['distance_m'],
-            'clock_out_location_status' => $location['status'],
-            'clock_out_location_flags' => $location['flags'],
-            'clock_out_captured_at' => $location['captured_at'],
-            'hours_logged' => $hours,
+        $wasDeclined = $existing?->status === 'flagged';
+        $values = [
+            'log_date' => $date->toDateString(),
+            'am_in' => $data['am_in'] ?? null, 'am_out' => $data['am_out'] ?? null,
+            'pm_in' => $data['pm_in'] ?? null, 'pm_out' => $data['pm_out'] ?? null,
+            // First time in / last time out of the day, for the pages that show one pair.
+            'time_in' => $data['am_in'] ?? $data['pm_in'] ?? null,
+            'time_out' => $data['pm_out'] ?? $data['am_out'] ?? null,
+            'hours_logged' => $result['hours'],
+            'notes' => $data['notes'] ?? null,
             'status' => 'pending',
-        ]);
-
-        if (in_array('outside_geofence', $location['flags'], true)) {
-            $message = 'WARNING: Your clock-out location is outside your designated HTE geofence ('.number_format($location['distance_m'], 1).' m away; allowed radius is '.number_format((float) ($hte->geofence_radius_m ?? 100), 0).' m). Your clock-out was recorded and sent for HTE review.';
-        } elseif ($location['status'] === 'verified') {
-            $message = 'GPS location is within the HTE geofence but the entry still needs HTE sign-off.';
-        } else {
-            $message = 'GPS location is within the HTE geofence, but accuracy is above the normal threshold. Clock-out was recorded and requires HTE verification.';
+            'verified_by' => null,
+        ];
+        if ($wasDeclined) {
+            $values += ['resolved_by' => auth()->id(), 'resolved_at' => now()];
         }
 
-        // The DTR entry is now complete (time-in and time-out both present)
-        // and sitting in "pending" status, which is exactly what shows up
-        // on the HTE's DTR Verification queue. Let every active
-        // representative of that HTE know there's something to review.
-        $studentUser = auth()->user();
-        $hte->representatives()
-            ->whereHas('user', fn ($q) => $q->where('status', 'active'))
-            ->with('user')
-            ->get()
-            ->each(fn ($rep) => Notification::create([
-                'user_id' => $rep->user_id,
-                'type' => 'dtr',
-                'resolve_key' => 'dtr:'.$dtr->id,
-                'title' => "DTR Awaiting Verification — {$studentUser->name}",
-                'message' => "Student: {$studentUser->name}\nDTR Date: {$dtr->log_date->format('F d, Y')}\nHours logged: {$hours}\nStatus: Pending your verification.",
-            ]));
+        $dtr = DB::transaction(function () use ($existing, $values, $deployment) {
+            if ($existing) {
+                $existing->update($values);
 
-        return redirect()->route('student.dtr')
-            ->with('status', 'Clocked out. Logged '.$hours.' hours. '.$message);
+                return $existing;
+            }
+
+            return Dtr::create($values + ['deployment_id' => $deployment->id]);
+        });
+
+        $this->notifySupervisor($dtr, $student, $wasDeclined);
+
+        return redirect()->route('student.dtr')->with('status', ($wasDeclined ? 'Corrected and sent back' : 'Saved and sent').' to your HTE supervisor: '
+            .$date->format('M d, Y').' · '.TimeFrame::format($result['hours']).' hours.');
     }
 
-    public function resolveFlag(Request $request, Dtr $dtr): RedirectResponse
+    /** Remove a day that is still waiting or was declined. */
+    public function destroy(Dtr $dtr): RedirectResponse
     {
         $student = auth()->user()->student;
-        $dtr->load([
-            'deployment.hte.representatives.user',
-            'deployment.internship.student.user',
-            'deployment.internship.instructor.user',
-            'flagger.user',
-        ]);
-
         abort_unless($dtr->deployment?->internship?->student_id === $student?->id, 403);
-        abort_unless($dtr->status === 'flagged', 422, 'This DTR entry is not currently flagged.');
-        abort_unless($dtr->time_in && $dtr->time_out, 422, 'Only completed DTR entries can be resolved.');
+        abort_if($dtr->status === 'approved', 422, 'An approved day can no longer be removed.');
 
-        $validated = $request->validate([
-            'time_in' => ['required', 'date_format:H:i'],
-            'time_out' => ['required', 'date_format:H:i', 'after:time_in'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-        ]);
+        $date = $dtr->log_date->format('M d, Y');
+        Notification::resolve('dtr:'.$dtr->id);
+        $dtr->delete();
 
-        $logDate = $dtr->log_date->format('Y-m-d');
-        $correctedIn = Carbon::createFromFormat('Y-m-d H:i', $logDate.' '.$validated['time_in']);
-        $correctedOut = Carbon::createFromFormat('Y-m-d H:i', $logDate.' '.$validated['time_out']);
-        $hours = round($correctedIn->diffInMinutes($correctedOut) / 60, 2);
-        $originalTimeIn = $dtr->original_time_in ?: $dtr->time_in;
-        $originalTimeOut = $dtr->original_time_out ?: $dtr->time_out;
+        return redirect()->route('student.dtr')->with('status', "{$date} removed.");
+    }
 
-        DB::transaction(function () use ($dtr, $correctedIn, $correctedOut, $hours, $validated, $originalTimeIn, $originalTimeOut) {
-            $dtr->update([
-                'original_time_in' => $originalTimeIn,
-                'original_time_out' => $originalTimeOut,
-                'time_in' => $correctedIn->format('H:i:s'),
-                'time_out' => $correctedOut->format('H:i:s'),
-                'hours_logged' => $hours,
-                'notes' => $validated['notes'] ?? $dtr->notes,
-                'status' => 'pending',
-                'verified_by' => null,
-                // The student may have changed both times, so the HTE must
-                // re-verify the clock-in and the clock-out.
-                'clock_in_verified_by' => null,
-                'clock_in_verified_at' => null,
-                'clock_out_verified_by' => null,
-                'clock_out_verified_at' => null,
-                'resolved_by' => auth()->id(),
-                'resolved_at' => now(),
-            ]);
-        });
+    /**
+     * Send Form 17 for printing once the days are approved: it then goes
+     * through the usual steps (instructor approves for printing, student
+     * downloads and has it signed, uploads the signed copy).
+     */
+    public function submitForm(): RedirectResponse
+    {
+        $student = auth()->user()->student;
+        $internship = $student?->currentInternship;
+        $deployment = $internship?->deployment;
+        abort_unless($deployment, 422, 'You have no deployment yet.');
 
-        $studentName = $student?->user?->name ?? 'Student';
-        $date = $dtr->log_date?->format('F d, Y') ?? $logDate;
-        $hteName = $dtr->deployment?->hte?->name ?? 'Assigned HTE';
-        $assignedInstructor = $dtr->deployment?->internship?->instructor ?: $student?->instructor;
-        $instructorUserId = null;
-        if ($assignedInstructor?->user?->status === 'active') {
-            $instructorUserId = $assignedInstructor->user_id;
-        } else {
-            $instructorUserId = Instructor::where('campus_id', $student->campus_id)
-                ->where('program_id', $student->program_id)
-                ->whereHas('user', fn ($query) => $query->where('status', 'active'))
-                ->orderBy('id')
-                ->value('user_id');
+        $requirement = DocumentRequirement::where('campus_id', $internship->campus_id)->where('code', 'INTERNSHIP_TIME_FRAME')->where('is_active', true)->firstOrFail();
+        $days = Dtr::where('deployment_id', $deployment->id)->get();
+
+        if ($days->where('status', 'approved')->isEmpty()) {
+            return back()->withErrors(['form17' => 'Your supervisor has to approve at least one day first.']);
+        }
+        if ($days->where('status', '!=', 'approved')->isNotEmpty()) {
+            return back()->withErrors(['form17' => 'Some days are still waiting for your supervisor or were declined. Settle them first, so the printed Form 17 shows every day.']);
         }
 
-        if ($instructorUserId) {
-            Notification::create([
-                'user_id' => $instructorUserId,
-                'type' => 'dtr',
-                'resolve_key' => 'dtr:'.$dtr->id,
-                'title' => "DTR Flag Resolved — {$studentName}",
-                'message' => "Student: {$studentName}\nDTR Date: {$date}\nHTE: {$hteName}\nStatus: Resolved — Pending HTE Re-verification.\nThe corrected DTR remains the same attendance record; original time-in/time-out and original GPS evidence are preserved for audit.",
-            ]);
-        }
+        $document = Document::firstOrCreate(
+            ['internship_id' => $internship->id, 'document_requirement_id' => $requirement->id],
+            ['uploaded_by_user_id' => auth()->id(), 'status' => 'draft']
+        );
+        abort_unless(in_array($document->status, ['draft', 'returned'], true), 422, 'Form 17 is already with your instructor.');
+        $document->update(['status' => 'submitted', 'submitted_at' => now(), 'uploaded_by_user_id' => auth()->id()]);
 
-        // The HTE must know that the flagged entry is ready to be reviewed
-        // again. Notify the supervisor who originally flagged it; if that
-        // account is no longer available, notify active representatives of
-        // the assigned HTE.
-        $hteRecipientIds = collect();
-        if ($dtr->flagger?->user?->status === 'active') {
-            $hteRecipientIds->push($dtr->flagger->user_id);
-        } else {
-            $hteRecipientIds = $dtr->deployment?->hte?->representatives
-                ?->filter(fn ($rep) => $rep->user?->status === 'active')
-                ?->pluck('user_id') ?? collect();
-        }
+        Instructor::where('campus_id', $internship->campus_id)->where('program_id', $internship->program_id)->get()
+            ->each(fn ($instructor) => Notification::create([
+                'user_id' => $instructor->user_id,
+                'type' => 'document_status',
+                'title' => "{$student->user->name} submitted Form 17 – Internship Time Frame",
+                'message' => 'Check it and approve it for printing.',
+                'url' => route('instructor.documents', ['student' => $student->id, 'form' => $requirement->id], false),
+                'resolve_key' => 'document:'.$document->id,
+            ]));
 
-        $hteRecipientIds->unique()->each(function ($userId) use ($studentName, $date, $hteName, $dtr) {
-            Notification::create([
-                'user_id' => $userId,
-                'type' => 'dtr',
-                'resolve_key' => 'dtr:'.$dtr->id,
-                'title' => "DTR Ready for Re-verification — {$studentName}",
-                'message' => "Student: {$studentName}\nDTR Date: {$date}\nHTE: {$hteName}\nStatus: Resolved — Pending HTE Re-verification.\nThe student corrected the flagged DTR. Review the original attendance and GPS evidence before verifying.",
-            ]);
-        });
+        return redirect()->route('student.dtr')->with('status', 'Form 17 sent to your instructor. Once it is approved for printing, download it from My Documents to have it signed.');
+    }
 
-        return redirect()->route('student.dtr')->with('status', 'DTR correction submitted. Your Subject Instructor and HTE Supervisor have been notified, and the entry is pending HTE re-verification.');
+    private function notifySupervisor(Dtr $dtr, $student, bool $corrected): void
+    {
+        $hteId = $dtr->deployment?->hte_id;
+        Notification::resolve('dtr:'.$dtr->id);   // replace an earlier notice for the same day
+        HteRepresentative::where('hte_id', $hteId)->pluck('user_id')->each(fn ($userId) => Notification::create([
+            'user_id' => $userId,
+            'type' => 'dtr',
+            'title' => ($corrected ? 'Corrected time: ' : 'Time to approve: ')."{$student->user->name} · ".$dtr->log_date->format('M d, Y'),
+            'message' => TimeFrame::format($dtr->hours_logged).' hours ('.trim($dtr->period('am').' / '.$dtr->period('pm'), ' /').'). Approve or decline it in Time Frame Approval.',
+            'url' => route('hte.dtr', [], false),
+            'resolve_key' => 'dtr:'.$dtr->id,
+        ]));
     }
 }

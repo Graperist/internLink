@@ -137,8 +137,8 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
                     </span>
                     <div>
-                        <strong>Location-verified time records</strong>
-                        <span>Daily clock-in and clock-out, confirmed by the HTE supervisor.</span>
+                        <strong>Internship time frame</strong>
+                        <span>Daily time in and out, totalled by the system and approved by the HTE supervisor.</span>
                     </div>
                 </li>
                 <li>

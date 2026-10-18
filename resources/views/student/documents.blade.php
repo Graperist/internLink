@@ -49,14 +49,15 @@
         $sentToHte = false;
 
         if ($requirement->is_repeating) {
+            $isTimeFrame = $requirement->code === 'INTERNSHIP_TIME_FRAME';
             $label = match ($doc?->status) {
-                'draft' => $doc->entries->count().' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
+                'draft' => $isTimeFrame ? 'Not submitted' : $doc->entries->count().' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
                 'submitted', 'for_review' => 'For Review',
                 'returned' => 'Returned',
                 'printed' => 'Ready to Print',
                 'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Ready to Print', // no file yet: an older form still waiting for its upload
                 'approved' => 'Approved',
-                default => 'Not started',
+                default => $isTimeFrame ? 'Not submitted' : 'Not started',
             };
         } elseif ($structured) {
             $sentToHte = in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
@@ -153,6 +154,7 @@
                 $doc?->status === 'completed' => 'Download this form, print it, have it signed by the signatories, then upload a scan of the signed copy.',
                 $doc?->status === 'printed' => 'Approved for printing. Download this form, print it, have it signed by the signatories, then upload a scan of the signed copy.',
                 in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
+                $requirement->code === 'INTERNSHIP_TIME_FRAME' && in_array($doc?->status, [null, 'draft'], true) => 'Enter your daily time in and out in Time Frame (DTR). When your supervisor has approved your days, send Form 17 to your instructor from there.',
                 $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
                 $repeating => 'Start your log for this form.',
                 isset(\App\Models\DocumentAttachment::MULTI_UPLOAD[$requirement->code]) => 'The MOA is processed outside InternLink. Upload scans of the signed MOA (you can upload several files, and add more later).',
@@ -184,6 +186,9 @@
                     @if ($requirement->code === 'WEEKLY_REPORT')
                         {{-- Form 19 is printed and uploaded packet by packet on its log page --}}
                         <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
+                    @elseif ($requirement->code === 'INTERNSHIP_TIME_FRAME' && ! in_array($doc?->status, ['printed', 'completed', 'approved'], true))
+                        {{-- Form 17 is filled from the daily time in/out the supervisor approves --}}
+                        <a href="{{ route('student.dtr') }}" class="btn btn-primary"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
                     @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
                         <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-primary"><i class="ti ti-download"></i> Download Form</a>
                         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"

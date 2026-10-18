@@ -46,7 +46,7 @@ class PortalController extends Controller
             ->count();
         $eligibleDeploymentCount = $assignedDeployments->where('status', 'completed')->count();
         $evaluationsPending = max(0, ($eligibleDeploymentCount * $hteFormRequirementIds->count()) - $evaluationsSubmitted);
-        $todayAttendance = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->whereDate('log_date',today())->with(['deployment.internship.student.user','deployment.internship.student.program','deployment.hte'])->orderBy('time_in')->get();
+        $todayAttendance = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->where('status','pending')->with(['deployment.internship.student.user','deployment.internship.student.program','deployment.hte'])->orderBy('log_date')->limit(10)->get();
         return view('hte.dashboard', compact('representative','assignedDeployments','pendingDtrCount','evaluationsSubmitted','evaluationsPending','todayAttendance'));
     }
 
@@ -91,152 +91,77 @@ class PortalController extends Controller
     }
 
     /**
-     * Verify the clock-in, the clock-out, or both events of a DTR entry.
-     *
-     * The clock-in can be verified as soon as the student has clocked in; the
-     * clock-out only once it exists. The entry becomes 'approved' (and the
-     * hours are credited to the student) exactly once, when both events
-     * have been verified.
+     * Approve a day of the student's Internship Time Frame (Form 17). The
+     * hours count right away and the day shows on the instructor's side.
      */
     public function verifyDtr(Request $request, Dtr $dtr): RedirectResponse
     {
         $representative = $this->representative();
-        $validated = $request->validate([
-            'target' => ['required', Rule::in(['clock_in', 'clock_out', 'both'])],
-        ]);
-        $target = $validated['target'];
 
-        $message = DB::transaction(function () use ($dtr, $representative, $target) {
+        $message = DB::transaction(function () use ($dtr, $representative) {
             // Lock the row so two quick clicks can't credit the hours twice.
             $dtr = Dtr::whereKey($dtr->id)->lockForUpdate()->firstOrFail();
-            $dtr->load('deployment.internship.student');
+            $dtr->load('deployment.internship.student.user');
 
             abort_unless($dtr->deployment && $dtr->deployment->hte_id === $representative->hte_id, 403);
-            abort_if($dtr->status === 'approved', 422, 'This DTR entry is already verified.');
-            abort_if($dtr->status === 'flagged', 422, 'A flagged DTR must be resolved by the student before re-verification.');
+            abort_if($dtr->status === 'approved', 422, 'This day is already approved.');
+            abort_if($dtr->status === 'flagged', 422, 'This day was declined. The student has to correct it first.');
 
-            $wantsIn = in_array($target, ['clock_in', 'both'], true);
-            $wantsOut = in_array($target, ['clock_out', 'both'], true);
+            $dtr->update([
+                'status' => 'approved',
+                'verified_by' => $representative->id,
+                'clock_in_verified_by' => $representative->id, 'clock_in_verified_at' => now(),
+                'clock_out_verified_by' => $representative->id, 'clock_out_verified_at' => now(),
+            ]);
+            $dtr->deployment->internship->student->increment('hours_rendered', (float) $dtr->hours_logged);
 
-            abort_if($wantsIn && ! $dtr->time_in, 422, 'There is no clock-in to verify yet.');
-            abort_if($wantsOut && ! $dtr->time_out, 422, 'There is no clock-out to verify yet. The student has not clocked out.');
-            abort_if($wantsIn && $dtr->isClockInVerified(), 422, 'The clock-in is already verified.');
-            abort_if($wantsOut && $dtr->isClockOutVerified(), 422, 'The clock-out is already verified.');
-
-            $updates = [];
-            if ($wantsIn) {
-                $updates['clock_in_verified_by'] = $representative->id;
-                $updates['clock_in_verified_at'] = now();
-            }
-            if ($wantsOut) {
-                $updates['clock_out_verified_by'] = $representative->id;
-                $updates['clock_out_verified_at'] = now();
-            }
-            $dtr->fill($updates);
-
-            if ($dtr->isFullyVerified()) {
-                $dtr->verified_by = $representative->id;
-                $dtr->status = 'approved';
-                $dtr->save();
-                $dtr->deployment->internship->student->increment('hours_rendered', (float) $dtr->hours_logged);
-
-                return 'Clock-in and clock-out verified. DTR approved and hours credited.';
-            }
-
-            $dtr->save();
-
-            return $wantsIn
-                ? 'Clock-in verified. Hours will be credited once the clock-out is verified too.'
-                : 'Clock-out verified. Hours will be credited once the clock-in is verified too.';
+            return 'Approved '.$dtr->deployment->internship->student->user->name.' · '.$dtr->log_date->format('M d, Y')
+                .' ('.\App\Support\TimeFrame::format($dtr->hours_logged).' hours).';
         });
 
         return redirect()->route('hte.dtr')->with('status', $message);
     }
 
+    /** Decline a day: it goes back to the student to be corrected. */
     public function flagDtr(Request $request, Dtr $dtr): RedirectResponse
     {
         $representative = $this->representative();
-        $dtr->load(['deployment.internship.student.user','deployment.internship.student.program','deployment.internship.student.instructor.user','deployment.hte']);
-        abort_unless($dtr->deployment && $dtr->deployment->hte_id === $representative->hte_id,403);
-        abort_if($dtr->status === 'approved',422,'An approved DTR entry cannot be flagged.');
-
-        // When the entry hasn't been clocked out yet, only "Clock-In" is a valid target
-        // (there is no clock-out to flag). Otherwise the HTE can flag either event or both.
-        $allowedTargets = $dtr->time_out ? ['clock_in', 'clock_out', 'both'] : ['clock_in'];
+        $dtr->load(['deployment.internship.student.user', 'deployment.internship.instructor.user', 'deployment.internship.student.instructor.user', 'deployment.hte']);
+        abort_unless($dtr->deployment && $dtr->deployment->hte_id === $representative->hte_id, 403);
+        abort_if($dtr->status === 'approved', 422, 'An approved day can no longer be declined.');
 
         $validated = $request->validate([
-            'flag_reason' => ['required','string','max:255'],
-            'flag_note' => ['nullable','string','max:1000'],
-            'flag_target' => ['required', Rule::in($allowedTargets)],
-        ]);
+            'flag_reason' => ['required', 'string', 'max:255'],
+            'flag_note' => ['nullable', 'string', 'max:1000'],
+        ], ['flag_reason.required' => 'Tell the student why the time is declined.']);
 
-        DB::transaction(function() use($dtr,$representative,$validated){
-            // Flagging withdraws verification of the flagged event(s) only;
-            // an event that was verified and not flagged stays verified.
-            $clearVerification = [];
-            if (in_array($validated['flag_target'], ['clock_in', 'both'], true)) {
-                $clearVerification += ['clock_in_verified_by' => null, 'clock_in_verified_at' => null];
-            }
-            if (in_array($validated['flag_target'], ['clock_out', 'both'], true)) {
-                $clearVerification += ['clock_out_verified_by' => null, 'clock_out_verified_at' => null];
-            }
-
-            $dtr->update($clearVerification + [
-                'original_time_in' => $dtr->original_time_in ?: $dtr->time_in,
-                'original_time_out' => $dtr->original_time_out ?: $dtr->time_out,
+        DB::transaction(function () use ($dtr, $representative, $validated) {
+            $dtr->update([
+                'status' => 'flagged',
                 'verified_by' => null,
                 'flagged_by' => $representative->id,
                 'flagged_at' => now(),
                 'flag_reason' => $validated['flag_reason'],
                 'flag_note' => $validated['flag_note'] ?? null,
-                'flag_target' => $validated['flag_target'],
-                'status' => 'flagged',
+                'flag_target' => 'both',
+                'declined_by_user_id' => auth()->id(),
+                'resolved_by' => null,
+                'resolved_at' => null,
             ]);
 
             $student = $dtr->deployment->internship->student;
-            $studentName = $student?->user?->name ?? 'Student';
-            $date = $dtr->log_date?->format('F d, Y') ?? 'Unknown date';
-            $hteName = $dtr->deployment->hte?->name ?? 'Assigned HTE';
-            $targetLabel = $dtr->flagTargetLabel() ?? 'Entry';
-            $message = "Student: {$studentName}\nDTR Date: {$date}\nHTE: {$hteName}\nStatus: Flagged\nFlagged: {$targetLabel}\nReason: {$validated['flag_reason']}";
-            if (trim((string)($validated['flag_note'] ?? '')) !== '') $message .= "\nHTE Note: ".trim($validated['flag_note']);
-
-            $recipientIds = collect([$student?->user_id])->filter();
-
-            // Notify only the student's actual Subject Instructor. If the
-            // internship has no direct instructor assignment, use one active
-            // campus/program instructor as a deterministic fallback.
-            $assignedInstructor = $dtr->deployment?->internship?->instructor ?: $student?->instructor;
-            $instructorUserId = null;
-            if ($assignedInstructor?->user?->status === 'active') {
-                $instructorUserId = $assignedInstructor->user_id;
-            } else {
-                $instructorUserId = Instructor::where('campus_id', $student->campus_id)
-                    ->where('program_id', $student->program_id)
-                    ->whereHas('user', fn ($q) => $q->where('status', 'active'))
-                    ->orderBy('id')
-                    ->value('user_id');
-            }
-            if ($instructorUserId) {
-                $recipientIds->push($instructorUserId);
-            }
-
-            User::where('campus_id', $student->campus_id)
-                ->whereHas('role', fn ($q) => $q->where('code', 'coordinator'))
-                ->where('status', 'active')
-                ->pluck('id')
-                ->each(fn ($id) => $recipientIds->push($id));
-
-            $recipientIds->unique()->each(fn ($id) => Notification::create([
-                'user_id' => $id,
+            $date = $dtr->log_date->format('M d, Y');
+            Notification::create([
+                'user_id' => $student->user_id,
                 'type' => 'dtr',
                 'resolve_key' => 'dtr:'.$dtr->id,
-                'title' => "DTR Flagged — {$studentName}",
-                'message' => $message,
-            ]));
+                'title' => "Time declined: {$date}",
+                'message' => 'Your supervisor declined this day: '.$validated['flag_reason'].'. Correct the time and send it again.',
+                'url' => route('student.dtr', ['edit' => $dtr->id], false),
+            ]);
         });
 
-        return redirect()->route('hte.dtr')->with('status','DTR entry flagged. Student, Subject Instructor, and OJT Coordinator were notified.');
+        return redirect()->route('hte.dtr')->with('status', 'Declined. The day went back to the student to be corrected.');
     }
 
     public function evaluations(): View

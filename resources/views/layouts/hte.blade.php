@@ -46,7 +46,7 @@
                     <i class="ti ti-users"></i> My Assigned Interns
                 </a>
                 <a href="{{ route('hte.dtr') }}" class="il-nav-link {{ request()->routeIs('hte.dtr') ? 'active' : '' }}">
-                    <i class="ti ti-clock-check"></i> DTR Verification
+                    <i class="ti ti-clock-check"></i> Time Frame Approval
                 </a>
                 <a href="{{ route('hte.evaluations') }}" class="il-nav-link {{ request()->routeIs('hte.evaluations') ? 'active' : '' }}">
                     <i class="ti ti-clipboard-check"></i> Submit Evaluation

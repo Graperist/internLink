@@ -1,6 +1,6 @@
 {{--
     Why the student's deployment hasn't started yet (shown on My HTE Info
-    and the Daily Time Record while the deployment is pending).
+    and the Internship Time Frame (Form 17) while the deployment is pending).
 --}}
 @php
     $outstanding = $internship ? \App\Support\PreDeployment::outstanding($internship) : collect();
@@ -13,7 +13,7 @@
             <div>
                 <strong>All your pre-deployment requirements are approved.</strong>
                 Your subject instructor now sets your internship start and end dates (Start deployment).
-                Your Daily Time Record opens as soon as they do &mdash; you'll get a notification.
+                Your Internship Time Frame (Form 17) opens as soon as they do &mdash; you'll get a notification.
             </div>
         </div>
     @else
