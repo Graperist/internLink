@@ -171,6 +171,7 @@
                                 <a href="{{ route('instructor.documents.printable', $row->form23a) }}?preview=1" target="_blank" class="btn btn-sm btn-outline-secondary">
                                     <i class="ti ti-eye"></i> View Form 23a
                                 </a>
+                                <a href="{{ route('instructor.documents.printable', ['document' => $row->form23a, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Download"><i class="ti ti-download"></i></a>
                             @elseif (! auth()->user()->instructor->canActOn($row->student))
                                 <span class="text-secondary small">Their instructor evaluates</span>
                             @elseif ($partnerAgencyFormRequirement && $row->deployment && $row->deployment->status === 'completed')

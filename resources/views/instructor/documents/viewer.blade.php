@@ -108,6 +108,11 @@
                     <span class="flex-grow-1 small fw-semibold">Filled-in form (online)</span>
                     <i class="ti ti-external-link text-secondary"></i>
                 </a>
+                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank"
+                   class="d-flex align-items-center gap-2 border rounded p-2 mb-2 text-decoration-none text-reset">
+                    <i class="ti ti-download text-primary fs-5"></i>
+                    <span class="flex-grow-1 small fw-semibold">Download the form (PDF)</span>
+                </a>
             @endif
             @if ($hasFile)
                 <a href="{{ $isImageOrPdf ? route('instructor.documents.view', $document) : route('instructor.documents.download', $document) }}" target="_blank"

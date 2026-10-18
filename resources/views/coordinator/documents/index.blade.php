@@ -74,6 +74,7 @@
                                 <a href="{{ route('instructor.documents.printable', ['document' => $row->document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary">
                                     <i class="ti ti-eye"></i> View Form 23b
                                 </a>
+                                <a href="{{ route('instructor.documents.printable', ['document' => $row->document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Download"><i class="ti ti-download"></i></a>
                             @else
                                 <span class="text-secondary small">Awaiting HTE</span>
                             @endif

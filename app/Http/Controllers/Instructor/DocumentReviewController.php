@@ -611,18 +611,20 @@ class DocumentReviewController extends Controller
 
 
 
-        // Shown inside the review viewer (?embed=1): no print dialog or button.
-        if ($instructor->canActOn($document->internship) && ! request()->boolean('embed')) {
-            return view($view, compact('document'));
-        }
-
-        // View-only (the coordinator looking at another program's student):
-        // the shared templates open the print dialog on load and carry a
-        // Print button for the print-and-sign workflow. Strip both so the
-        // form is just read (signed copies live in the Repository).
+        // The instructor (and coordinator) only view and download forms - the
+        // student is the one who prints them for signing. So no print dialog
+        // or Print button here; ?download=1 saves the same page as a PDF.
         $html = view($view, ['document' => $document, 'autoPrint' => false])->render();
         $html = str_replace('<body onload="window.print()">', '<body>', $html);
         $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
+
+        if (request()->boolean('download')) {
+            $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
+                .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+                .' - '.$document->internship->student->user->name));
+            $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
+            $html = str_ireplace('</body>', $script.'</body>', $html);
+        }
 
         return response($html);
 

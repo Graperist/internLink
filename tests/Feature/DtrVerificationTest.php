@@ -275,6 +275,18 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->studentUser)->get('/student/documents?form='.$requirement->id)->assertOk()
             ->assertSee('Time frame log')->assertSee('2 approved days')->assertSee('8:00 AM - 11:30 AM')->assertSee('Total number of hours');
 
+        // The instructor only views and downloads it - no print dialog or Print button.
+        $view = $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable")->assertOk();
+        $view->assertDontSee('window.print()', false)->assertDontSee('pdfStatus', false);
+        $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable?download=1")->assertOk()
+            ->assertSee('pdfStatus', false)->assertDontSee('window.print()', false);
+
+        // The student prints it once approved for printing, and can download it again after approval.
+        $document->update(['status' => 'printed']);
+        $this->actingAs($this->studentUser)->get("/student/documents/{$document->id}/print")->assertOk()->assertSee('window.print()', false);
+        $document->update(['status' => 'approved']);
+        $this->actingAs($this->studentUser)->get('/student/documents?form='.$requirement->id)->assertOk()->assertSee('Download again');
+
         // The old log page sends the student to the time frame.
         $this->actingAs($this->studentUser)->get("/student/documents/{$requirement->id}/log")->assertRedirect('/student/dtr');
     }

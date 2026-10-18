@@ -197,6 +197,8 @@
                         </button>
                     @elseif (! in_array($doc?->status, ['approved', 'completed'], true))
                         <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
+                    @else
+                        <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-outline-secondary"><i class="ti ti-download"></i> Download again</a>
                     @endif
                 @elseif ($structured)
                     @if ($rowInfo['sentToHte'])

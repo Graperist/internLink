@@ -322,6 +322,7 @@
                                     <div class="d-flex gap-2 flex-wrap mt-2">
                                         @if (in_array($packetStatus, ['submitted', 'for_review']))
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
+                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                             @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve for printing</button></form>@endif
                                         @elseif ($packetStatus === 'printed')
                                             <span class="text-secondary small">With the student for printing and signatures.</span>
@@ -657,6 +658,7 @@
                                                 >
                                                     View Printable
                                                 </a>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 @if ($requirement->workflow_mode === 'print_sign')
                                                     @if ($canAct)
                                                     <button
@@ -692,11 +694,13 @@
                                                 >
                                                     View Printable
                                                 </a>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 <span class="text-secondary small align-self-center">Awaiting student's corrected resubmission.</span>
                                             @elseif ($status === 'printed')
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                     View Printable
                                                 </a>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures.</span>
                                             @elseif ($status === 'completed')
                                                 @if ($document->file_path)
