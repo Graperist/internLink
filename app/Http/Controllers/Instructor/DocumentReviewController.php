@@ -482,7 +482,7 @@ class DocumentReviewController extends Controller
             Storage::delete($oldFile);
         }
 
-        $document->update(['status' => $validated['decision']]);
+        $document->update(['status' => $validated['decision'], 'signatures_confirmed_at' => null]);
 
 
 
@@ -560,7 +560,7 @@ class DocumentReviewController extends Controller
                 ->withErrors(['placement' => $blocked]);
         }
 
-        $document->update(['status' => 'printed', 'printed_at' => now()]);
+        $document->update(['status' => 'printed', 'printed_at' => now(), 'signatures_confirmed_at' => null]);
 
         // Print for Signing is how the instructor accepts a print-and-sign
         // form, so an accepted Application for OJT creates the deployment.
@@ -666,6 +666,30 @@ class DocumentReviewController extends Controller
             'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
         ];
                 return $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
+    }
+
+    /**
+     * The student brought the printed form back with the physical
+     * signatures; the instructor checked them, which opens the student's
+     * upload of the scanned signed copy.
+     */
+    public function confirmSignatures(Document $document): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeInstructor($document, $instructor);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
+        abort_unless($document->status === 'printed', 422, 'Only a form that is out for signing can be confirmed.');
+        abort_if($document->signatures_confirmed_at !== null, 422, 'The signatures are already confirmed; the upload is open for the student.');
+
+        $document->update(['signatures_confirmed_at' => now()]);
+
+        $name = $document->requirement->name.($document->packet_number ? ' (Packet '.$document->packet_number.')' : '');
+        $this->notifyStudent($document, "Upload your signed {$name}",
+            "Your subject instructor confirmed the signatures on your {$name}. Upload a scan of the signed copy now.", true);
+
+        return redirect()
+            ->to($this->backUrl($document))
+            ->with('status', 'Signatures confirmed. The student can now upload the signed copy.');
     }
 
     public function markCompleted(Document $document): RedirectResponse

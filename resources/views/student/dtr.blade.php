@@ -204,7 +204,7 @@
                     </form>
                 @else
                     <p class="small mb-2">
-                        <strong>{{ match ($status) { 'submitted', 'for_review' => 'With your instructor for review.', 'printed' => 'Approved for printing - download it, have it signed, then upload the signed copy.', 'completed' => 'Signed copy uploaded - waiting for your instructor\'s approval.', 'approved' => 'Approved.', default => ucfirst($status) } }}</strong>
+                        <strong>{{ match ($status) { 'submitted', 'for_review' => 'With your instructor for review.', 'printed' => $form17->signatures_confirmed_at ? 'Signatures confirmed - upload the signed copy in My Documents.' : 'Approved for printing - download and print it, have it signed, then bring it to your instructor to confirm the signatures.', 'completed' => 'Signed copy uploaded - waiting for your instructor\'s approval.', 'approved' => 'Approved.', default => ucfirst($status) } }}</strong>
                     </p>
                     <a href="{{ route('student.documents', ['form' => $requirement->id]) }}" class="btn btn-sm btn-outline-primary">Open in My Documents</a>
                 @endif

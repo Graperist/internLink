@@ -36,6 +36,7 @@
     $statusColor = fn ($label) => match ($label) {
         'Approved', 'Submitted', 'For Review', 'Sent to HTE' => 'text-bg-primary',
         'Ready to Print' => 'text-bg-info',
+        'Upload Signed Copy' => 'text-bg-primary',
         'Signed Copy Uploaded' => 'text-bg-primary',
         'Returned' => 'text-bg-danger',
         default => 'text-bg-warning',
@@ -54,8 +55,8 @@
                 'draft' => $isTimeFrame ? 'Not submitted' : $doc->entries->count().' entr'.($doc->entries->count() === 1 ? 'y' : 'ies').' logged',
                 'submitted', 'for_review' => 'For Review',
                 'returned' => 'Returned',
-                'printed' => 'Ready to Print',
-                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Ready to Print', // no file yet: an older form still waiting for its upload
+                'printed' => $doc->signatures_confirmed_at ? 'Upload Signed Copy' : 'Ready to Print',
+                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Upload Signed Copy', // no file yet: an older form still waiting for its upload
                 'approved' => 'Approved',
                 default => $isTimeFrame ? 'Not submitted' : 'Not started',
             };
@@ -65,8 +66,8 @@
             $label = $sentToHte ? 'Sent to HTE' : match ($doc?->status) {
                 'submitted', 'for_review' => 'For Review',
                 'returned' => 'Returned',
-                'printed' => 'Ready to Print',
-                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Ready to Print', // no file yet: an older form still waiting for its upload
+                'printed' => $doc->signatures_confirmed_at ? 'Upload Signed Copy' : 'Ready to Print',
+                'completed' => filled($doc->file_path) ? 'Signed Copy Uploaded' : 'Upload Signed Copy', // no file yet: an older form still waiting for its upload
                 'approved' => 'Approved',
                 default => 'Not submitted',
             };
@@ -151,8 +152,9 @@
                 $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',
                 $doc?->status === 'returned' => 'Your instructor returned this form. Correct it and submit again.',
                 $doc?->status === 'completed' && $hasFile => 'Signed copy uploaded. Waiting for your instructor to approve it.',
-                $doc?->status === 'completed' => 'Download this form, print it, have it signed by the signatories, then upload a scan of the signed copy.',
-                $doc?->status === 'printed' => 'Approved for printing. Download this form, print it, have it signed by the signatories, then upload a scan of the signed copy.',
+                $doc?->status === 'completed' => 'Your instructor opened the upload. Upload a scan of the signed copy.',
+                $doc?->status === 'printed' && $doc->signatures_confirmed_at => 'Your instructor confirmed the signatures. Upload a scan of the signed copy.',
+                $doc?->status === 'printed' => 'Approved for printing. Download this form, print it and have it signed by the signatories, then bring the signed form to your instructor. Once they confirm the signatures, the upload of the signed copy opens here.',
                 in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
                 $requirement->code === 'INTERNSHIP_TIME_FRAME' && in_array($doc?->status, [null, 'draft'], true) => 'Enter your daily time in and out in Time Frame (DTR). When your supervisor has approved your days, send Form 17 to your instructor from there.',
                 $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
@@ -191,10 +193,14 @@
                         <a href="{{ route('student.dtr') }}" class="btn btn-primary"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
                     @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
                         <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-primary"><i class="ti ti-download"></i> Download Form</a>
+                        @if ($doc->signedUploadOpen())
                         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
                             data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
                             <i class="ti ti-upload"></i> Upload Signed Copy
                         </button>
+                        @else
+                        <span class="small text-secondary align-self-center"><i class="ti ti-lock"></i> Upload opens after your instructor checks the signatures.</span>
+                        @endif
                     @elseif (! in_array($doc?->status, ['approved', 'completed'], true))
                         <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
                     @else
@@ -205,10 +211,14 @@
                         {{-- nothing to do --}}
                     @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
                         <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-primary"><i class="ti ti-download"></i> Download Form</a>
+                        @if ($doc->signedUploadOpen())
                         <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#signedUploadModal"
                             data-document-id="{{ $doc->id }}" data-requirement-name="{{ $requirement->name }}">
                             <i class="ti ti-upload"></i> Upload Signed Copy
                         </button>
+                        @else
+                        <span class="small text-secondary align-self-center"><i class="ti ti-lock"></i> Upload opens after your instructor checks the signatures.</span>
+                        @endif
                     @elseif (in_array($doc?->status, ['completed', 'approved'], true))
                         <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-outline-secondary"><i class="ti ti-download"></i> Download again</a>
                     @else
@@ -293,7 +303,7 @@
                         <dd class="col-7">{{ ucfirst(str_replace('_', ' ', $requirement->stage)) }}</dd>
                         @if ($requirement->workflow_mode === 'print_sign')
                             <dt class="col-5 fw-normal text-secondary">Process</dt>
-                            <dd class="col-7 mb-0">Fill online &rarr; instructor checks it &rarr; you download &amp; print it, have it signed &rarr; upload the signed copy &rarr; approved</dd>
+                            <dd class="col-7 mb-0">Fill online &rarr; instructor checks it &rarr; you download &amp; print it, have it signed &rarr; bring it to your instructor to confirm the signatures &rarr; upload the signed copy &rarr; approved</dd>
                         @endif
                     </dl>
                 </div>

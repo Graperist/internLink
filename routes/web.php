@@ -118,6 +118,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/documents/{document}/review', [DocumentReviewController::class, 'review'])->name('documents.review');
         Route::post('/documents/{document}/print', [DocumentReviewController::class, 'printForSigning'])->name('documents.print');
         Route::get('/documents/{document}/printable', [DocumentReviewController::class, 'printable'])->name('documents.printable');
+        Route::post('/documents/{document}/confirm-signatures', [DocumentReviewController::class, 'confirmSignatures'])->name('documents.confirm-signatures');
         Route::post('/documents/{document}/complete', [DocumentReviewController::class, 'markCompleted'])->name('documents.complete');
         Route::get('/documents/{document}/view', [DocumentReviewController::class, 'view'])->name('documents.view');
         Route::get('/documents/{document}/download', [DocumentReviewController::class, 'download'])->name('documents.download');

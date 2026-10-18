@@ -21,12 +21,13 @@ class Document extends Model
     protected $fillable = [
         'internship_id', 'document_requirement_id', 'uploaded_by_user_id',
         'file_path', 'original_filename', 'status',
-        'submitted_at', 'printed_at', 'completed_at', 'packet_number',
+        'submitted_at', 'printed_at', 'signatures_confirmed_at', 'completed_at', 'packet_number',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
         'printed_at' => 'datetime',
+        'signatures_confirmed_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
 
@@ -84,5 +85,16 @@ class Document extends Model
     public function fieldValue(string $key): ?string
     {
         return $this->fieldValues->firstWhere('field_key', $key)?->value;
+    }
+
+    /**
+     * Print-and-sign: the student may upload the signed copy only after the
+     * instructor confirmed the signatures on the physical form. (A form left
+     * "completed" without a file by the older flow stays open too.)
+     */
+    public function signedUploadOpen(): bool
+    {
+        return ($this->status === 'printed' && $this->signatures_confirmed_at !== null)
+            || ($this->status === 'completed' && blank($this->file_path));
     }
 }

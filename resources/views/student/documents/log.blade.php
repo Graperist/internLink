@@ -12,7 +12,7 @@
         $packetStatus = fn ($packet) => $packet?->status ?? 'draft';
         $statusText = fn ($status) => match ($status) {
             'submitted', 'for_review' => 'Awaiting instructor review',
-            'printed' => 'Approved — download, print and have it signed',
+            'printed' => 'Approved — download, print, have it signed and bring it to your instructor',
             'completed' => 'Signed copy uploaded — waiting for approval',
             'approved' => 'Approved',
             'returned' => 'Returned for correction',
@@ -66,11 +66,15 @@
                             </form>
                         @elseif ($packet->status === 'printed' || ($packet->status === 'completed' && ! $packet->file_path))
                             <a href="{{ route('student.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-download"></i> Download packet</a>
+                            @if ($packet->signedUploadOpen())
                             <form method="POST" action="{{ route('student.documents.upload-signed', $packet) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
                                 @csrf
                                 <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">
                                 <button type="submit" class="btn btn-sm btn-primary">Upload signed copy</button>
                             </form>
+                            @else
+                            <span class="small text-secondary align-self-center"><i class="ti ti-lock"></i> Bring the signed packet to your instructor; the upload opens once they confirm the signatures.</span>
+                            @endif
                         @elseif ($packet->status === 'completed')
                             <span class="badge text-bg-warning">Waiting for approval</span>
                         @elseif ($packet->status === 'approved')

@@ -87,12 +87,13 @@ class StudentPrintsFormsTest extends TestCase
         $this->assertSame('printed', $this->document->fresh()->status);
         $this->assertTrue(Notification::where('user_id', $this->student->user_id)->where('title', 'like', '%approved for printing%')->exists());
 
-        // 2. The student sees Print Form + Upload Signed Copy and can print it.
+        // 2. The student sees Download Form and can print it; the upload is still closed.
         $this->actingAs($this->student->user)->get(route('student.documents', ['form' => $this->form->id]))->assertOk()
             ->assertSee('Ready to Print')
             ->assertSee('Download Form')
             ->assertSee(route('student.documents.printable', ['document' => $this->document, 'download' => 1]), false)
-            ->assertSee('Upload Signed Copy');
+            ->assertSee('Upload opens after your instructor checks the signatures')
+            ->assertDontSee('data-bs-target="#signedUploadModal"', false);
         $this->actingAs($this->student->user)->get(route('student.documents.printable', $this->document))->assertOk()
             ->assertSee('Sual, Pangasinan');
         // Download: the same page saved as a PDF in the browser, no print dialog.
@@ -101,7 +102,20 @@ class StudentPrintsFormsTest extends TestCase
             ->assertSee('Internship Resume - Jasmine.pdf', false)
             ->assertDontSee('onload="window.print()"', false);
 
-        // 3. The student uploads the signed copy; it waits for the instructor.
+        // 3. Before the instructor checked the signatures, the upload is closed.
+        $this->upload()->assertForbidden();
+        $this->actingAs($this->instructor)->get(route('instructor.documents', ['student' => $this->student->id, 'form' => $this->form->id]))->assertOk()
+            ->assertSee('Signatures confirmed &mdash; open upload', false);
+
+        // The student brings the signed form back; the instructor confirms the signatures.
+        $this->actingAs($this->instructor)->post(route('instructor.documents.confirm-signatures', $this->document))->assertRedirect();
+        $this->assertNotNull($this->document->fresh()->signatures_confirmed_at);
+        $this->assertTrue(Notification::where('user_id', $this->student->user_id)->where('title', 'like', 'Upload your signed%')->exists());
+        $this->actingAs($this->instructor)->post(route('instructor.documents.confirm-signatures', $this->document))->assertStatus(422);
+        $this->actingAs($this->student->user)->get(route('student.documents', ['form' => $this->form->id]))->assertOk()
+            ->assertSee('Upload Signed Copy')->assertSee('data-bs-target="#signedUploadModal"', false);
+
+        // The student uploads the signed copy; it waits for the instructor.
         $this->upload()->assertRedirect();
         $document = $this->document->fresh();
         $this->assertSame('completed', $document->status);
@@ -122,8 +136,10 @@ class StudentPrintsFormsTest extends TestCase
     public function test_returning_a_signed_copy_lets_the_student_correct_and_upload_again(): void
     {
         $this->actingAs($this->instructor)->post(route('instructor.documents.print', $this->document));
-        $this->upload();
+        $this->actingAs($this->instructor)->post(route('instructor.documents.confirm-signatures', $this->document));
+        $this->upload()->assertRedirect();
         $path = $this->document->fresh()->file_path;
+        $this->assertNotNull($path);
 
         $this->actingAs($this->instructor)->post(route('instructor.documents.review', $this->document), [
             'decision' => 'returned', 'remarks' => 'Missing the coordinator signature',
@@ -132,6 +148,7 @@ class StudentPrintsFormsTest extends TestCase
         $document = $this->document->fresh();
         $this->assertSame('returned', $document->status);
         $this->assertNull($document->file_path);
+        $this->assertNull($document->signatures_confirmed_at);   // the next printout needs checking again
         Storage::assertMissing($path);
 
         // The student corrects the form; it goes back through the steps.
@@ -145,6 +162,12 @@ class StudentPrintsFormsTest extends TestCase
         $this->actingAs($this->instructor)->post(route('instructor.documents.print', $this->document));
         $this->actingAs($this->instructor)->post(route('instructor.documents.complete', $this->document))->assertStatus(422);
         $this->assertSame('printed', $this->document->fresh()->status);
+    }
+
+    public function test_signatures_cannot_be_confirmed_before_it_is_approved_for_printing(): void
+    {
+        $this->actingAs($this->instructor)->post(route('instructor.documents.confirm-signatures', $this->document))->assertStatus(422);  // not printed yet
+        $this->assertNull($this->document->fresh()->signatures_confirmed_at);
     }
 
     public function test_another_student_cannot_print_it(): void

@@ -325,7 +325,12 @@
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                             @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve for printing</button></form>@endif
                                         @elseif ($packetStatus === 'printed')
-                                            <span class="text-secondary small">With the student for printing and signatures.</span>
+                                            @if ($packet->signatures_confirmed_at)
+                                                <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the student's upload.</span>
+                                            @else
+                                                @if ($canAct)<form method="POST" action="{{ route('instructor.documents.confirm-signatures', $packet) }}" onsubmit="return confirm('Confirm the signatures on this packet? This opens the student\'s upload.')">@csrf<button class="btn btn-sm btn-primary" type="submit"><i class="ti ti-signature"></i> Signatures confirmed &mdash; open upload</button></form>@endif
+                                                <span class="text-secondary small">With the student for printing and signatures.</span>
+                                            @endif
                                         @elseif ($packetStatus === 'completed')
                                             @if ($packet->file_path)
                                                 <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View signed copy</a>
@@ -701,7 +706,18 @@
                                                     View Printable
                                                 </a>
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
-                                                <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures.</span>
+                                                @if ($document->signatures_confirmed_at)
+                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d') }} &middot; waiting for the student's upload.</span>
+                                                @else
+                                                    @if ($canAct)
+                                                        <form method="POST" action="{{ route('instructor.documents.confirm-signatures', $document) }}"
+                                                              onsubmit="return confirm('Confirm that the student brought back the form with all the signatures? This opens their upload of the signed copy.')">
+                                                            @csrf
+                                                            <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-signature"></i> Signatures confirmed &mdash; open upload</button>
+                                                        </form>
+                                                    @endif
+                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures. When they bring the signed form back, confirm the signatures to open their upload.</span>
+                                                @endif
                                             @elseif ($status === 'completed')
                                                 @if ($document->file_path)
                                                     <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
