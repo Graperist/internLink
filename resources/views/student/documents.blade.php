@@ -232,6 +232,54 @@
             </div>
         </div>
 
+        @if ($requirement->code === 'INTERNSHIP_TIME_FRAME')
+            {{-- Form 17's log: the days entered in Time Frame (DTR) --}}
+            @php
+                $tfDays = $internship?->deployment
+                    ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->orderBy('log_date')->get()
+                    : collect();
+                $tfApproved = $tfDays->where('status', 'approved');
+                $tfOther = $tfDays->count() - $tfApproved->count();
+            @endphp
+            <div class="il-card mb-3">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                    <p class="small fw-bold text-uppercase text-secondary mb-0" style="letter-spacing:.03em;">Time frame log</p>
+                    <a href="{{ route('student.dtr') }}" class="small"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
+                </div>
+                <div class="small text-secondary mb-2">
+                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} · {{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }} hours. These are the days printed on Form 17.
+                    @if ($tfOther > 0)
+                        <span class="text-warning">{{ $tfOther }} more {{ \Illuminate\Support\Str::plural('day', $tfOther) }} waiting or declined.</span>
+                    @endif
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle small mb-0">
+                        <thead>
+                            <tr class="text-secondary" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;">
+                                <th>Date</th><th>Day</th><th>Morning</th><th>Afternoon</th><th class="text-end">Hours</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($tfApproved as $day)
+                                <tr>
+                                    <td class="text-nowrap">{{ $day->log_date->format('M d, Y') }}</td>
+                                    <td>{{ $day->log_date->format('l') }}</td>
+                                    <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
+                                    <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
+                                    <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->hours_logged) }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" class="text-center text-secondary py-3">No approved days yet.</td></tr>
+                            @endforelse
+                        </tbody>
+                        @if ($tfApproved->isNotEmpty())
+                            <tfoot><tr><td colspan="4" class="text-end fw-semibold">Total number of hours</td><td class="text-end fw-bold">{{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }}</td></tr></tfoot>
+                        @endif
+                    </table>
+                </div>
+            </div>
+        @endif
+
         <div class="row g-3 mb-3">
             <div class="col-md-6">
                 <div class="il-card h-100">
