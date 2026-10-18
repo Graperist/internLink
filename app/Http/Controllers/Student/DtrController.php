@@ -39,9 +39,19 @@ class DtrController extends Controller
             ? Dtr::where('deployment_id', $deployment->id)->with('decliner')->orderByDesc('log_date')->get()
             : collect();
 
-        $editing = $request->filled('edit')
-            ? $days->first(fn ($d) => $d->id === (int) $request->query('edit') && $d->status !== 'approved')
-            : null;
+        // The date shown in the Morning / Afternoon cards: ?date=, the day being
+        // corrected (?edit=), else today. Its saved halves are filled in.
+        $editDay = $request->filled('edit') ? $days->firstWhere('id', (int) $request->query('edit')) : null;
+        $selectedDate = $editDay?->log_date?->toDateString() ?? $request->query('date', today()->toDateString());
+        try {
+            $selectedDate = Carbon::parse($selectedDate)->toDateString();
+        } catch (\Throwable) {
+            $selectedDate = today()->toDateString();
+        }
+        if ($selectedDate > today()->toDateString()) {
+            $selectedDate = today()->toDateString();
+        }
+        $editing = $days->first(fn ($d) => $d->log_date->toDateString() === $selectedDate);
 
         $requirement = $internship ? DocumentRequirement::where('campus_id', $internship->campus_id)->where('code', 'INTERNSHIP_TIME_FRAME')->first() : null;
         $form17 = $requirement ? $internship->documents()->where('document_requirement_id', $requirement->id)->first() : null;
@@ -54,7 +64,7 @@ class DtrController extends Controller
             'waiting' => $days->where('status', 'pending')->count(),
         ];
 
-        return view('student.dtr', compact('deployment', 'days', 'editing', 'totals', 'requirement', 'form17', 'internship'));
+        return view('student.dtr', compact('deployment', 'days', 'editing', 'selectedDate', 'totals', 'requirement', 'form17', 'internship'));
     }
 
     /** Add a day, or correct one that is waiting or was declined. */
@@ -67,6 +77,7 @@ class DtrController extends Controller
         $time = ['nullable', 'date_format:H:i'];
         $data = $request->validate([
             'dtr_id' => ['nullable', 'integer'],
+            'part' => ['nullable', 'in:am,pm'],   // the Morning or the Afternoon card
             'log_date' => ['required', 'date', 'before_or_equal:today'],
             'am_in' => $time, 'am_out' => $time, 'pm_in' => $time, 'pm_out' => $time,
             'notes' => ['nullable', 'string', 'max:500'],
@@ -81,6 +92,27 @@ class DtrController extends Controller
         }
         if ($deployment->end_date && $date->gt($deployment->end_date->copy()->endOfDay())) {
             throw ValidationException::withMessages(['log_date' => 'This date is after your deployment ends ('.$deployment->end_date->format('M d, Y').').']);
+        }
+
+        // Saving only the morning or only the afternoon: the other half of that
+        // date stays as it was saved.
+        $part = $data['part'] ?? null;
+        if ($part) {
+            $sameDay = Dtr::where('deployment_id', $deployment->id)->whereDate('log_date', $date)->first();
+            if ($sameDay?->status === 'approved') {
+                throw ValidationException::withMessages([$part.'_in' => 'This day is already approved by your supervisor and can no longer be changed.']);
+            }
+            if (blank($data[$part.'_in'] ?? null) && blank($data[$part.'_out'] ?? null)) {
+                throw ValidationException::withMessages([$part.'_in' => 'Enter the time in and time out.']);
+            }
+            $other = $part === 'am' ? 'pm' : 'am';
+            foreach (['_in', '_out'] as $suffix) {
+                $data[$other.$suffix] = $sameDay?->{$other.$suffix} ? Carbon::parse($sameDay->{$other.$suffix})->format('H:i') : null;
+            }
+            $data['dtr_id'] = $sameDay?->id;
+            if (! $request->has('notes')) {
+                $data['notes'] = $sameDay?->notes;
+            }
         }
 
         $result = TimeFrame::compute($data['am_in'] ?? null, $data['am_out'] ?? null, $data['pm_in'] ?? null, $data['pm_out'] ?? null);
@@ -129,8 +161,10 @@ class DtrController extends Controller
 
         $this->notifySupervisor($dtr, $student, $wasDeclined);
 
-        return redirect()->route('student.dtr')->with('status', ($wasDeclined ? 'Corrected and sent back' : 'Saved and sent').' to your HTE supervisor: '
-            .$date->format('M d, Y').' · '.TimeFrame::format($result['hours']).' hours.');
+        $what = ['am' => 'Morning saved', 'pm' => 'Afternoon saved'][$part] ?? ($wasDeclined ? 'Corrected' : 'Saved');
+
+        return redirect()->route('student.dtr', ['date' => $date->toDateString()])->with('status', $what.' and sent to your HTE supervisor: '
+            .$date->format('M d, Y').' · '.TimeFrame::format($result['hours']).' hours for the day.');
     }
 
     /** Remove a day that is still waiting or was declined. */

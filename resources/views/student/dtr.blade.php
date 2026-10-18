@@ -51,63 +51,90 @@
     </div>
 
     <div class="row g-3">
-        {{-- Enter / correct a day --}}
+        {{-- Enter / correct a day: the date, then the morning and the afternoon, each saved on its own --}}
         <div class="col-lg-4">
-            <div class="il-card" style="position: sticky; top: 1rem;" id="dayForm">
-                <h2 class="h6 fw-bold mb-1">{{ $form ? 'Correct '.$form->log_date->format('M d, Y') : 'Add a day' }}</h2>
-                @if ($form?->status === 'flagged')
-                    <div class="alert alert-danger small py-2 mb-2">
-                        <strong>Declined{{ $form->decliner ? ' by '.$form->decliner->name : '' }}:</strong> {{ $form->flag_reason }}
-                        @if ($form->flag_note)<div class="mt-1">{{ $form->flag_note }}</div>@endif
-                    </div>
-                @endif
-                @if ($deployment->status !== 'active')
-                    <p class="small text-secondary mb-0">Your deployment has ended, so no more days can be added.</p>
-                @else
-                <form method="POST" action="{{ route('student.dtr.store') }}" id="timeForm">
-                    @csrf
-                    @if ($form)<input type="hidden" name="dtr_id" value="{{ $form->id }}">@endif
-                    <div class="mb-2">
+            <div style="position: sticky; top: 1rem;" id="dayForm">
+                @php
+                    $locked = $form?->status === 'approved';
+                    $maxDate = min(today()->toDateString(), $deployment->end_date?->toDateString() ?? today()->toDateString());
+                @endphp
+                <div class="il-card mb-3">
+                    <form method="GET" action="{{ route('student.dtr') }}" id="dateForm">
                         <label class="il-form-label" for="log_date">Date</label>
-                        <input type="date" class="form-control @error('log_date') is-invalid @enderror" id="log_date" name="log_date"
-                               value="{{ old('log_date', $form?->log_date?->toDateString() ?? today()->toDateString()) }}"
-                               min="{{ $deployment->start_date?->toDateString() }}" max="{{ min(today()->toDateString(), $deployment->end_date?->toDateString() ?? today()->toDateString()) }}" required>
+                        <input type="date" class="form-control @error('log_date') is-invalid @enderror" id="log_date" name="date"
+                               value="{{ old('log_date', $selectedDate) }}"
+                               min="{{ $deployment->start_date?->toDateString() }}" max="{{ $maxDate }}" required>
                         @error('log_date')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <div class="small text-secondary mt-1" id="dayName"></div>
+                    </form>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <span class="small text-secondary" id="dayName">{{ \Carbon\Carbon::parse($selectedDate)->format('l') }}</span>
+                        @if ($form)
+                            <span class="badge rounded-pill {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$form->status] ?? 'text-bg-warning' }}">{{ $form->statusLabel() }}</span>
+                        @else
+                            <span class="badge rounded-pill text-bg-light text-secondary border">Not entered yet</span>
+                        @endif
                     </div>
-
-                    @foreach (['am' => 'Morning', 'pm' => 'Afternoon'] as $p => $label)
-                        <div class="small fw-semibold text-secondary text-uppercase mt-3 mb-1" style="letter-spacing:.03em;">{{ $label }}</div>
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <label class="form-label small mb-1" for="{{ $p }}_in">Time in</label>
-                                <input type="time" class="form-control @error($p.'_in') is-invalid @enderror js-time" id="{{ $p }}_in" name="{{ $p }}_in" value="{{ old($p.'_in', $hm($form?->{$p.'_in'})) }}">
-                                @error($p.'_in')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label small mb-1" for="{{ $p }}_out">Time out</label>
-                                <input type="time" class="form-control @error($p.'_out') is-invalid @enderror js-time" id="{{ $p }}_out" name="{{ $p }}_out" value="{{ old($p.'_out', $hm($form?->{$p.'_out'})) }}">
-                                @error($p.'_out')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                            </div>
+                    @if ($form?->status === 'flagged')
+                        <div class="alert alert-danger small py-2 mt-2 mb-0">
+                            <strong>Declined{{ $form->decliner ? ' by '.$form->decliner->name : '' }}:</strong> {{ $form->flag_reason }}
+                            @if ($form->flag_note)<div class="mt-1">{{ $form->flag_note }}</div>@endif
+                            <div class="mt-1">Correct the morning or afternoon below and save it again.</div>
                         </div>
-                    @endforeach
-
+                    @elseif ($locked)
+                        <div class="small text-success mt-2"><i class="ti ti-lock"></i> Approved by your supervisor - this day can no longer be changed.</div>
+                    @endif
                     <div class="d-flex justify-content-between align-items-center border rounded p-2 mt-3 bg-light">
                         <span class="small text-secondary">Total for the day</span>
                         <span class="fw-bold" id="dayTotal">0 hours</span>
                     </div>
-                    <div class="small text-secondary mt-1">The lunch break between the morning time out and the afternoon time in is not counted.</div>
+                    <div class="small text-secondary mt-1">The lunch break between the morning and the afternoon is not counted.</div>
+                </div>
 
-                    <div class="mt-3">
-                        <label class="form-label small mb-1" for="notes">Note for your supervisor <span class="text-secondary">(optional)</span></label>
-                        <input type="text" class="form-control form-control-sm" id="notes" name="notes" maxlength="500" value="{{ old('notes', $form?->notes) }}" placeholder="e.g. Left early for a medical check-up">
-                    </div>
-
-                    <div class="d-flex gap-2 mt-3">
-                        <button type="submit" class="btn btn-primary flex-grow-1"><i class="ti ti-send"></i> {{ $form ? 'Save and resend' : 'Send to supervisor' }}</button>
-                        @if ($form)<a href="{{ route('student.dtr') }}" class="btn btn-outline-secondary">Cancel</a>@endif
-                    </div>
-                </form>
+                @if ($deployment->status !== 'active')
+                    <div class="il-card"><p class="small text-secondary mb-0">Your deployment has ended, so no more days can be added.</p></div>
+                @else
+                    @foreach (['am' => ['Morning', 'ti-sun'], 'pm' => ['Afternoon', 'ti-sun-low']] as $p => [$label, $icon])
+                        @php
+                            $saved = $form && filled($form->{$p.'_in'});
+                            $failedHere = old('part') === $p;
+                        @endphp
+                        <div class="il-card mb-3">
+                            <form method="POST" action="{{ route('student.dtr.store') }}" class="js-half" data-part="{{ $p }}">
+                                @csrf
+                                <input type="hidden" name="part" value="{{ $p }}">
+                                <input type="hidden" name="log_date" value="{{ $selectedDate }}">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h2 class="h6 fw-bold mb-0"><i class="ti {{ $icon }}"></i> {{ $label }}</h2>
+                                    <span class="small fw-semibold" id="{{ $p }}Total"></span>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1" for="{{ $p }}_in">Time in</label>
+                                        <input type="time" class="form-control @if($failedHere) @error($p.'_in') is-invalid @enderror @endif js-time" id="{{ $p }}_in" name="{{ $p }}_in"
+                                               value="{{ $failedHere ? old($p.'_in') : $hm($form?->{$p.'_in'}) }}" @disabled($locked)>
+                                        @if ($failedHere) @error($p.'_in')<div class="invalid-feedback">{{ $message }}</div>@enderror @endif
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1" for="{{ $p }}_out">Time out</label>
+                                        <input type="time" class="form-control @if($failedHere) @error($p.'_out') is-invalid @enderror @endif js-time" id="{{ $p }}_out" name="{{ $p }}_out"
+                                               value="{{ $failedHere ? old($p.'_out') : $hm($form?->{$p.'_out'}) }}" @disabled($locked)>
+                                        @if ($failedHere) @error($p.'_out')<div class="invalid-feedback">{{ $message }}</div>@enderror @endif
+                                    </div>
+                                </div>
+                                @if ($p === 'pm')
+                                    <div class="mt-2">
+                                        <label class="form-label small mb-1" for="notes">Note for your supervisor <span class="text-secondary">(optional)</span></label>
+                                        <input type="text" class="form-control form-control-sm" id="notes" name="notes" maxlength="500" value="{{ old('notes', $form?->notes) }}" placeholder="e.g. Left early for a medical check-up" @disabled($locked)>
+                                    </div>
+                                @endif
+                                @unless ($locked)
+                                    <button type="submit" class="btn btn-primary w-100 mt-3">
+                                        <i class="ti ti-send"></i> {{ $saved ? 'Save '.strtolower($label).' and resend' : 'Save '.strtolower($label) }}
+                                    </button>
+                                @endunless
+                            </form>
+                        </div>
+                    @endforeach
                 @endif
             </div>
         </div>
@@ -129,7 +156,7 @@
                         <tbody>
                             @forelse ($days as $day)
                                 <tr class="{{ $day->status === 'flagged' ? 'table-danger' : '' }} {{ $form?->id === $day->id ? 'table-active' : '' }}">
-                                    <td><div class="fw-semibold">{{ $day->log_date->format('M d, Y') }}</div><div class="text-secondary">{{ $day->log_date->format('l') }}</div></td>
+                                    <td class="text-nowrap"><div class="fw-semibold">{{ $day->log_date->format('M d, Y') }}</div><div class="text-secondary">{{ $day->log_date->format('l') }}</div></td>
                                     <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
                                     <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
                                     <td class="text-end fw-semibold">{{ $fmt($day->hours_logged) }}</td>
@@ -141,7 +168,7 @@
                                     </td>
                                     <td class="text-end text-nowrap">
                                         @if ($day->status !== 'approved' && $deployment->status === 'active')
-                                            <a href="{{ route('student.dtr', ['edit' => $day->id]) }}#dayForm" class="btn btn-sm {{ $day->status === 'flagged' ? 'btn-danger' : 'btn-outline-secondary' }}">{{ $day->status === 'flagged' ? 'Correct' : 'Edit' }}</a>
+                                            <a href="{{ route('student.dtr', ['date' => $day->log_date->toDateString()]) }}#dayForm" class="btn btn-sm {{ $day->status === 'flagged' ? 'btn-danger' : 'btn-outline-secondary' }} px-2" title="{{ $day->status === 'flagged' ? 'Correct' : 'Edit' }}"><i class="ti ti-pencil"></i></a>
                                             <form method="POST" action="{{ route('student.dtr.destroy', $day) }}" class="d-inline" onsubmit="return confirm('Remove {{ $day->log_date->format('M d, Y') }}?')">
                                                 @csrf @method('DELETE')
                                                 <button type="submit" class="btn btn-sm btn-link text-danger p-1" title="Remove"><i class="ti ti-trash"></i></button>
@@ -189,18 +216,20 @@
     (function () {
         const f = id => document.getElementById(id);
         const mins = v => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+        const fmt = m => { const h = Math.round(m / 60 * 100) / 100; return h + (h === 1 ? ' hour' : ' hours'); };
         function update() {
             let total = 0;
-            [['am_in', 'am_out'], ['pm_in', 'pm_out']].forEach(([a, b]) => {
-                const s = mins(f(a)?.value), e = mins(f(b)?.value);
-                if (s !== null && e !== null && e > s) total += e - s;
+            ['am', 'pm'].forEach(p => {
+                const s = mins(f(p + '_in')?.value), e = mins(f(p + '_out')?.value);
+                const part = (s !== null && e !== null && e > s) ? e - s : 0;
+                total += part;
+                if (f(p + 'Total')) f(p + 'Total').textContent = part ? fmt(part) : '';
             });
-            const h = Math.round(total / 60 * 100) / 100;
-            if (f('dayTotal')) f('dayTotal').textContent = h + (h === 1 ? ' hour' : ' hours');
-            const d = f('log_date')?.value;
-            if (d && f('dayName')) f('dayName').textContent = new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+            if (f('dayTotal')) f('dayTotal').textContent = fmt(total);
         }
-        document.querySelectorAll('.js-time, #log_date').forEach(el => el.addEventListener('input', update));
+        document.querySelectorAll('.js-time').forEach(el => el.addEventListener('input', update));
+        // Picking another date opens that day in the Morning and Afternoon cards.
+        f('log_date')?.addEventListener('change', e => { if (e.target.value) f('dateForm').submit(); });
         update();
     })();
     </script>

@@ -102,7 +102,7 @@ class DtrVerificationTest extends TestCase
 
     public function test_student_enters_a_day_and_the_system_totals_it_without_the_lunch_break(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day())->assertRedirect('/student/dtr')->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day())->assertRedirect('/student/dtr?date=2026-10-02')->assertSessionHasNoErrors();
 
         $dtr = Dtr::sole();
         $this->assertSame('pending', $dtr->status);
@@ -119,6 +119,42 @@ class DtrVerificationTest extends TestCase
     {
         $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['pm_in' => null, 'pm_out' => null]))->assertSessionHasNoErrors();
         $this->assertEquals(4, (float) Dtr::sole()->hours_logged);
+    }
+
+    public function test_morning_and_afternoon_are_saved_separately_into_one_day(): void
+    {
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '07:00', 'am_out' => '12:00'])
+            ->assertRedirect('/student/dtr?date=2026-10-02')->assertSessionHasNoErrors();
+        $dtr = Dtr::sole();
+        $this->assertEquals(5, (float) $dtr->hours_logged);
+        $this->assertNull($dtr->pm_in);
+
+        // Later the same day: the afternoon is added to the same day, the morning is kept.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early'])
+            ->assertSessionHasNoErrors();
+        $dtr = Dtr::sole();
+        $this->assertSame('07:00', substr($dtr->am_in, 0, 5));
+        $this->assertSame('16:00', substr($dtr->pm_out, 0, 5));
+        $this->assertEquals(8, (float) $dtr->hours_logged);
+        $this->assertSame('Left early', $dtr->notes);
+        $this->assertSame('pending', $dtr->status);
+
+        // Correcting only the morning keeps the afternoon and the note.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00'])->assertSessionHasNoErrors();
+        $dtr->refresh();
+        $this->assertEquals(7, (float) $dtr->hours_logged);
+        $this->assertSame('Left early', $dtr->notes);
+
+        // The afternoon must start after the saved morning ends.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '11:00', 'pm_out' => '16:00'])->assertSessionHasErrors('pm_in');
+
+        $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
+            ->assertSee('Save morning and resend')->assertSee('Save afternoon and resend')->assertSee('value="08:00"', false);
+
+        // Once approved, neither half can be changed.
+        $dtr->update(['status' => 'approved']);
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '17:00'])->assertSessionHasErrors('pm_in');
+        $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()->assertSee('can no longer be changed')->assertDontSee('Save afternoon');
     }
 
     public function test_wrong_times_are_rejected(): void
@@ -162,7 +198,7 @@ class DtrVerificationTest extends TestCase
         $this->assertSame($this->repUser->id, $dtr->declined_by_user_id);
         $this->assertTrue(Notification::where('user_id', $this->studentUser->id)->where('resolve_key', 'dtr:'.$dtr->id)->exists());
 
-        $this->actingAs($this->studentUser)->get('/student/dtr?edit='.$dtr->id)->assertOk()->assertSee('The student was undertime')->assertSee('Save and resend');
+        $this->actingAs($this->studentUser)->get('/student/dtr?edit='.$dtr->id)->assertOk()->assertSee('The student was undertime')->assertSee('Save afternoon and resend');
 
         $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['dtr_id' => $dtr->id, 'pm_out' => '16:00']))->assertSessionHasNoErrors();
         $dtr->refresh();
