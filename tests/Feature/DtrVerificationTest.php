@@ -311,7 +311,7 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->student->id)->assertOk()
             ->assertDontSee('Form 17 – Internship Time Frame');
         $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->student->id)->assertOk()
-            ->assertSee('View Form 17')->assertSee(route('instructor.monitoring.form', ['student' => $this->student, 'download' => 1]));
+            ->assertSee('Form 17 for')->assertSee('Whole time frame')->assertSee(route('instructor.monitoring.form', $this->student));
         $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', $this->student))->assertOk()
             ->assertSee('Oct 03, 2026')->assertDontSee('window.print()', false);
         $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->student, 'download' => 1]))->assertOk()

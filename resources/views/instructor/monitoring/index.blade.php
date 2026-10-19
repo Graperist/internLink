@@ -74,19 +74,34 @@
                 </div>
                 <div class="text-end">
                     <div class="fw-bold">{{ $fmt($selected['approved']) }} <span class="small text-secondary fw-normal">/ {{ $fmt($selected['required']) }} hours approved</span></div>
-                    @if ($days->isNotEmpty())
-                        <div class="d-flex gap-2 justify-content-end mt-2">
-                            <a href="{{ route('instructor.monitoring.form', $selected['student']) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-eye"></i> View Form 17</a>
-                            <a href="{{ route('instructor.monitoring.form', ['student' => $selected['student'], 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-download"></i> Download</a>
-                        </div>
-                    @endif
                 </div>
             </div>
-            @include('partials.week-downloads', [
-                'weeks' => \App\Support\TrainingWeeks::list($days->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($selected['student']->currentInternship)),
-                'url' => fn ($week) => route('instructor.monitoring.form', ['student' => $selected['student'], 'download' => 1, 'week' => $week]),
-                'class' => 'mb-3',
-            ])
+            @if ($days->isNotEmpty())
+                @php
+                    $tfWeeks = \App\Support\TrainingWeeks::list($days->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($selected['student']->currentInternship));
+                    $tfMonths = \App\Support\TrainingWeeks::months($days->pluck('log_date'));
+                @endphp
+                {{-- View or download Form 17 for the whole time frame, one month or one week. --}}
+                <form method="GET" action="{{ route('instructor.monitoring.form', $selected['student']) }}" target="_blank"
+                      class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 rounded" style="background:#f4f6f9;" id="tfPeriodForm">
+                    <label for="tfPeriod" class="small fw-semibold text-secondary mb-0"><i class="ti ti-calendar"></i> Form 17 for</label>
+                    <select name="period" id="tfPeriod" class="form-select form-select-sm" style="width:auto;min-width:260px;">
+                        <option value="">Whole time frame ({{ $days->count() }} {{ \Illuminate\Support\Str::plural('day', $days->count()) }})</option>
+                        <optgroup label="By month">
+                            @foreach ($tfMonths as $month)
+                                <option value="month:{{ $month['start']->format('Y-m') }}">{{ $month['start']->format('F Y') }} ({{ $month['count'] }} {{ \Illuminate\Support\Str::plural('day', $month['count']) }})</option>
+                            @endforeach
+                        </optgroup>
+                        <optgroup label="By week">
+                            @foreach ($tfWeeks as $week)
+                                <option value="week:{{ $week['start']->toDateString() }}">Week {{ $week['number'] }} &ndash; {{ $week['start']->format('M d') }} to {{ $week['end']->format('M d, Y') }} ({{ $week['count'] }} {{ \Illuminate\Support\Str::plural('day', $week['count']) }})</option>
+                            @endforeach
+                        </optgroup>
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="ti ti-eye"></i> View</button>
+                    <button type="submit" name="download" value="1" class="btn btn-sm btn-outline-primary"><i class="ti ti-download"></i> Download</button>
+                </form>
+            @endif
             <div class="table-responsive">
                 <table class="table align-middle small mb-0">
                     <thead>

@@ -102,7 +102,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}" enctype="multipart/form-data">
+    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}" enctype="multipart/form-data" id="fillForm">
         @csrf
 
         @if ($requirement->code === 'OJT_RESUME')
@@ -123,7 +123,7 @@
                 </div>
                 <div class="col-md-6">
                     <label class="il-form-label" for="contact_number">Telephone / Mobile Number</label>
-                    <input class="form-control" id="contact_number" name="contact_number" value="{{ $resumeValue('contact_number') }}" required>
+                    <input type="tel" inputmode="tel" class="form-control" id="contact_number" name="contact_number" value="{{ $resumeValue('contact_number') }}" placeholder="e.g. 0917 123 4567" required>
                 </div>
                 <div class="col-md-6">
                     <label class="il-form-label" for="email">Email Address</label>
@@ -195,10 +195,22 @@
             <div class="row g-3">
                 <div class="col-md-6"><label class="il-form-label" for="nickname">Nickname</label><input class="form-control" id="nickname" name="nickname" value="{{ $resumeValue('nickname') }}" required></div>
                 <div class="col-md-6"><label class="il-form-label" for="height">Height</label><input class="form-control" id="height" name="height" value="{{ $resumeValue('height') }}" placeholder="e.g. 5'2&quot;" required></div>
-                <div class="col-md-6"><label class="il-form-label" for="age">Age</label><input type="number" min="1" max="120" class="form-control" id="age" name="age" value="{{ $resumeValue('age') }}" required></div>
+                <div class="col-md-6"><label class="il-form-label" for="age">Age</label><input type="number" min="15" max="60" class="form-control" id="age" name="age" value="{{ $resumeValue('age') }}" required></div>
                 <div class="col-md-6"><label class="il-form-label" for="weight">Weight</label><input class="form-control" id="weight" name="weight" value="{{ $resumeValue('weight') }}" placeholder="e.g. 50 kg" required></div>
-                <div class="col-md-6"><label class="il-form-label" for="gender">Gender</label><input class="form-control" id="gender" name="gender" value="{{ $resumeValue('gender') }}" required></div>
-                <div class="col-md-6"><label class="il-form-label" for="civil_status">Civil Status</label><input class="form-control" id="civil_status" name="civil_status" value="{{ $resumeValue('civil_status') }}" required></div>
+                @foreach (['gender' => ['Gender', ['Male', 'Female']], 'civil_status' => ['Civil Status', ['Single', 'Married', 'Widowed', 'Separated', 'Divorced', 'Annulled']]] as $selectKey => [$selectLabel, $selectOptions])
+                    @php $selectValue = $resumeValue($selectKey); @endphp
+                    <div class="col-md-6"><label class="il-form-label" for="{{ $selectKey }}">{{ $selectLabel }}</label>
+                        <select class="form-select" id="{{ $selectKey }}" name="{{ $selectKey }}" required>
+                            <option value="" disabled {{ $selectValue ? '' : 'selected' }}>Select&hellip;</option>
+                            @foreach ($selectOptions as $option)
+                                <option value="{{ $option }}" {{ strcasecmp((string) $selectValue, $option) === 0 ? 'selected' : '' }}>{{ $option }}</option>
+                            @endforeach
+                            @if ($selectValue && ! collect($selectOptions)->contains(fn ($o) => strcasecmp($o, $selectValue) === 0))
+                                <option value="{{ $selectValue }}" selected>{{ $selectValue }}</option>
+                            @endif
+                        </select>
+                    </div>
+                @endforeach
                 <div class="col-md-6"><label class="il-form-label" for="religion">Religion</label><input class="form-control" id="religion" name="religion" value="{{ $resumeValue('religion') }}" required></div>
                 <div class="col-12"><label class="il-form-label" for="skills">Skills</label><textarea class="form-control" id="skills" name="skills" rows="3" required>{{ $resumeValue('skills') }}</textarea></div>
             </div>
@@ -1053,7 +1065,19 @@
                             @elseif ($field->field_type === 'textarea')
                                 <textarea class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" rows="3" {{ $field->is_required ? 'required' : '' }}>{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}</textarea>
                             @else
-                                <input type="text" class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" value="{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}" {{ $field->is_required ? 'required' : '' }}>
+                                @php
+                                    $isPhone = \App\Support\FieldCorrectness::isPhone($field->field_key, (string) $field->validation_rule);
+                                    $inputType = match (true) {
+                                        $field->field_type === 'date' => 'date',
+                                        $field->field_type === 'number' => 'number',
+                                        $field->field_type === 'email' || $field->validation_rule === 'email' => 'email',
+                                        $isPhone => 'tel',
+                                        default => 'text',
+                                    };
+                                @endphp
+                                <input type="{{ $inputType }}" class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" value="{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}" {{ $field->is_required ? 'required' : '' }}
+                                       @if ($inputType === 'number') step="any" min="0" @endif
+                                       @if ($isPhone) inputmode="tel" placeholder="e.g. 0917 123 4567" @endif>
                             @endif
                         @endif
                     </div>
@@ -1095,6 +1119,109 @@
             <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>
+
+    {{-- Shows each error under its own field, and runs the same correctness
+         checks while the student types (the server checks again on submit). --}}
+    <script>
+    (function () {
+        var form = document.getElementById('fillForm');
+        if (!form) return;
+        var serverErrors = @json($errors->toArray());
+        var checks = @json(\App\Support\FieldCorrectness::client($requirement));
+        var maxYear = {{ now()->year + 6 }};
+
+        function fieldsNamed(name) {
+            return Array.prototype.filter.call(form.elements, function (el) { return el.name === name && el.type !== 'hidden'; });
+        }
+        function feedbackFor(el) {
+            var next = el.nextElementSibling;
+            if (next && next.classList.contains('field-check')) return next;
+            var div = document.createElement('div');
+            div.className = 'invalid-feedback d-block field-check';
+            el.insertAdjacentElement('afterend', div);
+            return div;
+        }
+        function show(el, message) {
+            el.classList.toggle('is-invalid', !!message);
+            if (message) {
+                feedbackFor(el).textContent = message;
+            } else if (el.nextElementSibling && el.nextElementSibling.classList.contains('field-check')) {
+                el.nextElementSibling.remove();
+            }
+        }
+        function validPhone(value) {
+            if (!/^\+?[0-9\s\-()]+$/.test(value)) return false;
+            var digits = value.replace(/\D/g, '');
+            return /^(09\d{9}|639\d{9}|0[2-8]\d{7,9}|[1-9]\d{6,7})$/.test(digits);
+        }
+        function validYears(value) {
+            var years = (value.match(/\b(19\d{2}|20\d{2})\b/g) || []).map(Number);
+            if (!years.length) return false;
+            if (years.some(function (y) { return y < 1950 || y > maxYear; })) return false;
+            return !(years.length >= 2 && years[0] > years[1]);
+        }
+        function problem(check, value) {
+            value = value.trim();
+            if (value === '') return '';
+            if (check.phone && !validPhone(value)) return check.message;
+            if (check.years && !validYears(value)) return check.message;
+            if (check.pattern && !new RegExp(check.pattern, check.flags || '').test(value)) return check.message;
+            if (check.min !== undefined) {
+                var n = Number(value);
+                if (isNaN(n) || n < check.min || n > check.max || (check.integer && !Number.isInteger(n))) return check.message;
+            }
+            return '';
+        }
+
+        // Errors from the last submit, under their fields.
+        Object.keys(serverErrors).forEach(function (name) {
+            fieldsNamed(name).slice(0, 1).forEach(function (el) { show(el, serverErrors[name][0]); });
+        });
+
+        // Live checks.
+        Object.keys(checks).forEach(function (name) {
+            fieldsNamed(name).forEach(function (el) {
+                function run() {
+                    var message = problem(checks[name], el.value || '');
+                    el.setCustomValidity(message);
+                    show(el, message);
+                }
+                el.addEventListener('blur', run);
+                el.addEventListener('input', function () { if (el.classList.contains('is-invalid')) run(); });
+                el.addEventListener('invalid', run);
+            });
+        });
+
+        // Dates that must be in order.
+        [['date_started', 'date_ended'], ['start_date', 'end_date']].forEach(function (pair) {
+            var start = fieldsNamed(pair[0])[0], end = fieldsNamed(pair[1])[0];
+            if (!start || !end) return;
+            function run() {
+                var message = start.value && end.value && end.value < start.value ? 'The end date cannot be earlier than the start date.' : '';
+                end.setCustomValidity(message);
+                show(end, message);
+            }
+            start.addEventListener('change', run);
+            end.addEventListener('change', run);
+        });
+
+        form.addEventListener('submit', function (e) {
+            Object.keys(checks).forEach(function (name) {
+                fieldsNamed(name).forEach(function (el) {
+                    var message = problem(checks[name], el.value || '');
+                    el.setCustomValidity(message);
+                    show(el, message);
+                });
+            });
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                var first = form.querySelector('.is-invalid, :invalid');
+                if (first) { first.scrollIntoView({ block: 'center' }); first.focus(); }
+                form.reportValidity();
+            }
+        });
+    })();
+    </script>
 </div>
 
 @if ($htes->isNotEmpty())

@@ -101,6 +101,12 @@
     if ($onlyWeek = \App\Support\TrainingWeeks::requested($internship)) {
         $weekEnd = $onlyWeek->copy()->addDays(6)->endOfDay();
         $entries = $entries->filter(fn ($day) => $day->log_date->between($onlyWeek, $weekEnd))->values();
+        $periodLabel = 'Week '.\App\Support\TrainingWeeks::number($onlyWeek, \App\Support\TrainingWeeks::anchorForInternship($internship))
+            .' ('.$onlyWeek->format('M d').' – '.$onlyWeek->copy()->addDays(6)->format('M d, Y').')';
+    } elseif ($onlyMonth = \App\Support\TrainingWeeks::requestedMonth()) {
+        // By month (?month=Y-m): only that month's days.
+        $entries = $entries->filter(fn ($day) => $day->log_date->isSameMonth($onlyMonth))->values();
+        $periodLabel = $onlyMonth->format('F Y');
     }
     $total = $entries->sum(fn ($day) => (float) $day->hours_logged);
     $blankRows = max(0, 28 - $entries->count()); // the paper form has 28 rows
@@ -140,6 +146,9 @@
             <h1>INTERNSHIP TIME FRAME</h1>
             <div class="sub">PANGASINAN STATE UNIVERSITY</div>
             <div class="sub">{{ $campusLabel }}</div>
+            @if (! empty($periodLabel))
+                <div class="sub" style="margin-top:3px;font-weight:bold;">{{ $periodLabel }}</div>
+            @endif
         </td>
     </tr>
 </table>

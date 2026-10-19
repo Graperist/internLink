@@ -77,8 +77,18 @@ class DownloadByWeekTest extends TestCase
         $this->actingAs($this->studentUser)->get('/student/dtr')->assertOk()
             ->assertSee('Download by week')->assertSee('Week 1')->assertSee('Week 2')
             ->assertSee(route('student.dtr.form', ['download' => 1, 'week' => '2026-10-08']));
+        // The instructor picks the whole time frame, a month or a week, then View or Download.
         $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->internship->student_id)->assertOk()
-            ->assertSee(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'download' => 1, 'week' => '2026-10-01']));
+            ->assertSee(route('instructor.monitoring.form', $this->internship->student_id))
+            ->assertSee('value="month:2026-10"', false)->assertSee('October 2026')
+            ->assertSee('value="week:2026-10-01"', false)->assertSee('value="week:2026-10-08"', false)
+            ->assertSee('name="download" value="1"', false);
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'period' => 'week:2026-10-08']))->assertOk()
+            ->assertSee('Oct 09, 2026')->assertDontSee('Oct 01, 2026')->assertSee('Week 2 (Oct 08 – Oct 14, 2026)');
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'period' => 'month:2026-10', 'download' => 1]))->assertOk()
+            ->assertSee('Oct 01, 2026')->assertSee('Oct 09, 2026')->assertSee('Time Frame - October 2026 - ', false);
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'period' => 'month:2026-11']))->assertOk()
+            ->assertDontSee('Oct 01, 2026')->assertSee('November 2026');
 
         // Week 1 only: Oct 01 + Oct 02, no Oct 09.
         $this->actingAs($this->studentUser)->get(route('student.dtr.form', ['download' => 1, 'week' => '2026-10-01']))->assertOk()

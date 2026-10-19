@@ -186,6 +186,11 @@ class TrainingWeeks
     public static function requested(Internship $internship): ?Carbon
     {
         $week = request()->query('week');
+        // ?period=week:Y-m-d (the instructor's View/Download picker)
+        $period = request()->query('period');
+        if (is_string($period) && str_starts_with($period, 'week:')) {
+            $week = substr($period, 5);
+        }
         if (! is_string($week) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $week)) {
             return null;
         }
@@ -194,9 +199,45 @@ class TrainingWeeks
         return $anchor ? self::weekStart(Carbon::parse($week), $anchor) : null;
     }
 
-    /** " - Week 3 (Oct 05 - Oct 11, 2026)" for a one-week download's file name, else "". */
+    /**
+     * The month asked for with ?month=Y-m or ?period=month:Y-m (a view or
+     * download of one month only), as its first day - or null.
+     */
+    public static function requestedMonth(): ?Carbon
+    {
+        $month = request()->query('month');
+        $period = request()->query('period');
+        if (is_string($period) && str_starts_with($period, 'month:')) {
+            $month = substr($period, 6);
+        }
+        if (! is_string($month) || ! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+            return null;
+        }
+
+        return Carbon::createFromFormat('Y-m-d', $month.'-01')->startOfDay();
+    }
+
+    /** The months that have days in them: [['start' => Carbon, 'count' => int], ...] */
+    public static function months(iterable $dates): array
+    {
+        $months = [];
+        foreach ($dates as $date) {
+            $start = Carbon::parse($date)->startOfMonth();
+            $key = $start->format('Y-m');
+            $months[$key] ??= ['start' => $start, 'count' => 0];
+            $months[$key]['count']++;
+        }
+        ksort($months);
+
+        return array_values($months);
+    }
+
+    /** " - Week 3 (Oct 05 - Oct 11, 2026)" / " - October 2026" for a one-week or one-month file name, else "". */
     public static function downloadSuffix(Internship $internship): string
     {
+        if ($month = self::requestedMonth()) {
+            return ' - '.$month->format('F Y');
+        }
         $start = self::requested($internship);
         if (! $start) {
             return '';
