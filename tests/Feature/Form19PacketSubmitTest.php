@@ -17,7 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
-/** The Form 19 log page opens and each packet can be submitted on its own. */
+/** The Form 19 log page opens and each week can be submitted on its own. */
 class Form19PacketSubmitTest extends TestCase
 {
     use RefreshDatabase;
@@ -45,7 +45,7 @@ class Form19PacketSubmitTest extends TestCase
         DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => now()->subDays(2)->toDateString()]);
 
         $this->actingAs($user)->get(route('student.documents.log', $form19))->assertOk()
-            ->assertSee('Submit packet for review')
+            ->assertSee('Submit week')
             ->assertSee(route('student.documents.log.packet.submit', [$form19, 1]), false);
 
         $this->actingAs($user)->post(route('student.documents.log.packet.submit', [$form19, 1]))

@@ -92,38 +92,35 @@ class DownloadByWeekTest extends TestCase
             ->assertSee('Oct 01, 2026')->assertSee('Oct 09, 2026');
     }
 
-    public function test_form_19_packet_downloads_one_week(): void
+    public function test_each_form_19_week_downloads_on_its_own(): void
     {
         $form19 = $this->requirement('WEEKLY_REPORT', 'Form 19 – Internship/Practicum Weekly Report', '19');
-        $packet = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 1, 'status' => 'printed']);
-        foreach (['2026-10-01', '2026-10-02', '2026-10-09'] as $date) {
-            DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => $date]);
+        $week1 = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 1, 'status' => 'printed']);
+        $week2 = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 2, 'status' => 'approved']);
+        foreach ([[$week1, '2026-10-01'], [$week1, '2026-10-02'], [$week2, '2026-10-09']] as [$doc, $date]) {
+            DocumentEntry::forceCreate(['document_id' => $doc->id, 'entry_date' => $date]);
         }
 
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk()
-            ->assertSee('Download by week')
-            ->assertSee(route('student.documents.printable', ['document' => $packet, 'download' => 1, 'week' => '2026-10-08']));
+            ->assertSee(route('student.documents.printable', ['document' => $week1, 'download' => 1]))
+            ->assertSee(route('student.documents.printable', ['document' => $week2, 'download' => 1]));
 
-        $all = $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $packet, 'download' => 1]))->getContent();
-        $week2 = $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $packet, 'download' => 1, 'week' => '2026-10-08']))
-            ->assertOk()->assertSee('Packet 1 - Week 2', false)->getContent();
-        $this->assertSame(2, substr_count($all, 'class="entries-table"'));     // a page per week
-        $this->assertSame(1, substr_count($week2, 'class="entries-table"'));   // just week 2
+        $html = $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $week1, 'download' => 1]))
+            ->assertOk()->assertSee('Week 1', false)->getContent();
+        $this->assertSame(1, substr_count($html, 'class="entries-table"'));   // one page: that week
     }
 
     public function test_an_entry_before_the_first_dtr_day_is_week_1_not_week_0(): void
     {
         $form19 = $this->requirement('WEEKLY_REPORT', 'Form 19 – Internship/Practicum Weekly Report', '19');
-        $packet = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 1, 'status' => 'approved']);
-        foreach (['2026-09-28', '2026-10-09'] as $date) {   // first DTR day is Oct 01
-            DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => $date]);
+        foreach ([[1, '2026-09-28'], [2, '2026-10-09']] as [$number, $date]) {   // first DTR day is Oct 01
+            $doc = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => $number, 'status' => 'draft']);
+            DocumentEntry::forceCreate(['document_id' => $doc->id, 'entry_date' => $date]);
         }
 
-        $page = $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk();
-        $page->assertDontSee('Week 0')->assertSee('Week 1 (Sep 28')->assertSee('Week 2 (Oct 05');
-        // The weekly list and the download buttons use the same numbers.
-        $html = $page->getContent();
-        $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">Sep 28, 2026#', $html);
-        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 05, 2026#', $html);
+        $html = $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk()
+            ->assertDontSee('Week 0')->getContent();
+        $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">Sep 28 – Oct 04, 2026#u', $html);
+        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 05 – Oct 11, 2026#u', $html);
     }
 }

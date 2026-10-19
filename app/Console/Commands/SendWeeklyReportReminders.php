@@ -63,14 +63,16 @@ class SendWeeklyReportReminders extends Command
                         continue;
                     }
 
-                    $document = $internship->documents()
+                    // One Form 19 document per week (packet_number = week number).
+                    $weeks = $internship->documents()
                         ->where('document_requirement_id', $requirement->id)
                         ->with('entries')
-                        ->first();
+                        ->get()
+                        ->keyBy('packet_number');
 
                     $sent += $this->option('overdue')
-                        ? $this->overdueNotice($student, $internship, $document, $today)
-                        : $this->eveningReminders($student, $internship, $document, $today);
+                        ? $this->overdueNotice($student, $internship, $weeks, $today)
+                        : $this->eveningReminders($student, $internship, $weeks, $today);
                 }
             });
 
@@ -79,11 +81,14 @@ class SendWeeklyReportReminders extends Command
         return self::SUCCESS;
     }
 
-    private function eveningReminders(Student $student, $internship, ?Document $document, Carbon $today): int
+    private function eveningReminders(Student $student, $internship, $weeks, Carbon $today): int
     {
         $sent = 0;
-        $locked = $document && in_array($document->status, self::LOCKED, true);
         $deploymentId = $internship->deployment->id;
+        $anchor = TrainingWeeks::anchorForInternship($internship, $weeks->flatMap(fn ($d) => $d->entries)->pluck('entry_date'));
+        $todayWeek = $anchor && $today->gte($anchor) ? TrainingWeeks::number(TrainingWeeks::weekStart($today, $anchor), $anchor) : null;
+        $document = $todayWeek ? $weeks->get($todayWeek) : null;   // this week's Form 19
+        $locked = $document && in_array($document->status, self::SUBMITTED, true);
 
         // 1) Clocked in today but no Form 19 entry for today.
         $clockedInToday = Dtr::where('deployment_id', $deploymentId)
@@ -94,7 +99,7 @@ class SendWeeklyReportReminders extends Command
             ? $document->entries->contains(fn ($entry) => Carbon::parse($entry->entry_date)->isSameDay($today))
             : false;
 
-        if ($clockedInToday && ! $hasTodayEntry && ! $locked) {
+        if ($clockedInToday && ! $hasTodayEntry && ! $locked) {   // (this week not yet sent)
             $sent += $this->notifyOnce(
                 $student,
                 'Add today to your weekly report',
@@ -106,12 +111,8 @@ class SendWeeklyReportReminders extends Command
             );
         }
 
-        // 2) Today is the last day of a 7-day week and Form 19 isn't submitted.
-        $anchor = TrainingWeeks::anchorForInternship(
-            $internship,
-            $document ? $document->entries->pluck('entry_date') : []
-        );
-        $alreadySubmitted = $document && in_array($document->status, self::SUBMITTED, true);
+        // 2) Today is the last day of a 7-day week and that week isn't submitted.
+        $alreadySubmitted = $locked;
 
         if ($anchor && ! $alreadySubmitted) {
             $dayIndex = (int) $anchor->diffInDays($today, false);
@@ -141,16 +142,9 @@ class SendWeeklyReportReminders extends Command
         return $sent;
     }
 
-    private function overdueNotice(Student $student, $internship, ?Document $document, Carbon $today): int
+    private function overdueNotice(Student $student, $internship, $weeks, Carbon $today): int
     {
-        if ($document && in_array($document->status, self::SUBMITTED, true)) {
-            return 0;
-        }
-
-        $anchor = TrainingWeeks::anchorForInternship(
-            $internship,
-            $document ? $document->entries->pluck('entry_date') : []
-        );
+        $anchor = TrainingWeeks::anchorForInternship($internship, $weeks->flatMap(fn ($d) => $d->entries)->pluck('entry_date'));
 
         if (! $anchor) {
             return 0;
@@ -164,6 +158,10 @@ class SendWeeklyReportReminders extends Command
 
         $weekNumber = intdiv($dayIndex, 7); // completed weeks so far
         $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
+        $document = $weeks->get($weekNumber);   // that week's Form 19
+        if ($document && in_array($document->status, self::SUBMITTED, true)) {
+            return 0;
+        }
         $deadline = $weekStart->copy()->addDays(6);
         $daysLate = (int) $deadline->diffInDays($today);
 

@@ -247,7 +247,15 @@
                             @foreach ($requirementsByStage->get($stageKey) as $req)
                                 @php
                                     $reqDoc = $documentsByRequirement->get($req->id);
-                                    $reqStatus = $req->code === 'WEEKLY_REPORT' ? ($form19Packets->last()?->status) : $reqDoc?->status;
+                                    // Form 19: one per week - show what needs the instructor first.
+                                    $reqStatus = $req->code === 'WEEKLY_REPORT'
+                                        ? match (true) {
+                                            $form19Packets->contains(fn ($p) => in_array($p->status, ['submitted', 'for_review'], true)) => 'submitted',
+                                            $form19Packets->contains(fn ($p) => $p->status === 'completed' && $p->file_path) => 'completed',
+                                            $form19Packets->isNotEmpty() && $form19Packets->every(fn ($p) => $p->status === 'approved') => 'approved',
+                                            default => $form19Packets->last()?->status,
+                                        }
+                                        : $reqDoc?->status;
                                     [$icon, $iconColor] = $statusIcon($reqStatus);
                                     $isOpen = $req->id === $selectedRequirementId;
                                 @endphp
@@ -294,64 +302,94 @@
                                     <div class="fw-bold">
                                         @unless (\Illuminate\Support\Str::startsWith($requirement->name, 'Form ')){{ $formLabels[$requirement->id] }} · @endunless{{ $requirement->name }}
                                     </div>
+                                    @unless ($requirement->code === 'WEEKLY_REPORT') {{-- each week has its own status below --}}
                                     <span class="badge rounded-pill {{ $badgeColor($status) }}">
                                         {{ $structured ? ($statusLabelStructured($status)) : $label($status) }}
                                     </span>
+                                    @endunless
                                 </div>
 
-                                @if ($structured && $requirement->code === 'WEEKLY_REPORT')
-                            <div class="small text-secondary mb-2">Each four-week packet has its own review and signing state.</div>
-                            @forelse ($form19Packets as $packet)
-                                @php
-                                    $packetStatus = $packet->status;
-                                    $packetWeeks = \App\Support\TrainingWeeks::group($packet->entries, \App\Support\TrainingWeeks::anchorFor($packet));
-                                @endphp
-                                <div class="border rounded p-2 mb-2">
-                                    <div class="d-flex justify-content-between align-items-start gap-2">
-                                        <div>
-                                            <div class="fw-semibold small">Packet {{ $packet->packet_number ?? 1 }}</div>
-                                            <div class="text-secondary" style="font-size:.75rem;">{{ $packet->entries->count() }} training days · {{ $statusLabelStructured($packetStatus) }}</div>
-                                        </div>
-                                        <div class="d-flex gap-1">
-                                            <a href="{{ route('instructor.documents.show', $packet) }}" class="btn btn-sm btn-outline-primary">Open</a>
-                                            @if ($packetStatus === 'approved')
-                                                <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary">Signed copy</a>
-                                            @endif
-                                        </div>
+                                @if ($requirement->code === 'WEEKLY_REPORT')
+                            @php
+                                // Each week is its own Form 19, checked as soon as it is finished.
+                                // Weeks are grouped by month to keep a 486-hour internship readable.
+                                $f19Anchor = $internship ? \App\Support\TrainingWeeks::anchorForInternship($internship) : null;
+                                $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => $f19Anchor
+                                    ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7)->format('Y-m') : 'all');
+                                $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path) || ($p->status === 'printed' && ! $p->signatures_confirmed_at);
+                            @endphp
+                            <div class="small text-secondary mb-2">
+                                Each week is checked on its own as soon as the student submits it.
+                                {{ $form19Packets->where('status', 'approved')->count() }} of {{ $form19Packets->count() }} {{ \Illuminate\Support\Str::plural('week', $form19Packets->count()) }} approved
+                                @if ($n = $form19Packets->filter(fn ($p) => in_array($p->status, ['submitted', 'for_review'], true))->count())
+                                    &middot; <span class="text-warning fw-semibold">{{ $n }} waiting for your review</span>
+                                @endif
+                            </div>
+                            @forelse ($f19Months as $month => $monthWeeks)
+                                @php $open = $loop->last || $monthWeeks->contains($toCheck); $mid = 'f19-'.$month; @endphp
+                                <div class="border rounded mb-2 overflow-hidden f19-month">
+                                    <button type="button" class="w-100 btn btn-link text-reset text-decoration-none px-2 py-1 d-flex align-items-center gap-2 text-start f19-toggle {{ $open ? '' : 'collapsed' }}"
+                                            style="background:#eef2f7;" data-bs-toggle="collapse" data-bs-target="#{{ $mid }}" aria-expanded="{{ $open ? 'true' : 'false' }}">
+                                        <i class="ti ti-chevron-right f19-chevron text-secondary"></i>
+                                        <span class="fw-semibold small flex-grow-1">{{ $month === 'all' ? 'Weeks' : \Carbon\Carbon::parse($month.'-01')->format('F Y') }}</span>
+                                        <span class="text-secondary" style="font-size:.72rem;">{{ $monthWeeks->count() }} {{ \Illuminate\Support\Str::plural('week', $monthWeeks->count()) }} &middot; {{ $monthWeeks->where('status', 'approved')->count() }} approved</span>
+                                    </button>
+                                    <div class="collapse {{ $open ? 'show' : '' }}" id="{{ $mid }}">
+                                        @foreach ($monthWeeks as $packet)
+                                            @php
+                                                $packetStatus = $packet->status;
+                                                $weekStart = $f19Anchor?->copy()->addDays(((int) $packet->packet_number - 1) * 7);
+                                                $weekName = 'Week '.($packet->packet_number ?? 1);
+                                            @endphp
+                                            <div class="border-top px-2 py-2">
+                                                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                                    <div>
+                                                        <span class="fw-semibold small">{{ $weekName }}</span>
+                                                        <span class="text-secondary" style="font-size:.75rem;">
+                                                            @if ($weekStart) {{ $weekStart->format('M d') }} – {{ $weekStart->copy()->addDays(6)->format('M d') }} &middot; @endif
+                                                            {{ $packet->entries->count() }} {{ \Illuminate\Support\Str::plural('day', $packet->entries->count()) }}
+                                                        </span>
+                                                    </div>
+                                                    <span class="badge rounded-pill {{ $badgeColor($packetStatus) }}">{{ $packetStatus === 'draft' ? 'Not submitted yet' : $statusLabelStructured($packetStatus) }}</span>
+                                                </div>
+                                                @if ($packetStatus !== 'draft')
+                                                <div class="d-flex gap-2 flex-wrap mt-1 align-items-center">
+                                                    <a href="{{ route('instructor.documents.show', $packet) }}" class="btn btn-sm btn-outline-primary py-0">Open</a>
+                                                    <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">View</a>
+                                                    <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Download"><i class="ti ti-download"></i></a>
+                                                    @if (in_array($packetStatus, ['submitted', 'for_review']))
+                                                        @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                    @elseif ($packetStatus === 'printed')
+                                                        @if ($packet->signatures_confirmed_at)
+                                                            <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the upload.</span>
+                                                        @else
+                                                            @if ($canAct)@include('partials.approve-button', ['step' => 'signatures', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                        @endif
+                                                    @elseif ($packetStatus === 'completed')
+                                                        @if ($packet->file_path)
+                                                            <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">Signed copy</a>
+                                                            @if ($canAct)@include('partials.approve-button', ['step' => 'signed', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                        @else
+                                                            <span class="text-secondary small">Waiting for the signed-copy upload.</span>
+                                                        @endif
+                                                    @elseif ($packetStatus === 'approved')
+                                                        <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary py-0">Signed copy</a>
+                                                    @elseif ($packetStatus === 'returned')
+                                                        <span class="text-secondary small">Returned for correction.</span>
+                                                    @endif
+                                                </div>
+                                                @endif
+                                            </div>
+                                        @endforeach
                                     </div>
-                                    <div class="d-flex gap-2 flex-wrap mt-2">
-                                        @if (in_array($packetStatus, ['submitted', 'for_review']))
-                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
-                                            @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
-                                        @elseif ($packetStatus === 'printed')
-                                            @if ($packet->signatures_confirmed_at)
-                                                <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the student's upload.</span>
-                                            @else
-                                                @if ($canAct)@include('partials.approve-button', ['step' => 'signatures', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
-                                                <span class="text-secondary small">With the student for printing and signatures.</span>
-                                            @endif
-                                        @elseif ($packetStatus === 'completed')
-                                            @if ($packet->file_path)
-                                                <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View signed copy</a>
-                                                @if ($canAct)@include('partials.approve-button', ['step' => 'signed', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
-                                            @else
-                                                <span class="text-secondary small">Waiting for the student's signed-copy upload.</span>
-                                            @endif
-                                        @elseif ($packetStatus === 'approved')
-                                            <span class="text-success small">Signed copy received.</span>
-                                        @elseif ($packetStatus === 'returned')
-                                            <span class="text-secondary small">Returned for correction.</span>
-                                        @endif
-                                    </div>
-                                    @include('partials.week-downloads', [
-                                        'weeks' => \App\Support\TrainingWeeks::list($packet->entries->pluck('entry_date'), \App\Support\TrainingWeeks::anchorFor($packet)),
-                                        'route' => 'instructor.documents.printable', 'document' => $packet,
-                                    ])
                                 </div>
                             @empty
-                                <div class="text-secondary small">No Form 19 packets submitted yet.</div>
+                                <div class="text-secondary small">No weekly reports yet.</div>
                             @endforelse
+                            <style>
+                                .f19-chevron { transition: transform .15s ease; }
+                                .f19-toggle[aria-expanded="true"] > .f19-chevron { transform: rotate(90deg); }
+                            </style>
                         @elseif ($structured)
                                     {{-- Structured fill-in-system workflow --}}
                                     @if ($document)

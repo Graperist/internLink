@@ -789,8 +789,9 @@ class DocumentController extends Controller
                 $anchor ??= $date;
                 abort_unless($date->greaterThanOrEqualTo($anchor), 422, 'The entry date cannot be earlier than the start of your training period.');
                 $weekStart = \App\Support\TrainingWeeks::weekStart($date, $anchor);
-                $weekIndex = (int) floor($anchor->diffInDays($weekStart, false) / 7);
-                $packetNumber = intdiv(max(0, $weekIndex), 4) + 1;
+                // Each week is its own Form 19, reviewed by the instructor as it
+                // is finished (packet_number = the week number).
+                $packetNumber = \App\Support\TrainingWeeks::number($weekStart, $anchor);
 
                 $document = Document::firstOrCreate(
                     ['internship_id' => $internship->id, 'document_requirement_id' => $requirement->id, 'packet_number' => $packetNumber],
@@ -804,7 +805,7 @@ class DocumentController extends Controller
             }
 
             abort_if(in_array($document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved']), 403,
-                'This report packet has already entered review/signing and can no longer be edited here.');
+                'This week has already been sent to your instructor and can no longer be edited here.');
 
             // One entry per day: lock the log so a double-click can't slip two
             // entries for the same date through, then reject a repeated date.
@@ -866,7 +867,7 @@ class DocumentController extends Controller
                 ->where('document_requirement_id', $requirement->id))
                 ->with('document')->findOrFail($entry);
             abort_if(in_array($logEntry->document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved']), 403,
-                'This weekly report packet is locked for review/signing.');
+                'This week has already been sent to your instructor and can no longer be edited here.');
         } else {
             $document = $this->editableLogDocument($requirement);
             $logEntry = $document->entries()->findOrFail($entry);
@@ -911,7 +912,7 @@ class DocumentController extends Controller
             ->get();
         abort_if($entries->isEmpty(), 404);
         abort_if($entries->contains(fn ($entry) => in_array($entry->document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved'])), 403,
-            'This week belongs to a packet that is locked for review/signing.');
+            'This week has already been sent to your instructor and can no longer be edited here.');
 
         DB::transaction(function () use ($entries) {
             foreach ($entries as $logEntry) {
@@ -964,19 +965,19 @@ class DocumentController extends Controller
 
         $documents = $internship->documents()->where('document_requirement_id', $requirement->id);
         if ($requirement->code === 'WEEKLY_REPORT') {
-            abort_unless($packet && $packet >= 1, 422, 'Choose a four-week Form 19 packet to submit.');
+            abort_unless($packet && $packet >= 1, 422, 'Choose the week to submit.');
             $documents->where('packet_number', $packet);
         }
         $document = $documents->first();
         abort_unless($document, 422, 'Add at least one entry before submitting.');
         abort_if($document->entries()->count() === 0, 422, 'Add at least one entry before submitting.');
-        abort_unless(in_array($document->status, ['draft', 'returned']), 422, 'This report packet has already entered the review/signing workflow.');
+        abort_unless(in_array($document->status, ['draft', 'returned']), 422, 'This week has already been sent to your instructor.');
 
         $document->update(['status' => 'submitted', 'submitted_at' => now()]);
 
         \App\Models\Notification::resolve('logsubmit:'.$student->id);
 
-        return redirect()->route('student.documents.log', $requirement)->with('status', $requirement->code === 'WEEKLY_REPORT' ? 'Form 19 packet '.$packet.' submitted for instructor review.' : 'Log submitted for instructor review.');
+        return redirect()->route('student.documents.log', $requirement)->with('status', $requirement->code === 'WEEKLY_REPORT' ? 'Week '.$packet.' submitted for instructor review.' : 'Log submitted for instructor review.');
     }
 
     /**
@@ -1309,7 +1310,7 @@ class DocumentController extends Controller
         $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
 
         $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
-            .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+            .($document->packet_number ? ' - Week '.$document->packet_number : '')
             .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
             .' - '.$student->user->name));
 

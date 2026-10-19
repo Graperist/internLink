@@ -50,8 +50,13 @@
         : 0.0;
     $tfRequiredHours = (float) ($internship?->required_hours ?? $internship?->student?->program?->required_hours ?? 0);
 
+    // Form 19: one document per week.
+    $weeklyDocs = $internship
+        ? $internship->documents()->whereHas('requirement', fn ($q) => $q->where('code', 'WEEKLY_REPORT'))->get()
+        : collect();
+
     // Status of one form: label, icon, and whether the student has to act.
-    $info = function ($row) use ($timeFrameCode, $tfApprovedHours, $tfRequiredHours) {
+    $info = function ($row) use ($timeFrameCode, $tfApprovedHours, $tfRequiredHours, $weeklyDocs) {
         $doc = $row['document'];
         $requirement = $row['requirement'];
         $structured = $requirement->hasStructuredFields();
@@ -61,6 +66,19 @@
             $label = \App\Support\TimeFrame::format($tfApprovedHours).($tfRequiredHours ? ' / '.\App\Support\TimeFrame::format($tfRequiredHours) : '').' hours approved';
             $icon = 'ti-clock';
             $iconColor = 'text-primary';
+            $structured = false;
+
+            return compact('label', 'icon', 'iconColor', 'sentToHte', 'structured');
+        }
+
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            $approved = $weeklyDocs->where('status', 'approved')->count();
+            [$label, $icon, $iconColor] = match (true) {
+                $weeklyDocs->isEmpty() => ['Not started', 'ti-circle', 'text-secondary'],
+                $weeklyDocs->contains('status', 'returned') => ['A week was returned', 'ti-arrow-back-up', 'text-danger'],
+                $approved === $weeklyDocs->count() => ["All {$approved} ".\Illuminate\Support\Str::plural('week', $approved).' approved', 'ti-circle-check-filled', 'text-success'],
+                default => ["{$approved} of {$weeklyDocs->count()} weeks approved", 'ti-calendar-week', 'text-primary'],
+            };
             $structured = false;
 
             return compact('label', 'icon', 'iconColor', 'sentToHte', 'structured');
@@ -114,7 +132,9 @@
 
     $selectedRow = $checklist->first(fn ($row) => $row['requirement']->id === $selectedId);
     $countedForms = $checklist->reject(fn ($row) => $row['requirement']->code === $timeFrameCode);
-    $doneCount = $countedForms->filter(fn ($row) => in_array($info($row)['label'], ['Approved', 'Sent to HTE'], true))->count();
+    $doneCount = $countedForms->filter(fn ($row) => in_array($info($row)['label'], ['Approved', 'Sent to HTE'], true)
+        // Form 19 is done once the internship is over and every week is approved.
+        || ($row['requirement']->code === 'WEEKLY_REPORT' && str_starts_with($info($row)['label'], 'All ') && $internship?->hasCompletedDeployment()))->count();
 @endphp
 
 @if ($checklist->isEmpty())
@@ -167,6 +187,7 @@
             $hasFile = $doc && filled($doc->file_path) && $requirement->code !== $timeFrameCode;
             $previewable = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($doc->original_filename ?: $doc->file_path));
             $next = match (true) {
+                $requirement->code === 'WEEKLY_REPORT' => 'Add a row for every training day. Each week is its own Form 19: submit it when the week is finished, your instructor checks it, then you print it, have it signed and upload the signed copy. Open the log to see your weeks, grouped by month.',
                 $requirement->code === $timeFrameCode => 'Filled in from your daily time in and out in Time Frame (DTR) once your HTE supervisor approves each day. There is nothing to submit; your instructor sees your approved days for monitoring. Download a copy whenever you need one.',
                 $rowInfo['sentToHte'] => 'Delivered to your HTE\'s Evaluations Received. Nothing else to do on this form.',
                 $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',

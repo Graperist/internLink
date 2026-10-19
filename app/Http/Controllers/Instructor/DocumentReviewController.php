@@ -624,7 +624,7 @@ class DocumentReviewController extends Controller
 
         if (request()->boolean('download')) {
             $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
-                .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+                .($document->packet_number ? ' - Week '.$document->packet_number : '')
                 .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
                 .' - '.$document->internship->student->user->name));
             $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
@@ -688,7 +688,7 @@ class DocumentReviewController extends Controller
 
         $document->update(['signatures_confirmed_at' => now()]);
 
-        $name = $document->requirement->name.($document->packet_number ? ' (Packet '.$document->packet_number.')' : '');
+        $name = $document->requirement->name.($document->packet_number ? ' (Week '.$document->packet_number.')' : '');
         $this->notifyStudent($document, "Upload your signed {$name}",
             "Your subject instructor confirmed the signatures on your {$name}. Upload a scan of the signed copy now.", true);
 
