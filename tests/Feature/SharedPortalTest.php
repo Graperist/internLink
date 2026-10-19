@@ -483,7 +483,7 @@ class SharedPortalTest extends TestCase
             ->assertSee('Student 1 of 2')
             ->assertSee('Form 1 - Application')     // in the form list
             ->assertSee('Medical Certificate')      // also listed
-            ->assertSee('data-bs-target="#approveModal"', false)   // the waiting form is open by default, approved like every form
+            ->assertSee('data-bs-target="#approveStepModal"', false)   // the waiting form is open by default, approved like every form
             ->getContent();
         // The page is about this one student.
         $this->assertMatchesRegularExpression('#<h2 class="h5 fw-bold mb-1">\s*student 23-AC-0001#', $html);
@@ -491,7 +491,7 @@ class SharedPortalTest extends TestCase
 
         // Opening another form shows that one instead.
         $this->actingAs($instructor)->get(route('instructor.documents', ['student' => $a->id, 'form' => $this->medical->id]))
-            ->assertOk()->assertSee('Not yet submitted.')->assertDontSee('data-bs-target="#approveModal"', false);
+            ->assertOk()->assertSee('Not yet submitted.')->assertDontSee('data-bs-target="#approveStepModal"', false);
 
         // After an action you come back to the same student and form.
         $this->actingAs($instructor)->post(route('instructor.documents.print', $doc))
@@ -530,7 +530,7 @@ class SharedPortalTest extends TestCase
         $this->actingAs($instructor)->get(route('instructor.documents.show', $doc))->assertOk()
             ->assertSee('Remarks for the student')
             ->assertSee('Return to student')
-            ->assertSee('approve for printing')     // Form 1 is a print-and-sign form
+            ->assertSee('Approve for Printing')     // Form 1 is a print-and-sign form
             ->assertSee("student 23-AC-0001's forms", false);
 
         // Student page also offers the inline return box and the full view.

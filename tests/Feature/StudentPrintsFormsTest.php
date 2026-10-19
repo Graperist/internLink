@@ -111,7 +111,7 @@ class StudentPrintsFormsTest extends TestCase
         // 3. Before the instructor checked the signatures, the upload is closed.
         $this->upload()->assertForbidden();
         $this->actingAs($this->instructor)->get(route('instructor.documents', ['student' => $this->student->id, 'form' => $this->form->id]))->assertOk()
-            ->assertSee('Signatures confirmed &mdash; open upload', false);
+            ->assertSee('Signatures confirmed — open upload');
 
         // The student brings the signed form back; the instructor confirms the signatures.
         $this->actingAs($this->instructor)->post(route('instructor.documents.confirm-signatures', $this->document))->assertRedirect();
@@ -131,7 +131,7 @@ class StudentPrintsFormsTest extends TestCase
 
         $this->actingAs($this->instructor)->get(route('instructor.documents.show', $document))->assertOk()
             ->assertSee('Signed copy uploaded - for approval')
-            ->assertSee('Signed copy checks out');
+            ->assertSee('Approve signed copy')->assertSee('#approveStepModal', false);
 
         // 4. The instructor approves the signed copy.
         $this->actingAs($this->instructor)->post(route('instructor.documents.complete', $document))->assertRedirect();

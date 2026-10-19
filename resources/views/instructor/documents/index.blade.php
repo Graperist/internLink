@@ -323,18 +323,18 @@
                                         @if (in_array($packetStatus, ['submitted', 'for_review']))
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
                                             <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
-                                            @if ($canAct)<form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve for printing</button></form>@endif
+                                            @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
                                         @elseif ($packetStatus === 'printed')
                                             @if ($packet->signatures_confirmed_at)
                                                 <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the student's upload.</span>
                                             @else
-                                                @if ($canAct)<form method="POST" action="{{ route('instructor.documents.confirm-signatures', $packet) }}" onsubmit="return confirm('Confirm the signatures on this packet? This opens the student\'s upload.')">@csrf<button class="btn btn-sm btn-primary" type="submit"><i class="ti ti-signature"></i> Signatures confirmed &mdash; open upload</button></form>@endif
+                                                @if ($canAct)@include('partials.approve-button', ['step' => 'signatures', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
                                                 <span class="text-secondary small">With the student for printing and signatures.</span>
                                             @endif
                                         @elseif ($packetStatus === 'completed')
                                             @if ($packet->file_path)
                                                 <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View signed copy</a>
-                                                @if ($canAct)<form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Approve signed copy</button></form>@endif
+                                                @if ($canAct)@include('partials.approve-button', ['step' => 'signed', 'document' => $packet, 'name' => 'Packet '.($packet->packet_number ?? 1)])@endif
                                             @else
                                                 <span class="text-secondary small">Waiting for the student's signed-copy upload.</span>
                                             @endif
@@ -674,28 +674,11 @@
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 @if ($requirement->workflow_mode === 'print_sign')
                                                     @if ($canAct)
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-primary"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#printModal"
-                                                        data-document-id="{{ $document->id }}"
-                                                    >
-                                                        Approve for Printing
-                                                    </button>
+                                                    @include('partials.approve-button', ['step' => 'print', 'document' => $document, 'name' => $requirement->name])
                                                     @endif
                                                 @else
                                                     @if ($canAct)
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-primary"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#approveModal"
-                                                        data-document-id="{{ $document->id }}"
-                                                        data-document-name="{{ $requirement->name }}"
-                                                    >
-                                                        Approve
-                                                    </button>
+                                                    @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name])
                                                     @endif
                                                 @endif
                                             @elseif ($status === 'returned')
@@ -717,11 +700,7 @@
                                                     <span class="text-secondary align-self-center" style="font-size: 0.78rem;"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d') }} &middot; waiting for the student's upload.</span>
                                                 @else
                                                     @if ($canAct)
-                                                        <form method="POST" action="{{ route('instructor.documents.confirm-signatures', $document) }}"
-                                                              onsubmit="return confirm('Confirm that the student brought back the form with all the signatures? This opens their upload of the signed copy.')">
-                                                            @csrf
-                                                            <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-signature"></i> Signatures confirmed &mdash; open upload</button>
-                                                        </form>
+                                                        @include('partials.approve-button', ['step' => 'signatures', 'document' => $document, 'name' => $requirement->name])
                                                     @endif
                                                     <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures. When they bring the signed form back, confirm the signatures to open their upload.</span>
                                                 @endif
@@ -731,15 +710,7 @@
                                                         <i class="ti ti-file-check"></i> View signed copy
                                                     </a>
                                                     @if ($canAct)
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-primary"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#completeModal"
-                                                        data-document-id="{{ $document->id }}"
-                                                    >
-                                                        Approve signed copy
-                                                    </button>
+                                                    @include('partials.approve-button', ['step' => 'signed', 'document' => $document, 'name' => $requirement->name])
                                                     @endif
                                                 @else
                                                     <span class="text-secondary" style="font-size: 0.78rem;">Waiting for the student's signed-copy upload.</span>
@@ -802,16 +773,7 @@
 
                                             @if (in_array($status, ['submitted', 'for_review']))
                                                 @if ($canAct)
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#approveModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Approve
-                                                </button>
+                                                @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name])
                                                 @endif
                                             @elseif ($status === 'returned')
                                                 <span class="text-secondary small align-self-center">{{ $requirement->audience === 'coordinator' ? "Awaiting the coordinator's corrected upload." : "Awaiting student's corrected resubmission." }}</span>
@@ -865,34 +827,6 @@
     .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
 </style>
 
-{{-- Approve modal (forms reviewed directly, e.g. an uploaded document) - the same
-     confirm step as Approve for printing / Approve signed copy. Returning is done
-     with remarks in the Review panel. --}}
-<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="approveForm" action="">
-                @csrf
-                <input type="hidden" name="decision" value="approved">
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold" id="approveModalLabel">Approve</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-0">
-                        Confirm the submitted document is complete and correct. This approves the form.
-                        To ask for a correction, return it with remarks instead.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Approve</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 {{-- Return to Student modal (structured forms) --}}
 <div class="modal fade" id="returnModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -918,62 +852,8 @@
     </div>
 </div>
 
-{{-- Print for Signing modal (structured forms) --}}
-<div class="modal fade" id="printModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="printForm" action="">
-                @csrf
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Approve for printing</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-0">
-                        This confirms the entered data looks correct. The student is told to print the form,
-                        have it signed by the signatories and upload the signed copy. They can no longer edit it after this point.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Approve for printing</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-{{-- Approve modal (structured forms) - approves the signed copy the student uploaded --}}
-<div class="modal fade" id="completeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="completeForm" action="">
-                @csrf
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Approve signed copy</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-0">
-                        Confirm the uploaded copy is complete and signed by all the signatories.
-                        This approves the form. To ask for a new copy, return it with remarks instead.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Approve</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <script>
-    document.getElementById('approveModal').addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        document.getElementById('approveModalLabel').textContent = 'Approve ' + button.getAttribute('data-document-name');
-        document.getElementById('approveForm').action = '/instructor/documents/' + button.getAttribute('data-document-id') + '/review';
-    });
+
 
     document.getElementById('returnModal').addEventListener('show.bs.modal', function (event) {
         const button = event.relatedTarget;
@@ -983,14 +863,10 @@
         document.getElementById('returnForm').action = '/instructor/documents/' + documentId + '/review';
     });
 
-    document.getElementById('printModal').addEventListener('show.bs.modal', function (event) {
-        const documentId = event.relatedTarget.getAttribute('data-document-id');
-        document.getElementById('printForm').action = '/instructor/documents/' + documentId + '/print';
-    });
 
-    document.getElementById('completeModal').addEventListener('show.bs.modal', function (event) {
-        const documentId = event.relatedTarget.getAttribute('data-document-id');
-        document.getElementById('completeForm').action = '/instructor/documents/' + documentId + '/complete';
-    });
+
+
 </script>
+
+@include('partials.approve-modal')
 @endsection

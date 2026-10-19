@@ -188,34 +188,16 @@
                 </form>
 
                 @if ($awaiting && $printSign)
-                    <form method="POST" action="{{ route('instructor.documents.print', $document) }}">
-                        @csrf
-                        <input type="hidden" name="return_to" value="viewer">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-printer"></i> Looks good &mdash; approve for printing</button>
-                    </form>
+                    @include('partials.approve-button', ['step' => 'print', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
                 @elseif ($awaiting)
-                    <form method="POST" action="{{ route('instructor.documents.review', $document) }}">
-                        @csrf
-                        <input type="hidden" name="return_to" value="viewer">
-                        <input type="hidden" name="decision" value="approved">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-circle-check"></i> Approve</button>
-                    </form>
+                    @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
                 @elseif ($status === 'printed' && $document->signatures_confirmed_at)
                     <p class="small text-secondary mb-0"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d, Y') }}. Waiting for the student to upload the signed copy.</p>
                 @elseif ($status === 'printed')
-                    <form method="POST" action="{{ route('instructor.documents.confirm-signatures', $document) }}"
-                          onsubmit="return confirm('Confirm that the student brought back the form with all the signatures? This opens their upload of the signed copy.')">
-                        @csrf
-                        <input type="hidden" name="return_to" value="viewer">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-signature"></i> Signatures confirmed &mdash; open upload</button>
-                    </form>
+                    @include('partials.approve-button', ['step' => 'signatures', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
                     <p class="small text-secondary mt-2 mb-0">With the student: they print the form and have it signed, then bring it to you. Confirm the signatures to open their upload of the signed copy.</p>
                 @elseif ($status === 'completed' && $hasFile)
-                    <form method="POST" action="{{ route('instructor.documents.complete', $document) }}">
-                        @csrf
-                        <input type="hidden" name="return_to" value="viewer">
-                        <button type="submit" class="btn btn-primary w-100"><i class="ti ti-circle-check"></i> Signed copy checks out &mdash; approve</button>
-                    </form>
+                    @include('partials.approve-button', ['step' => 'signed', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
                     <p class="small text-secondary mt-2 mb-0">Returning it clears the uploaded copy so the student can upload a new one.</p>
                 @endif
             @else
@@ -232,4 +214,5 @@
         </div>
     </div>
 </div>
+@include('partials.approve-modal')
 @endsection
