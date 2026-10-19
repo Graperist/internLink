@@ -105,6 +105,7 @@
 
     {{-- ================= RIGHT: about the system ================= --}}
     <aside class="login-about" aria-label="About PSU Intern-Link">
+        <div class="login-about-photo" style="background-image: url('{{ asset('images/psu-main-campus.jpg') }}');" aria-hidden="true"></div>
         <svg class="login-about-waves" viewBox="0 0 800 800" preserveAspectRatio="none" aria-hidden="true">
             @for ($i = 0; $i < 14; $i++)
                 <path d="M-50 {{ 520 + $i * 14 }} C 180 {{ 380 + $i * 10 }}, 420 {{ 700 - $i * 6 }}, 850 {{ 430 + $i * 12 }}" />
