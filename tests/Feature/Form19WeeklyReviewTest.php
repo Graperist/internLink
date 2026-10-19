@@ -78,7 +78,7 @@ class Form19WeeklyReviewTest extends TestCase
             ->assertSessionHasNoErrors()->assertSessionHas('status', 'Week 1 submitted for instructor review.');
         $this->assertSame('submitted', Document::where('packet_number', 1)->value('status'));
         $this->assertSame('draft', Document::where('packet_number', 2)->value('status'));
-        $this->addDay('2026-10-03')->assertForbidden();             // week 1 is with the instructor
+        $this->addDay('2026-10-03')->assertSessionHasErrors('entry_date'); // week 1 is with the instructor
         $this->addDay('2026-10-09')->assertSessionHasNoErrors();    // week 2 is not
 
         // The student sees months, then weeks.
@@ -114,5 +114,78 @@ class Form19WeeklyReviewTest extends TestCase
         $this->assertSame($draft->id, $docs[0]->id);                              // the first week keeps the document
         $this->assertSame('approved', $docs->firstWhere('packet_number', 5)->status);   // the signed packet stays whole
         $this->assertSame(5, DB::table('document_entries')->count());
+    }
+
+    public function test_a_week_can_only_be_submitted_once_it_is_finished(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-19 12:00:00'));
+        $this->addDay('2026-10-18')->assertSessionHasNoErrors(); // Week 1 = Oct 18-24
+
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSee('Submit on Oct 24')->assertDontSee('Submit week');
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))
+            ->assertSessionHasErrors('week');
+        $this->assertSame('draft', Document::where('packet_number', 1)->value('status'));
+
+        // A future day can't be logged ahead of time.
+        $this->addDay('2026-10-20')->assertSessionHasErrors('entry_date');
+
+        // On its last day it can be sent.
+        $this->travelTo(CarbonImmutable::parse('2026-10-24 12:00:00'));
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('submitted', Document::where('packet_number', 1)->value('status'));
+    }
+
+    public function test_week_one_is_fixed_once_a_week_is_sent(): void
+    {
+        $this->addDay('2026-10-08')->assertSessionHasNoErrors();
+        // Before anything is sent, an earlier day just becomes the new Week 1
+        // and the draft weeks are renumbered.
+        $this->addDay('2026-10-01')->assertSessionHasNoErrors();
+        $this->assertEquals([1, 2], Document::where('document_requirement_id', $this->form19->id)->orderBy('packet_number')->pluck('packet_number')->all());
+
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))->assertSessionHasNoErrors();
+        $this->assertSame('2026-10-01', $this->internship->fresh()->week_one_date->toDateString());
+
+        // Now an earlier day is refused instead of renumbering reviewed weeks.
+        $this->addDay('2026-09-28')->assertSessionHasErrors('entry_date');
+        $this->addDay('2026-10-09')->assertSessionHasNoErrors();
+        $this->assertSame(2, Document::where('document_requirement_id', $this->form19->id)->count());
+
+        // Days of a week that was sent are refused, with the next week's start named.
+        $this->actingAs($this->studentUser)->get(route('student.documents.log.entry.create', $this->form19))->assertOk()
+            ->assertSee('lockedWeekWarning')->assertSee('"start":"2026-10-01"', false);
+        $this->addDay('2026-10-03')->assertSessionHasErrors(['entry_date' => 'Week 1 (Oct 01 – Oct 07, 2026) has already been sent to your instructor, so no more days can be added to it. The next week starts on Oct 08, 2026.']);
+    }
+
+    public function test_the_page_says_when_this_week_is_already_sent(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-19 12:00:00'));
+        $doc = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $this->form19->id, 'packet_number' => 1, 'status' => 'approved']);
+        \App\Models\DocumentEntry::forceCreate(['document_id' => $doc->id, 'entry_date' => '2026-10-18']);
+        $this->internship->forceFill(['week_one_date' => '2026-10-18'])->save();
+
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSee('You can add days again from')->assertSee('Oct 25, 2026');
+    }
+
+    public function test_the_migration_fixes_week_one_from_weeks_already_sent(): void
+    {
+        // Sent as Week 1 when weeks started on the first DTR day (Oct 18); a draft day before it.
+        \App\Models\Dtr::forceCreate(['deployment_id' => Deployment::first()->id, 'log_date' => '2026-10-18', 'status' => 'approved']);
+        $sent = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $this->form19->id, 'packet_number' => 1, 'status' => 'approved']);
+        \App\Models\DocumentEntry::forceCreate(['document_id' => $sent->id, 'entry_date' => '2026-10-18']);
+        $draft = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $this->form19->id, 'packet_number' => 0, 'status' => 'draft']);
+        \App\Models\DocumentEntry::forceCreate(['document_id' => $draft->id, 'entry_date' => '2026-10-11']);
+
+        $migration = require database_path('migrations/2026_10_20_000001_pin_form19_week_one.php');
+        $migration->up();
+        $this->assertSame('2026-10-18', $this->internship->fresh()->week_one_date->toDateString());
+
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSeeInOrder(['Before Week 1', 'Week 1', 'Approved'])->assertDontSee('Week 0');
+        $this->addDay('2026-10-25')->assertSessionHasNoErrors();
+        $this->assertSame('draft', Document::where('packet_number', 2)->value('status'));
     }
 }

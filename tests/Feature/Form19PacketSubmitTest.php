@@ -42,7 +42,7 @@ class Form19PacketSubmitTest extends TestCase
         Deployment::forceCreate(['internship_id' => $internship->id, 'hte_id' => $hte->id, 'status' => 'active', 'start_date' => now()->subWeek(), 'end_date' => now()->addMonths(3)]);
 
         $packet = Document::forceCreate(['internship_id' => $internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 1, 'status' => 'draft']);
-        DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => now()->subDays(2)->toDateString()]);
+        DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => now()->subDays(8)->toDateString()]);
 
         $this->actingAs($user)->get(route('student.documents.log', $form19))->assertOk()
             ->assertSee('Submit week')

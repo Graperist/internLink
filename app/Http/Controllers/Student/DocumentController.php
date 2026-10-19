@@ -691,6 +691,10 @@ class DocumentController extends Controller
         abort_unless($internship, 422, 'You need an internship record before logging entries - contact your coordinator.');
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
 
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
+        }
+
         $query = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
             ->with(['entries.values', 'latestReview'])
@@ -738,8 +742,24 @@ class DocumentController extends Controller
             ->pluck('entry_date');
         $weekAnchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates);
         $loggedDates = $allDates->map(fn ($date) => $date->toDateString())->all();
+        $weekOneFixed = (bool) $internship->week_one_date;
 
-        return view('student.documents.entry-create', compact('requirement', 'weekAnchor', 'loggedDates'));
+        // Weeks already sent to the instructor - no days can be added to them.
+        $lockedWeeks = [];
+        if ($requirement->code === 'WEEKLY_REPORT' && $weekAnchor) {
+            foreach ($internship->documents()->where('document_requirement_id', $requirement->id)
+                ->whereNotIn('status', ['draft', 'returned'])->whereNotNull('packet_number')->get() as $doc) {
+                $start = $weekAnchor->copy()->addDays(7 * ($doc->packet_number - 1));
+                $lockedWeeks[] = [
+                    'number' => $doc->packet_number,
+                    'start' => $start->toDateString(),
+                    'end' => $start->copy()->addDays(6)->toDateString(),
+                    'label' => $start->format('M d').' – '.$start->copy()->addDays(6)->format('M d, Y'),
+                ];
+            }
+        }
+
+        return view('student.documents.entry-create', compact('requirement', 'weekAnchor', 'loggedDates', 'lockedWeeks', 'weekOneFixed'));
     }
 
     public function storeEntry(Request $request, DocumentRequirement $requirement): RedirectResponse
@@ -757,6 +777,9 @@ class DocumentController extends Controller
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
 
         $rules = ['entry_date' => ['required', 'date']];
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            $rules['entry_date'][] = 'before_or_equal:today';
+        }
 
         // Form 19 is the official Practicum/Internship Weekly Report.
         // It is a weekly report containing one daily row per training day.
@@ -784,10 +807,16 @@ class DocumentController extends Controller
                     ->whereHas('document', fn ($q) => $q->where('internship_id', $internship->id)
                         ->where('document_requirement_id', $requirement->id))
                     ->pluck('entry_date');
-                $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates);
                 $date = \Carbon\Carbon::parse($validated['entry_date'])->startOfDay();
-                $anchor ??= $date;
-                abort_unless($date->greaterThanOrEqualTo($anchor), 422, 'The entry date cannot be earlier than the start of your training period.');
+                if ($internship->week_one_date && $date->lt($internship->week_one_date)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'entry_date' => 'Week 1 of your weekly report started on '.$internship->week_one_date->format('M d, Y')
+                            .' and has already been sent to your instructor, so a day before it can no longer be added.',
+                    ]);
+                }
+                // Before Week 1 is fixed, an earlier day simply becomes the new Week 1
+                // (the draft weeks are renumbered right after).
+                $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates->push($date));
                 $weekStart = \App\Support\TrainingWeeks::weekStart($date, $anchor);
                 // Each week is its own Form 19, reviewed by the instructor as it
                 // is finished (packet_number = the week number).
@@ -804,8 +833,15 @@ class DocumentController extends Controller
                 );
             }
 
-            abort_if(in_array($document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved']), 403,
-                'This week has already been sent to your instructor and can no longer be edited here.');
+            if (in_array($document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved'])) {
+                $message = 'This log has already been sent to your instructor and can no longer be edited here.';
+                if ($requirement->code === 'WEEKLY_REPORT') {
+                    $message = 'Week '.$document->packet_number.' ('.$weekStart->format('M d').' – '.$weekStart->copy()->addDays(6)->format('M d, Y')
+                        .') has already been sent to your instructor, so no more days can be added to it. '
+                        .'The next week starts on '.$weekStart->copy()->addDays(7)->format('M d, Y').'.';
+                }
+                throw \Illuminate\Validation\ValidationException::withMessages(['entry_date' => $message]);
+            }
 
             // One entry per day: lock the log so a double-click can't slip two
             // entries for the same date through, then reject a repeated date.
@@ -845,6 +881,10 @@ class DocumentController extends Controller
             }
         });
 
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship->fresh());
+        }
+
         \App\Models\Notification::resolve('logentry:'.$student->id.':'.\Carbon\Carbon::parse($validated['entry_date'])->toDateString());
 
         return redirect()->route('student.documents.log', $requirement)->with('status', 'Entry added.');
@@ -877,6 +917,10 @@ class DocumentController extends Controller
             $logEntry->values()->delete();
             $logEntry->delete();
         });
+
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
+        }
 
         return redirect()
             ->route('student.documents.log', $requirement)
@@ -920,6 +964,7 @@ class DocumentController extends Controller
                 $logEntry->delete();
             }
         });
+        \App\Support\TrainingWeeks::syncDraftWeeks($internship);
 
         return redirect()->route('student.documents.log', $requirement)
             ->with('status', 'Week deleted ('.$entries->count().' '.($entries->count() === 1 ? 'entry' : 'entries').' removed).');
@@ -966,12 +1011,24 @@ class DocumentController extends Controller
         $documents = $internship->documents()->where('document_requirement_id', $requirement->id);
         if ($requirement->code === 'WEEKLY_REPORT') {
             abort_unless($packet && $packet >= 1, 422, 'Choose the week to submit.');
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
             $documents->where('packet_number', $packet);
         }
         $document = $documents->first();
         abort_unless($document, 422, 'Add at least one entry before submitting.');
         abort_if($document->entries()->count() === 0, 422, 'Add at least one entry before submitting.');
         abort_unless(in_array($document->status, ['draft', 'returned']), 422, 'This week has already been sent to your instructor.');
+
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            $weekStart = \App\Support\TrainingWeeks::anchorForInternship($internship)->addDays(7 * ($packet - 1));
+            if (! \App\Support\TrainingWeeks::weekFinished($weekStart, $internship)) {
+                return redirect()->route('student.documents.log', $requirement)->withErrors([
+                    'week' => 'Week '.$packet.' is not finished yet. You can submit it on '.$weekStart->copy()->addDays(6)->format('M d, Y').', its last day.',
+                ]);
+            }
+            // From now on Week 1's first day is fixed.
+            \App\Support\TrainingWeeks::pin($internship);
+        }
 
         $document->update(['status' => 'submitted', 'submitted_at' => now()]);
 

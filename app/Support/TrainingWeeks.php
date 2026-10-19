@@ -22,6 +22,12 @@ class TrainingWeeks
      */
     public static function anchorForInternship(Internship $internship, iterable $entryDates = []): ?Carbon
     {
+        // Fixed once the student sent their first week, so numbers never shift.
+        $pinned = $internship->getAttribute('week_one_date');
+        if ($pinned) {
+            return Carbon::parse($pinned)->startOfDay();
+        }
+
         $dates = collect($entryDates)->filter();
 
         $firstDtr = Dtr::whereHas('deployment', fn ($q) => $q->where('internship_id', $internship->id))->min('log_date');
@@ -55,6 +61,90 @@ class TrainingWeeks
         }
 
         return $earliest;
+    }
+
+    /** The Form 19 (Weekly Report) documents of an internship. */
+    public static function form19Documents(Internship $internship): Collection
+    {
+        return Document::where('internship_id', $internship->id)
+            ->whereHas('requirement', fn ($r) => $r->where('code', 'WEEKLY_REPORT'))
+            ->get();
+    }
+
+    /**
+     * Fixes Week 1's first day for good. Called when the student sends their
+     * first week to the instructor; from then on no earlier day can be added
+     * and the week numbers on reviewed weeks stay the same.
+     */
+    public static function pin(Internship $internship): ?Carbon
+    {
+        if ($internship->week_one_date) {
+            return Carbon::parse($internship->week_one_date)->startOfDay();
+        }
+        $anchor = self::anchorForInternship($internship);
+        if ($anchor) {
+            $internship->forceFill(['week_one_date' => $anchor->toDateString()])->save();
+        }
+
+        return $anchor;
+    }
+
+    /**
+     * Before Week 1 is fixed, every week is still a draft and its start can
+     * move (e.g. the student adds an earlier day, or logs an earlier DTR). This
+     * puts every entry into the document of the week it now falls in, so the
+     * week numbers stored on the documents always match what is shown.
+     */
+    public static function syncDraftWeeks(Internship $internship): void
+    {
+        if ($internship->week_one_date) {
+            return;
+        }
+        $docs = self::form19Documents($internship);
+        if ($docs->isEmpty() || $docs->contains(fn ($doc) => $doc->status !== 'draft')) {
+            return;
+        }
+        $anchor = self::anchorForInternship($internship);
+        if (! $anchor) {
+            return;
+        }
+
+        $byNumber = $docs->keyBy('packet_number');
+        $template = $docs->first();
+        foreach (\App\Models\DocumentEntry::whereIn('document_id', $docs->pluck('id'))->get() as $entry) {
+            $number = self::number(self::weekStart(Carbon::parse($entry->entry_date), $anchor), $anchor);
+            $target = $byNumber->get($number);
+            if (! $target) {
+                $target = Document::create([
+                    'internship_id' => $internship->id,
+                    'document_requirement_id' => $template->document_requirement_id,
+                    'uploaded_by_user_id' => $template->uploaded_by_user_id,
+                    'status' => 'draft',
+                    'packet_number' => $number,
+                ]);
+                $byNumber->put($number, $target);
+            }
+            if ($entry->document_id !== $target->id) {
+                $entry->forceFill(['document_id' => $target->id])->save();
+            }
+        }
+
+        foreach ($byNumber as $doc) {
+            if (! $doc->entries()->exists()) {
+                $doc->delete();
+            }
+        }
+    }
+
+    /**
+     * Can this week be sent to the instructor yet? Only once it is finished:
+     * on or after its last day - or earlier when the deployment has ended
+     * (a short last week).
+     */
+    public static function weekFinished(Carbon $weekStart, Internship $internship): bool
+    {
+        return now()->startOfDay()->gte($weekStart->copy()->addDays(6)->startOfDay())
+            || $internship->hasCompletedDeployment();
     }
 
     /** The first day of the 7-day week that $date falls in. */

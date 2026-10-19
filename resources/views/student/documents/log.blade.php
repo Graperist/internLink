@@ -56,6 +56,19 @@
             </a>
         </div>
 
+        @php
+            $todayStart = $anchor && now()->startOfDay()->gte($anchor) ? \App\Support\TrainingWeeks::weekStart(now(), $anchor) : null;
+            $todayNumber = $todayStart ? \App\Support\TrainingWeeks::number($todayStart, $anchor) : null;
+            $todayDoc = $todayNumber ? $weekDocs->get($todayNumber) : null;
+        @endphp
+        @if ($todayDoc && ! $editable($todayDoc))
+            <div class="alert alert-info small py-2">
+                <i class="ti ti-info-circle"></i>
+                This week (Week {{ $todayNumber }}, {{ $todayStart->format('M d') }} – {{ $todayStart->copy()->addDays(6)->format('M d, Y') }}) has already been sent to your instructor, so no more days can be added to it.
+                You can add days again from <strong>{{ $todayStart->copy()->addDays(7)->format('M d, Y') }}</strong>, when Week {{ $todayNumber + 1 }} starts.
+            </div>
+        @endif
+
         @if ($weeks->isEmpty())
             <div class="text-center py-4">
                 <i class="ti ti-calendar-week" style="font-size: 2rem;"></i>
@@ -89,7 +102,9 @@
                                     $start = \Carbon\Carbon::parse($weekStart);
                                     $end = $start->copy()->addDays(6);
                                     $weekNumber = \App\Support\TrainingWeeks::number($start, $anchor);
-                                    $doc = $weekDocs->get($weekNumber);
+                                    $doc = $weekNumber >= 1 ? $weekDocs->get($weekNumber) : $weekEntries->first()?->document;
+                                    $beforeWeekOne = $weekNumber < 1;
+                                    $finished = \App\Support\TrainingWeeks::weekFinished($start, $internship);
                                     [$label, $color] = $status($doc);
                                     $canEditWeek = $editable($doc);
                                     $isOpen = $monthOpen && $loop->last;
@@ -101,13 +116,17 @@
                                                 data-bs-toggle="collapse" data-bs-target="#{{ $weekId }}" aria-expanded="{{ $isOpen ? 'true' : 'false' }}" aria-controls="{{ $weekId }}">
                                             <i class="ti ti-chevron-right log-chevron fs-5 text-secondary"></i>
                                             <span>
-                                                <span class="fw-bold d-block">Week {{ $weekNumber }}</span>
+                                                <span class="fw-bold d-block">{{ $beforeWeekOne ? 'Before Week 1' : 'Week '.$weekNumber }}</span>
                                                 <span class="text-secondary small">{{ $start->format('M d') }} – {{ $end->format('M d, Y') }} · {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}</span>
                                             </span>
                                         </button>
                                         <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                                             <span class="badge rounded-pill {{ $color }}">{{ $label }}</span>
-                                            @if ($doc && $canEditWeek && $weekEntries->isNotEmpty())
+                                            @if ($beforeWeekOne)
+                                                <span class="small text-secondary">Before your Week 1 – delete these days</span>
+                                            @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty() && ! $finished)
+                                                <span class="small text-secondary" title="A week is sent to your instructor once it is finished">Submit on {{ $end->format('M d') }}</span>
+                                            @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty())
                                                 <form method="POST" action="{{ route('student.documents.log.packet.submit', [$requirement, $weekNumber]) }}" class="d-inline">
                                                     @csrf
                                                     <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-send"></i> Submit week</button>
@@ -122,7 +141,7 @@
                                                     @csrf
                                                     @method('DELETE')
                                                     <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete week" aria-label="Delete week"
-                                                            onclick="return confirm('Delete Week {{ $weekNumber }} ({{ $start->format('M d') }} – {{ $end->format('M d, Y') }}) and all {{ $weekEntries->count() }} of its entries? This cannot be undone.')">
+                                                            onclick="return confirm('Delete {{ $beforeWeekOne ? 'these days' : 'Week '.$weekNumber }} ({{ $start->format('M d') }} – {{ $end->format('M d, Y') }}) and all {{ $weekEntries->count() }} of its entries? This cannot be undone.')">
                                                         <i class="ti ti-trash"></i>
                                                     </button>
                                                 </form>
