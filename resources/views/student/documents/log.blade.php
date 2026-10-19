@@ -128,16 +128,21 @@
                     $start = \Carbon\Carbon::parse($weekStart);
                     $end = $start->copy()->addDays(6);
                     $weekNumber = $loop->iteration;
+                    // Weeks fold to keep the page short; the latest week starts open.
+                    $isOpen = $loop->last;
+                    $weekId = 'week-'.$weekStart;
                 @endphp
 
-                <div class="border rounded-3 mb-3 overflow-hidden">
-                    <div class="p-3 bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div>
-                            <div class="fw-bold">Week {{ $weekNumber }}</div>
-                            <div class="text-secondary small">
-                                {{ $start->format('M d, Y') }} – {{ $end->format('M d, Y') }}
-                            </div>
-                        </div>
+                <div class="border rounded-3 mb-2 overflow-hidden log-week">
+                    <div class="px-3 py-2 bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <button type="button" class="btn btn-link text-reset text-decoration-none p-0 d-flex align-items-center gap-2 text-start flex-grow-1 {{ $isOpen ? '' : 'collapsed' }}"
+                                data-bs-toggle="collapse" data-bs-target="#{{ $weekId }}" aria-expanded="{{ $isOpen ? 'true' : 'false' }}" aria-controls="{{ $weekId }}">
+                            <i class="ti ti-chevron-right week-chevron fs-5 text-secondary"></i>
+                            <span>
+                                <span class="fw-bold d-block">Week {{ $weekNumber }}</span>
+                                <span class="text-secondary small">{{ $start->format('M d, Y') }} – {{ $end->format('M d, Y') }}</span>
+                            </span>
+                        </button>
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge text-bg-primary">
                                 {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'training day' : 'training days' }}
@@ -155,6 +160,7 @@
                         </div>
                     </div>
 
+                    <div class="collapse {{ $isOpen ? 'show' : '' }}" id="{{ $weekId }}">
                     <div class="table-responsive">
                         <table class="table align-middle mb-0">
                             <thead>
@@ -176,9 +182,9 @@
                                                 <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}">
                                                     @csrf
                                                     @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete this day"
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete this day" aria-label="Delete this day"
                                                             onclick="return confirm('Delete the entry for {{ $entry->entry_date->format('M d, Y') }}? This cannot be undone.')">
-                                                        <i class="ti ti-trash"></i> Delete
+                                                        <i class="ti ti-trash"></i>
                                                     </button>
                                                 </form>
                                             </td>
@@ -188,8 +194,19 @@
                             </tbody>
                         </table>
                     </div>
+                    </div>
                 </div>
             @endforeach
+            @if ($weeks->count() > 1)
+                <div class="d-flex gap-3 small mt-2">
+                    <a href="#" class="text-decoration-none" onclick="document.querySelectorAll('.log-week .collapse').forEach(el => bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show()); return false;">Expand all weeks</a>
+                    <a href="#" class="text-decoration-none" onclick="document.querySelectorAll('.log-week .collapse').forEach(el => bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide()); return false;">Collapse all</a>
+                </div>
+            @endif
+            <style>
+                .log-week .week-chevron { transition: transform .15s ease; }
+                .log-week [aria-expanded="true"] .week-chevron { transform: rotate(90deg); }
+            </style>
         @endif
     </div>
 
