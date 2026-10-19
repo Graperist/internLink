@@ -60,8 +60,19 @@
                 </div>
                 <div class="text-end">
                     <div class="fw-bold">{{ $fmt($selected['approved']) }} <span class="small text-secondary fw-normal">/ {{ $fmt($selected['required']) }} hours approved</span></div>
+                    @if ($days->isNotEmpty())
+                        <div class="d-flex gap-2 justify-content-end mt-2">
+                            <a href="{{ route('instructor.monitoring.form', $selected['student']) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-eye"></i> View Form 17</a>
+                            <a href="{{ route('instructor.monitoring.form', ['student' => $selected['student'], 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="ti ti-download"></i> Download</a>
+                        </div>
+                    @endif
                 </div>
             </div>
+            @include('partials.week-downloads', [
+                'weeks' => \App\Support\TrainingWeeks::list($days->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($selected['student']->currentInternship)),
+                'url' => fn ($week) => route('instructor.monitoring.form', ['student' => $selected['student'], 'download' => 1, 'week' => $week]),
+                'class' => 'mb-3',
+            ])
             <div class="table-responsive">
                 <table class="table align-middle small mb-0">
                     <thead>

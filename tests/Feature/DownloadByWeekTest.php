@@ -71,34 +71,25 @@ class DownloadByWeekTest extends TestCase
 
     public function test_form_17_downloads_one_week(): void
     {
-        $form17 = $this->requirement('INTERNSHIP_TIME_FRAME', 'Form 17 – Internship Time Frame', '17');
-        $doc = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form17->id, 'status' => 'printed']);
+        $this->requirement('INTERNSHIP_TIME_FRAME', 'Form 17 – Internship Time Frame', '17');
 
-        // Both sides list the weeks.
-        $this->actingAs($this->studentUser)->get('/student/documents?form='.$form17->id)->assertOk()
+        // The student's Time Frame page and the instructor's monitoring list the weeks.
+        $this->actingAs($this->studentUser)->get('/student/dtr')->assertOk()
             ->assertSee('Download by week')->assertSee('Week 1')->assertSee('Week 2')
-            ->assertSee(route('student.documents.printable', ['document' => $doc, 'download' => 1, 'week' => '2026-10-08']));
-        $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->internship->student_id.'&form='.$form17->id)->assertOk()
-            ->assertSee(route('instructor.documents.printable', ['document' => $doc, 'download' => 1, 'week' => '2026-10-01']));
+            ->assertSee(route('student.dtr.form', ['download' => 1, 'week' => '2026-10-08']));
+        $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->internship->student_id)->assertOk()
+            ->assertSee(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'download' => 1, 'week' => '2026-10-01']));
 
-        // Week 1 only: Oct 01 + Oct 02 = 15 hours, no Oct 09.
-        $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $doc, 'download' => 1, 'week' => '2026-10-01']))->assertOk()
+        // Week 1 only: Oct 01 + Oct 02, no Oct 09.
+        $this->actingAs($this->studentUser)->get(route('student.dtr.form', ['download' => 1, 'week' => '2026-10-01']))->assertOk()
             ->assertSee('Oct 01, 2026')->assertSee('Oct 02, 2026')->assertDontSee('Oct 09, 2026')
             ->assertSee('Week 1 (Oct 01 to Oct 07, 2026)', false);
         // Any day of the week picks that week; the instructor gets the same.
-        $this->actingAs($this->instructorUser)->get(route('instructor.documents.printable', ['document' => $doc, 'download' => 1, 'week' => '2026-10-11']))->assertOk()
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->internship->student_id, 'download' => 1, 'week' => '2026-10-11']))->assertOk()
             ->assertSee('Oct 09, 2026')->assertDontSee('Oct 01, 2026')->assertSee('Week 2 (Oct 08 to Oct 14, 2026)', false);
         // Without a week: the whole form.
-        $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $doc, 'download' => 1]))->assertOk()
+        $this->actingAs($this->studentUser)->get(route('student.dtr.form', ['download' => 1]))->assertOk()
             ->assertSee('Oct 01, 2026')->assertSee('Oct 09, 2026');
-    }
-
-    public function test_form_17_week_downloads_wait_for_approval_for_printing(): void
-    {
-        $form17 = $this->requirement('INTERNSHIP_TIME_FRAME', 'Form 17 – Internship Time Frame', '17');
-        Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form17->id, 'status' => 'submitted']);
-        $this->actingAs($this->studentUser)->get('/student/documents?form='.$form17->id)->assertOk()
-            ->assertSee('Download by week opens once your instructor approves Form 17 for printing');
     }
 
     public function test_form_19_packet_downloads_one_week(): void

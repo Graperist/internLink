@@ -102,6 +102,12 @@ class StudentPrintsFormsTest extends TestCase
             ->assertSee('Internship Resume - Jasmine.pdf', false)
             ->assertDontSee('onload="window.print()"', false);
 
+        // The instructor only views and downloads it - no print dialog or Print button.
+        $this->actingAs($this->instructor)->get(route('instructor.documents.printable', $this->document))->assertOk()
+            ->assertSee('Sual, Pangasinan')->assertDontSee('window.print()', false);
+        $this->actingAs($this->instructor)->get(route('instructor.documents.printable', ['document' => $this->document, 'download' => 1]))->assertOk()
+            ->assertSee('pdfStatus', false);
+
         // 3. Before the instructor checked the signatures, the upload is closed.
         $this->upload()->assertForbidden();
         $this->actingAs($this->instructor)->get(route('instructor.documents', ['student' => $this->student->id, 'form' => $this->form->id]))->assertOk()

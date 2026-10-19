@@ -19,7 +19,6 @@
 </div>
 
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
-@if ($errors->has('form17'))<div class="alert alert-danger">{{ $errors->first('form17') }}</div>@endif
 
 @if (! $deployment || $deployment->status === 'pending')
     @if ($deployment?->status === 'pending')
@@ -189,24 +188,28 @@
                 </div>
             </div>
 
-            {{-- Printing Form 17 --}}
+            {{-- Form 17 printout: made from the approved days, nothing to submit --}}
+            @php $approvedDays = $days->where('status', 'approved'); @endphp
             <div class="il-card">
-                <h2 class="h6 fw-bold mb-1">Print Form 17</h2>
-                @php $status = $form17?->status; @endphp
-                @if (! $form17 || in_array($status, ['draft', 'returned'], true))
-                    @if ($status === 'returned' && $form17->latestReview?->remarks)
-                        <div class="alert alert-danger small py-2">Returned by your instructor: {{ $form17->latestReview->remarks }}</div>
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <h2 class="h6 fw-bold mb-1">Form 17 – Internship Time Frame</h2>
+                        <p class="small text-secondary mb-0">Filled in from the days your supervisor approved. There is nothing to submit &mdash; your instructor sees your approved days for monitoring. Download or print a copy whenever you need one.</p>
+                    </div>
+                    @if ($approvedDays->isNotEmpty())
+                        <div class="d-flex gap-2">
+                            <a href="{{ route('student.dtr.form') }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-printer"></i> Print</a>
+                            <a href="{{ route('student.dtr.form', ['download' => 1]) }}" target="_blank" class="btn btn-sm btn-primary"><i class="ti ti-download"></i> Download Form 17</a>
+                        </div>
                     @endif
-                    <p class="small text-secondary mb-2">When your supervisor has approved your days, send Form 17 to your instructor. After they approve it for printing, download it, have it signed and upload the signed copy.</p>
-                    <form method="POST" action="{{ route('student.dtr.submit') }}">
-                        @csrf
-                        <button type="submit" class="btn btn-outline-primary" @disabled($totals['approved'] <= 0)><i class="ti ti-send"></i> Send Form 17 to my instructor</button>
-                    </form>
+                </div>
+                @if ($approvedDays->isEmpty())
+                    <div class="small text-secondary mt-2">Available once your supervisor approves your first day.</div>
                 @else
-                    <p class="small mb-2">
-                        <strong>{{ match ($status) { 'submitted', 'for_review' => 'With your instructor for review.', 'printed' => $form17->signatures_confirmed_at ? 'Signatures confirmed - upload the signed copy in My Documents.' : 'Approved for printing - download and print it, have it signed, then bring it to your instructor to confirm the signatures.', 'completed' => 'Signed copy uploaded - waiting for your instructor\'s approval.', 'approved' => 'Approved.', default => ucfirst($status) } }}</strong>
-                    </p>
-                    <a href="{{ route('student.documents', ['form' => $requirement->id]) }}" class="btn btn-sm btn-outline-primary">Open in My Documents</a>
+                    @include('partials.week-downloads', [
+                        'weeks' => \App\Support\TrainingWeeks::list($approvedDays->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
+                        'url' => fn ($week) => route('student.dtr.form', ['download' => 1, 'week' => $week]),
+                    ])
                 @endif
             </div>
         </div>

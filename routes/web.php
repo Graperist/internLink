@@ -110,6 +110,7 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
 
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
+        Route::get('/monitoring/{student}/form-17', [MonitoringController::class, 'form'])->name('monitoring.form');
 
         Route::get('/documents', [DocumentReviewController::class, 'index'])->name('documents');
         Route::post('/documents/remind', [DocumentReviewController::class, 'remind'])->name('documents.remind');
@@ -252,7 +253,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         // Form 17 - Internship Time Frame (the DTR): typed AM/PM time in/out per date.
         Route::post('/dtr', [DtrController::class, 'store'])->name('dtr.store');
         Route::delete('/dtr/{dtr}', [DtrController::class, 'destroy'])->name('dtr.destroy');
-        Route::post('/dtr/submit-form-17', [DtrController::class, 'submitForm'])->name('dtr.submit');
+        // Form 17 printout made from the approved days (?download=1, ?week=).
+        Route::get('/dtr/form-17', [DtrController::class, 'form'])->name('dtr.form');
 
         Route::get('/documents', [StudentDocumentController::class, 'index'])->name('documents');
         Route::get('/documents/{requirement}/fill', [StudentDocumentController::class, 'create'])->name('documents.fill');

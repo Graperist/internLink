@@ -42,12 +42,29 @@
         default => 'text-bg-warning',
     };
 
+    // Form 17 is not submitted: it is the time frame the HTE approves, so it
+    // only shows the approved hours and is not counted as a form to finish.
+    $timeFrameCode = \App\Support\TimeFrameForm::CODE;
+    $tfApprovedHours = $internship?->deployment
+        ? (float) \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->where('status', 'approved')->sum('hours_logged')
+        : 0.0;
+    $tfRequiredHours = (float) ($internship?->required_hours ?? $internship?->student?->program?->required_hours ?? 0);
+
     // Status of one form: label, icon, and whether the student has to act.
-    $info = function ($row) {
+    $info = function ($row) use ($timeFrameCode, $tfApprovedHours, $tfRequiredHours) {
         $doc = $row['document'];
         $requirement = $row['requirement'];
         $structured = $requirement->hasStructuredFields();
         $sentToHte = false;
+
+        if ($requirement->code === $timeFrameCode) {
+            $label = \App\Support\TimeFrame::format($tfApprovedHours).($tfRequiredHours ? ' / '.\App\Support\TimeFrame::format($tfRequiredHours) : '').' hours approved';
+            $icon = 'ti-clock';
+            $iconColor = 'text-primary';
+            $structured = false;
+
+            return compact('label', 'icon', 'iconColor', 'sentToHte', 'structured');
+        }
 
         if ($requirement->is_repeating) {
             $isTimeFrame = $requirement->code === 'INTERNSHIP_TIME_FRAME';
@@ -96,7 +113,8 @@
     };
 
     $selectedRow = $checklist->first(fn ($row) => $row['requirement']->id === $selectedId);
-    $doneCount = $checklist->filter(fn ($row) => in_array($info($row)['label'], ['Approved', 'Sent to HTE'], true))->count();
+    $countedForms = $checklist->reject(fn ($row) => $row['requirement']->code === $timeFrameCode);
+    $doneCount = $countedForms->filter(fn ($row) => in_array($info($row)['label'], ['Approved', 'Sent to HTE'], true))->count();
 @endphp
 
 @if ($checklist->isEmpty())
@@ -108,7 +126,7 @@
         <div class="il-card p-0 overflow-hidden" style="position: sticky; top: 1rem;">
             <div class="px-3 pt-3 pb-2 d-flex justify-content-between align-items-center">
                 <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">OJT Requirements</span>
-                <span class="small text-secondary">{{ $doneCount }} / {{ $checklist->count() }} done</span>
+                <span class="small text-secondary">{{ $doneCount }} / {{ $countedForms->count() }} done</span>
             </div>
             <div class="list-group list-group-flush il-form-list">
                 @foreach ($stageLabels as $stageKey => $stageLabel)
@@ -145,9 +163,11 @@
             $structured = $rowInfo['structured'];
             $repeating = $requirement->is_repeating;
             $label = $rowInfo['label'];
-            $hasFile = $doc && filled($doc->file_path);
+            // Form 17 has no submission (an upload from the old flow is not shown).
+            $hasFile = $doc && filled($doc->file_path) && $requirement->code !== $timeFrameCode;
             $previewable = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($doc->original_filename ?: $doc->file_path));
             $next = match (true) {
+                $requirement->code === $timeFrameCode => 'Filled in from your daily time in and out in Time Frame (DTR) once your HTE supervisor approves each day. There is nothing to submit; your instructor sees your approved days for monitoring. Download a copy whenever you need one.',
                 $rowInfo['sentToHte'] => 'Delivered to your HTE\'s Evaluations Received. Nothing else to do on this form.',
                 $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',
                 $doc?->status === 'returned' => 'Your instructor returned this form. Correct it and submit again.',
@@ -156,7 +176,6 @@
                 $doc?->status === 'printed' && $doc->signatures_confirmed_at => 'Your instructor confirmed the signatures. Upload a scan of the signed copy.',
                 $doc?->status === 'printed' => 'Approved for printing. Download this form, print it and have it signed by the signatories, then bring the signed form to your instructor. Once they confirm the signatures, the upload of the signed copy opens here.',
                 in_array($doc?->status, ['submitted', 'for_review'], true) => 'Submitted. Waiting for your instructor\'s review.',
-                $requirement->code === 'INTERNSHIP_TIME_FRAME' && in_array($doc?->status, [null, 'draft'], true) => 'Enter your daily time in and out in Time Frame (DTR). When your supervisor has approved your days, send Form 17 to your instructor from there.',
                 $doc?->status === 'draft' => 'Keep logging your entries, then submit them for review.',
                 $repeating => 'Start your log for this form.',
                 isset(\App\Models\DocumentAttachment::MULTI_UPLOAD[$requirement->code]) => 'The MOA is processed outside InternLink. Upload scans of the signed MOA (you can upload several files, and add more later).',
@@ -176,7 +195,7 @@
 
             <p class="small text-secondary mt-2 mb-3">{{ $next }}</p>
 
-            @if ($doc?->status === 'returned' && $doc->latestReview?->remarks)
+            @if ($requirement->code !== $timeFrameCode && $doc?->status === 'returned' && $doc->latestReview?->remarks)
                 <div class="alert alert-danger py-2 small">
                     <strong><i class="ti ti-arrow-back-up"></i> Returned for correction:</strong> {{ $doc->latestReview->remarks }}
                 </div>
@@ -188,9 +207,12 @@
                     @if ($requirement->code === 'WEEKLY_REPORT')
                         {{-- Form 19 is printed and uploaded packet by packet on its log page --}}
                         <a href="{{ route('student.documents.log', $requirement) }}" class="btn btn-primary"><i class="ti ti-notebook"></i> View Log</a>
-                    @elseif ($requirement->code === 'INTERNSHIP_TIME_FRAME' && ! in_array($doc?->status, ['printed', 'completed', 'approved'], true))
-                        {{-- Form 17 is filled from the daily time in/out the supervisor approves --}}
+                    @elseif ($requirement->code === $timeFrameCode)
+                        {{-- Form 17 is the daily time in/out the supervisor approves - nothing to submit --}}
                         <a href="{{ route('student.dtr') }}" class="btn btn-primary"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
+                        @if (\App\Models\Dtr::where('deployment_id', $internship?->deployment?->id)->where('status', 'approved')->exists())
+                            <a href="{{ route('student.dtr.form', ['download' => 1]) }}" target="_blank" class="btn btn-outline-primary"><i class="ti ti-download"></i> Download Form 17</a>
+                        @endif
                     @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
                         <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="btn btn-primary"><i class="ti ti-download"></i> Download Form</a>
                         @if ($doc->signedUploadOpen())
@@ -244,7 +266,7 @@
             </div>
         </div>
 
-        @if ($requirement->code === 'INTERNSHIP_TIME_FRAME')
+        @if ($requirement->code === $timeFrameCode)
             {{-- Form 17's log: the days entered in Time Frame (DTR) --}}
             @php
                 $tfDays = $internship?->deployment
@@ -289,17 +311,14 @@
                         @endif
                     </table>
                 </div>
-                @if ($doc && in_array($doc->status, ['printed', 'completed', 'approved'], true))
-                    @include('partials.week-downloads', [
-                        'weeks' => \App\Support\TrainingWeeks::list($tfApproved->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
-                        'route' => 'student.documents.printable', 'document' => $doc,
-                    ])
-                @else
-                    <div class="small text-secondary mt-2"><i class="ti ti-calendar-week"></i> Download by week opens once your instructor approves Form 17 for printing.</div>
-                @endif
+                @include('partials.week-downloads', [
+                    'weeks' => \App\Support\TrainingWeeks::list($tfApproved->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
+                    'url' => fn ($week) => route('student.dtr.form', ['download' => 1, 'week' => $week]),
+                ])
             </div>
         @endif
 
+        @unless ($requirement->code === $timeFrameCode)
         <div class="row g-3 mb-3">
             <div class="col-md-6">
                 <div class="il-card h-100">
@@ -332,6 +351,7 @@
                 </div>
             </div>
         </div>
+        @endunless
 
         @if ($hasFile || ($doc && $doc->attachments->isNotEmpty()))
             <div class="il-card mb-3">

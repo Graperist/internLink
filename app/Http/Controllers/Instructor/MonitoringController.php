@@ -49,4 +49,14 @@ class MonitoringController extends Controller
 
         return view('instructor.monitoring.index', compact('rows', 'selected', 'days'));
     }
+
+    /** Form 17 of one intern, from the approved days: view or download (?download=1, ?week=). */
+    public function form(\App\Models\Student $student)
+    {
+        abort_unless(auth()->user()->instructor->visibleStudents()->whereKey($student->id)->exists(), 403);
+        $internship = $student->currentInternship;
+        abort_unless($internship?->deployment, 404, 'This intern has no deployment yet.');
+
+        return \App\Support\TimeFrameForm::response($internship, printable: false);
+    }
 }

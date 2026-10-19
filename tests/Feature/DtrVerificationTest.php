@@ -257,45 +257,49 @@ class DtrVerificationTest extends TestCase
         $this->assertFalse(\Illuminate\Support\Facades\Route::has('instructor.monitoring.return'));
     }
 
-    public function test_form_17_is_sent_once_every_day_is_approved_and_prints_the_approved_days(): void
+    public function test_form_17_is_just_the_approved_time_frame_with_nothing_to_submit(): void
     {
         $requirement = DocumentRequirement::forceCreate([
             'campus_id' => $this->campus->id, 'code' => 'INTERNSHIP_TIME_FRAME', 'name' => 'Form 17 – Internship Time Frame', 'form_number' => '17',
-            'stage' => 'active', 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_active' => true, 'is_required' => true, 'is_repeating' => true, 'display_order' => 17,
+            'stage' => 'active', 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_active' => true, 'is_required' => false, 'is_repeating' => true, 'display_order' => 17,
         ]);
         $this->makeDtr(['status' => 'approved']);
-        $waiting = $this->makeDtr(['log_date' => '2026-10-03', 'am_in' => '08:00', 'am_out' => '11:30', 'pm_in' => null, 'pm_out' => null, 'hours_logged' => 3.5]);
+        $this->makeDtr(['log_date' => '2026-10-03', 'am_in' => '08:00', 'am_out' => '11:30', 'pm_in' => null, 'pm_out' => null, 'hours_logged' => 3.5, 'status' => 'approved']);
+        $this->makeDtr(['log_date' => '2026-10-01', 'am_in' => '09:10', 'am_out' => '11:00', 'pm_in' => null, 'pm_out' => null, 'hours_logged' => 2]);   // waiting
 
-        $this->actingAs($this->studentUser)->post('/student/dtr/submit-form-17')->assertSessionHasErrors('form17');
+        // No sending to the instructor any more.
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('student.dtr.submit'));
+        $this->actingAs($this->studentUser)->get('/student/dtr')->assertOk()
+            ->assertSee('There is nothing to submit')->assertSee('Download Form 17')->assertDontSee('Send Form 17');
 
-        $waiting->update(['status' => 'approved']);
-        $this->actingAs($this->studentUser)->post('/student/dtr/submit-form-17')->assertSessionHasNoErrors();
-        $document = Document::sole();
-        $this->assertSame('submitted', $document->status);
-        $this->assertSame($requirement->id, $document->document_requirement_id);
+        // The student prints or downloads it straight from the approved days, any time.
+        $this->actingAs($this->studentUser)->get(route('student.dtr.form'))->assertOk()
+            ->assertSee('INTERNSHIP TIME FRAME')->assertSee('Oct 02, 2026')->assertSee('Friday')->assertSee('Oct 03, 2026')->assertSee('11.5')
+            ->assertDontSee('Oct 01, 2026')->assertSee('window.print()', false);
+        $this->actingAs($this->studentUser)->get(route('student.dtr.form', ['download' => 1]))->assertOk()
+            ->assertSee('pdfStatus', false)->assertDontSee('onload="window.print()"', false);
+        $this->assertSame(0, Document::count());
 
-        $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable")->assertOk()
-            ->assertSee('INTERNSHIP TIME FRAME')->assertSee('Oct 02, 2026')->assertSee('Friday')->assertSee('Oct 03, 2026')->assertSee('11.5');
-
-        // It is in Document Review for the instructor, with the approved days.
-        $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->student->id.'&form='.$requirement->id)->assertOk()
-            ->assertSee('Form 17 – Internship Time Frame')->assertSee('2 approved days')->assertSee('11.5 hours')->assertSee('8:00 AM - 11:30 AM')->assertSee('Approve for Printing')->assertDontSee('not approved yet');
-
-        // The student sees the same log in My Documents.
+        // My Documents: listed with the approved hours and the log, but nothing to submit or upload.
         $this->actingAs($this->studentUser)->get('/student/documents?form='.$requirement->id)->assertOk()
-            ->assertSee('Time frame log')->assertSee('2 approved days')->assertSee('8:00 AM - 11:30 AM')->assertSee('Total number of hours');
+            ->assertSee('11.5 / 300 hours approved')->assertSee('Time frame log')->assertSee('2 approved days')
+            ->assertSee('There is nothing to submit')->assertDontSee('Instructor feedback')->assertDontSee('Upload Signed Copy');
 
-        // The instructor only views and downloads it - no print dialog or Print button.
-        $view = $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable")->assertOk();
-        $view->assertDontSee('window.print()', false)->assertDontSee('pdfStatus', false);
-        $this->actingAs($this->instructorUser)->get("/instructor/documents/{$document->id}/printable?download=1")->assertOk()
-            ->assertSee('pdfStatus', false)->assertDontSee('window.print()', false);
+        // The instructor: not in Document Review; viewed in Time Frame monitoring (view and download only).
+        $this->actingAs($this->instructorUser)->get('/instructor/documents?student='.$this->student->id)->assertOk()
+            ->assertDontSee('Form 17 – Internship Time Frame');
+        $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->student->id)->assertOk()
+            ->assertSee('View Form 17')->assertSee(route('instructor.monitoring.form', ['student' => $this->student, 'download' => 1]));
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', $this->student))->assertOk()
+            ->assertSee('Oct 03, 2026')->assertDontSee('window.print()', false);
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', ['student' => $this->student, 'download' => 1]))->assertOk()
+            ->assertSee('pdfStatus', false);
 
-        // The student prints it once approved for printing, and can download it again after approval.
-        $document->update(['status' => 'printed']);
-        $this->actingAs($this->studentUser)->get("/student/documents/{$document->id}/print")->assertOk()->assertSee('window.print()', false);
-        $document->update(['status' => 'approved']);
-        $this->actingAs($this->studentUser)->get('/student/documents?form='.$requirement->id)->assertOk()->assertSee('Download again');
+        // Another instructor's program cannot open it.
+        $otherProgram = Program::forceCreate(['campus_id' => $this->campus->id, 'code' => 'BSHM', 'name' => 'BSHM', 'required_hours' => 300]);
+        $other = $this->makeUser('instructor', 'I-2');
+        Instructor::forceCreate(['user_id' => $other->id, 'campus_id' => $this->campus->id, 'program_id' => $otherProgram->id]);
+        $this->actingAs($other)->get(route('instructor.monitoring.form', $this->student))->assertForbidden();
 
         // The old log page sends the student to the time frame.
         $this->actingAs($this->studentUser)->get("/student/documents/{$requirement->id}/log")->assertRedirect('/student/dtr');
