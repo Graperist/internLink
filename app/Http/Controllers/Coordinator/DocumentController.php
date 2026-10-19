@@ -54,25 +54,27 @@ class DocumentController extends Controller
             return [collect(), ['all' => 0, 'submitted' => 0, 'pending' => 0], 'all'];
         }
 
+        // One per agency: every agency where an intern finished, with its
+        // self-rating (if submitted) and the interns who trained there.
         $rows = Deployment::where('status', 'completed')
             ->whereHas('internship', fn ($q) => $q->where('campus_id', $campusId))
-            ->with([
-                'hte',
-                'internship.student.user',
-                'internship.student.program',
-                'internship.documents' => fn ($q) => $q->where('document_requirement_id', $requirement->id)->with('uploader'),
-            ])
+            ->with(['hte', 'internship.student.user', 'internship.student.program'])
             ->get()
-            ->map(function ($deployment) {
-                $document = $deployment->internship->documents->first();
+            ->filter(fn ($d) => $d->hte)
+            ->groupBy('hte_id')
+            ->map(function ($deployments) use ($requirement) {
+                $document = \App\Support\AgencyEvaluations::find($requirement, $deployments->first()->hte_id);
+                $document?->load('uploader');
 
                 return (object) [
-                    'deployment' => $deployment,
-                    'hte' => $deployment->hte,
-                    'student' => $deployment->internship->student,
+                    'deployment' => $deployments->first(),
+                    'hte' => $deployments->first()->hte,
+                    'student' => $deployments->first()->internship->student,
+                    'students' => $deployments->map(fn ($d) => $d->internship->student),
                     'document' => EvaluationRouting::isSubmitted($document) ? $document : null,
                 ];
             })
+            ->values()
             // Submitted first (newest first), then the outstanding ones by HTE name.
             ->sortBy(fn ($row) => [
                 $row->document ? 0 : 1,
@@ -96,7 +98,7 @@ class DocumentController extends Controller
 
         if ($search = trim((string) $request->query('hte_search'))) {
             $needle = mb_strtolower($search);
-            $rows = $rows->filter(fn ($r) => str_contains(mb_strtolower(($r->hte?->name ?? '').' '.($r->student->user->name ?? '')), $needle))->values();
+            $rows = $rows->filter(fn ($r) => str_contains(mb_strtolower(($r->hte?->name ?? '').' '.$r->students->map(fn ($s) => $s->user->name)->join(' ')), $needle))->values();
         }
 
         return [$rows, $counts, $filter];

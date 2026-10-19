@@ -107,12 +107,16 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
         // their own forms are listed, and each is actionable when opened
         // (the page shows one form at a time, like Document Review)
-        foreach (['STUDENT_FEEDBACK_FORM' => 'fill', 'STUDENT_HTE_EVALUATION' => 'fill', 'INTERNSHIP_TIME_FRAME' => 'log', 'WEEKLY_REPORT' => 'log'] as $code => $action) {
+        // (Forms 20 / 23c are on Evaluate Agency, not My Documents.)
+        foreach (['WEEKLY_REPORT' => 'log'] as $code => $action) {
             $page->assertSee(route('student.documents', ['form' => $this->req($code)->id]), false);
             $this->actingAs($this->studentUser)->get(route('student.documents', ['form' => $this->req($code)->id]))
                 ->assertSee(route('student.documents.'.$action, $this->req($code)), false);
         }
         $page->assertSee('Narrative Report');
+        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
+            ->assertSee(route('student.documents.fill', $this->req('STUDENT_FEEDBACK_FORM')), false)
+            ->assertSee(route('student.documents.fill', $this->req('STUDENT_HTE_EVALUATION')), false);
 
         // the HTE's and the instructor's forms are not on the student's list at all
         foreach (['Form 13 ', 'Form 21 ', 'Form 23a', 'Form 23b'] as $label) {
@@ -139,7 +143,7 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
             $this->actingAs($this->studentUser)->get(route('student.documents.fill', $requirement))->assertOk();
             $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))
-                ->assertSessionHasNoErrors();
+                ->assertRedirect(route('student.evaluations'))->assertSessionHasNoErrors();
 
             $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status, $code);
         }
@@ -182,11 +186,12 @@ class PostDeploymentFormsByRoleTest extends TestCase
     public function test_hte_gets_forms_13_21_and_23b_but_not_the_students(): void
     {
         $page = $this->actingAs($this->hteUser)->get('/hte/evaluations')->assertOk();
-        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF'] as $code) {
+        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK'] as $code) {
             $page->assertSee(route('hte.forms.create', [$this->req($code), $this->deployment]), false);
         }
+        $page->assertSee(route('hte.self-evaluation.create'), false);   // Form 23b: once for the agency
 
-        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION', 'PARTNER_AGENCY_EVAL_INSTRUCTOR'] as $code) {
+        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION', 'PARTNER_AGENCY_EVAL_INSTRUCTOR', 'PARTNER_AGENCY_EVAL_SELF'] as $code) {
             $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$this->req($code), $this->deployment]))->assertNotFound();
         }
     }
@@ -212,8 +217,8 @@ class PostDeploymentFormsByRoleTest extends TestCase
                 $payload['rater_type'] = 'Self Ratee';
             }
 
-            $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $payload)
-                ->assertSessionHasNoErrors();
+            $url = $code === 'PARTNER_AGENCY_EVAL_SELF' ? route('hte.self-evaluation.store') : route('hte.forms.store', [$requirement, $this->deployment]);
+            $this->actingAs($this->hteUser)->post($url, $payload)->assertRedirect(route('hte.evaluations'))->assertSessionHasNoErrors();
             $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status, $code);
         }
     }
@@ -230,15 +235,11 @@ class PostDeploymentFormsByRoleTest extends TestCase
     public function test_instructor_gets_form_23a_only(): void
     {
         $this->actingAs($this->instructorUser)->get('/instructor/evaluations')->assertOk()
-            ->assertSee(route('instructor.forms.create', [$this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR'), $this->deployment]), false);
-
-        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF', 'STUDENT_HTE_EVALUATION'] as $code) {
-            $this->actingAs($this->instructorUser)->get(route('instructor.forms.create', [$this->req($code), $this->deployment]))->assertNotFound();
-        }
+            ->assertSee(route('instructor.agency-evaluations.create', $this->deployment->hte_id), false);
 
         $requirement = $this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR');
-        $this->actingAs($this->instructorUser)->post(route('instructor.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))
-            ->assertSessionHasNoErrors();
+        $this->actingAs($this->instructorUser)->post(route('instructor.agency-evaluations.store', $this->deployment->hte_id), $this->payload($requirement))
+            ->assertRedirect(route('instructor.evaluations'))->assertSessionHasNoErrors();
         $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status);
     }
 

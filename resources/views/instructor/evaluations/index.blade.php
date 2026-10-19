@@ -4,190 +4,136 @@
 
 @section('content')
 <style>
-    /* Row opened from a notification ("...#student-12") is highlighted. */
+    .eval-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: #6c757d; white-space: nowrap; }
+    .eval-done { color: #1f9d3a; font-weight: 700; letter-spacing: .02em; font-size: .8rem; }
+    .eval-wait { color: #8a94a6; font-size: .8rem; }
     .eval-row:target > td { background: #fff7d6; }
     .eval-row { scroll-margin-top: 90px; }
 </style>
-<div class="il-page-header">
-    <h1 class="il-page-title">Evaluations</h1>
-</div>
-
-@if (session('status'))
-    <div class="alert alert-success">{{ session('status') }}</div>
-@endif
-
-@if ($errors->any())
-    <div class="alert alert-danger">
-        <ul class="mb-0">
-            @foreach ($errors->all() as $error)
-                <li>{{ $error }}</li>
-            @endforeach
-        </ul>
-    </div>
-@endif
-
 @php
-    $submittedStatuses = ['submitted', 'for_review', 'approved', 'printed', 'completed'];
-
-    // One pass over the advisees; both tables below read from it.
-    $rows = $advisees->map(function ($student) use ($progress, $partnerAgencyFormRequirement, $form13Requirement, $submittedStatuses) {
-        $internship = $student->currentInternship;
-        $deployment = $internship?->deployment;
-        $pick = fn ($requirement) => $requirement
-            ? $internship?->documents->firstWhere('document_requirement_id', $requirement->id)
-            : null;
-        $form13 = $pick($form13Requirement);
-        $form23a = $pick($partnerAgencyFormRequirement);
-
-        return (object) [
-            'student' => $student,
-            'deployment' => $deployment,
-            'state' => $progress[$student->id],
-            'form13' => ($form13 && in_array($form13->status, $submittedStatuses, true)) ? $form13 : null,
-            'form23a' => ($form23a && in_array($form23a->status, $submittedStatuses, true)) ? $form23a : null,
-        ];
-    });
+    $short = fn ($code) => \App\Support\EvaluationRouting::FORMS[$code]['form'];
+    $titles = [
+        'EVALUATION_FORM' => 'Internship Evaluation',
+        'TRAINING_SUPERVISOR_FEEDBACK' => "Supervisor's Feedback",
+        'STUDENT_HTE_EVALUATION' => 'Evaluation of the Agency',
+        'STUDENT_FEEDBACK_FORM' => "Intern's Feedback",
+    ];
 @endphp
 
-{{-- ============ RECEIVED: Form 13, sent to the instructor by each student's HTE ============ --}}
-<div class="il-card mb-4" id="evaluations-received">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-        <h2 class="h6 fw-bold mb-0">Evaluations Received <span class="text-secondary fw-normal">(from HTE &mdash; Form 13)</span></h2>
-        <span class="badge rounded-pill text-bg-light">{{ $rows->filter(fn ($r) => $r->form13)->count() }} of {{ $rows->count() }} received</span>
+<div class="il-page-header">
+    <div>
+        <h1 class="il-page-title">Evaluations</h1>
+        <p class="text-secondary small mb-0">Evaluations open once an internship is completed. Whoever is rated never sees the rating &mdash; every evaluation comes to you.</p>
     </div>
-    <p class="text-secondary small mb-3">
-        When a host training establishment finishes its Internship Evaluation Form for one of your advisees, it
-        arrives here. Use <strong>View</strong> to read it, or <strong>Download</strong> to save it as a PDF.
-    </p>
+</div>
+
+@if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
+@if ($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
+
+{{-- ============ Evaluate the partner agencies (Form 23a), like the faculty evaluation ============ --}}
+<div class="il-card mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
+        <h2 class="h6 fw-bold mb-0">Evaluate Partner Agencies <span class="text-secondary fw-normal">(Form 23a)</span></h2>
+        <span class="small text-secondary">{{ $agencyRows->filter(fn ($r) => $r->mine)->count() }} of {{ $agencyRows->count() }} evaluated</span>
+    </div>
+    <p class="text-secondary small mb-3">The agencies where your students finished their internship. Click an agency's name to evaluate it &mdash; once per agency. The agency does not see your evaluation.</p>
 
     <div class="table-responsive">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 eval-table">
             <thead>
-                <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                    <th>Student</th>
-                    <th>HTE</th>
-                    <th>Status</th>
-                    <th>Date received</th>
-                    <th></th>
-                </tr>
+                <tr><th>Agency</th><th>Your interns there</th><th>Status</th><th>Agency's self-rating <span class="text-lowercase fw-normal">(Form 23b)</span></th></tr>
             </thead>
             <tbody>
-                @forelse ($rows as $row)
-                    <tr id="student-{{ $row->student->id }}" class="eval-row">
+                @forelse ($agencyRows as $row)
+                    <tr>
                         <td>
-                            <div class="fw-semibold">{{ $row->student->user->name }}</div>
-                            <div class="text-secondary" style="font-size: 0.78rem;">
-                                {{ $row->student->program->code ?? '' }} &middot; {{ $row->student->user->id_number }}
-                            </div>
-                        </td>
-                        <td>{{ $row->deployment?->hte?->name ?? '—' }}</td>
-                        <td>
-                            @if ($row->form13)
-                                <span class="badge rounded-pill text-bg-success">Received</span>
+                            @if ($row->mine)
+                                <a href="{{ route('instructor.evaluations.show', $row->mine) }}" target="_blank" class="fw-semibold text-decoration-none">{{ $row->hte->name }}</a>
                             @else
-                                <span class="badge rounded-pill text-bg-secondary">Not yet received</span>
+                                <a href="{{ route('instructor.agency-evaluations.create', $row->hte) }}" class="fw-semibold">{{ $row->hte->name }}</a>
+                            @endif
+                            <div class="text-secondary" style="font-size:.76rem;">{{ $row->hte->address }}</div>
+                        </td>
+                        <td class="small">{{ $row->deployments->map(fn ($d) => $d->internship->student->user->name)->join(', ') }}</td>
+                        <td class="text-nowrap">
+                            @if ($row->mine)
+                                <span class="eval-done">EVALUATED</span>
+                                <div class="mt-1">
+                                    <a href="{{ route('instructor.evaluations.show', $row->mine) }}" target="_blank" class="small me-2"><i class="ti ti-eye"></i> View</a>
+                                    <a href="{{ route('instructor.evaluations.show', ['document' => $row->mine, 'download' => 1]) }}" target="_blank" class="small"><i class="ti ti-download"></i> Download</a>
+                                </div>
+                            @else
+                                <a href="{{ route('instructor.agency-evaluations.create', $row->hte) }}" class="btn btn-sm btn-primary"><i class="ti ti-star"></i> Evaluate</a>
                             @endif
                         </td>
-                        <td>{{ $row->form13 ? ($row->form13->submitted_at ?? $row->form13->created_at)->format('M d, Y') : '—' }}</td>
-                        <td class="text-end text-nowrap">
-                            @if ($row->form13)
-                                <a href="{{ route('instructor.evaluations.show', $row->form13) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                    <i class="ti ti-eye"></i> View
-                                </a>
-                                <a href="{{ route('instructor.evaluations.show', ['document' => $row->form13, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                    <i class="ti ti-download"></i> Download
-                                </a>
+                        <td class="text-nowrap">
+                            @if ($row->self)
+                                <span class="eval-done">RECEIVED</span>
+                                <div class="mt-1">
+                                    <a href="{{ route('instructor.evaluations.show', $row->self) }}" target="_blank" class="small me-2"><i class="ti ti-eye"></i> View</a>
+                                    <a href="{{ route('instructor.evaluations.show', ['document' => $row->self, 'download' => 1]) }}" target="_blank" class="small"><i class="ti ti-download"></i> Download</a>
+                                </div>
                             @else
-                                <span class="text-secondary small">Awaiting HTE</span>
+                                <span class="eval-wait">Waiting for the agency</span>
                             @endif
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed students yet.</td></tr>
+                    <tr><td colspan="4" class="text-center text-secondary py-4">No agency to evaluate yet &mdash; this opens once one of your students completes their internship.</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
 </div>
 
-{{-- ============ SENT: Form 23a, the instructor's evaluation of the HTE ============ --}}
-<div class="il-card" id="evaluations-sent">
+{{-- ============ Received about / from each intern ============ --}}
+<div class="il-card" id="evaluations-received">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-1">
-        <h2 class="h6 fw-bold mb-0">Evaluations Sent <span class="text-secondary fw-normal">(to HTE &mdash; Form 23a)</span></h2>
-        <span class="badge rounded-pill text-bg-light">{{ $rows->filter(fn ($r) => $r->form23a)->count() }} of {{ $rows->count() }} sent</span>
+        <h2 class="h6 fw-bold mb-0">Evaluations Received</h2>
+        <span class="small text-secondary">{{ $internRows->count() }} {{ \Illuminate\Support\Str::plural('intern', $internRows->count()) }}</span>
     </div>
-    <p class="text-secondary small mb-3">
-        Once a student&rsquo;s internship is completed, use <strong>Evaluate</strong> to fill in Form 23a, the
-        Evaluation Instrument of PSU Partner Agencies. It rates the student&rsquo;s host training establishment on
-        communication, ethical dealings, student satisfaction and quality delivery, and is delivered to the HTE&rsquo;s
-        Evaluations Received. Intern-Link does not record grades.
-    </p>
-    @unless ($partnerAgencyFormRequirement)
-        <div class="text-secondary small mb-3">Official Form 23a has not been configured for this campus.</div>
-    @endunless
+    <p class="text-secondary small mb-3">What each agency submitted about your intern (Forms 13 and 21), and what each intern submitted about their agency (Forms 23c and 20). The intern and the agency do not see each other's evaluations.</p>
 
     <div class="table-responsive">
-        <table class="table align-middle mb-0">
+        <table class="table align-middle mb-0 eval-table">
             <thead>
-                <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                    <th>Student</th>
-                    <th>HTE</th>
-                    <th>Status</th>
-                    <th>Overall progress</th>
-                    <th></th>
+                <tr>
+                    <th rowspan="2" class="align-bottom">Intern</th>
+                    <th colspan="2" class="text-center border-bottom-0">From the agency</th>
+                    <th colspan="2" class="text-center border-bottom-0">From the intern</th>
+                </tr>
+                <tr>
+                    @foreach ($internCodes as $code)
+                        <th>{{ $short($code) }} <span class="text-lowercase fw-normal d-block">{{ $titles[$code] }}</span></th>
+                    @endforeach
                 </tr>
             </thead>
             <tbody>
-                @forelse ($rows as $row)
-                    @php $state = $row->state; @endphp
-                    <tr>
+                @forelse ($internRows as $row)
+                    <tr id="student-{{ $row->student->id }}" class="eval-row">
                         <td>
                             <div class="fw-semibold">{{ $row->student->user->name }}</div>
-                            <div class="text-secondary" style="font-size: 0.78rem;">
-                                {{ $row->student->program->code ?? '' }} &middot; {{ $row->student->user->id_number }}
-                            </div>
+                            <div class="text-secondary" style="font-size:.76rem;">{{ $row->student->user->id_number }} &middot; {{ $row->deployment->hte?->name }}</div>
                         </td>
-                        <td>{{ $row->deployment?->hte?->name ?? '—' }}</td>
-                        <td>
-                            @if ($row->form23a)
-                                <span class="badge rounded-pill text-bg-success">Sent</span>
-                                <div class="text-secondary" style="font-size: 0.72rem;">{{ ($row->form23a->submitted_at ?? $row->form23a->created_at)->format('M d, Y') }}</div>
-                            @elseif ($row->deployment?->status === 'completed')
-                                <span class="badge rounded-pill text-bg-warning">Not yet sent</span>
-                            @else
-                                <span class="badge rounded-pill text-bg-secondary">Opens after internship</span>
-                            @endif
-                        </td>
-                        <td>
-                            <span class="badge rounded-pill {{ $state['color'] }}">{{ $state['label'] }}</span>
-                            @if ($state['key'] === 'ongoing')
-                                <div class="text-secondary" style="font-size: 0.72rem;">Evaluation opens once the internship is completed</div>
-                            @elseif ($state['detail'])
-                                <div class="text-secondary" style="font-size: 0.72rem;">{{ $state['detail'] }}</div>
-                            @endif
-                        </td>
-                        <td class="text-end text-nowrap">
-                            @if ($row->form23a)
-                                <a href="{{ route('instructor.documents.printable', $row->form23a) }}?preview=1" target="_blank" class="btn btn-sm btn-outline-secondary">
-                                    <i class="ti ti-eye"></i> View Form 23a
-                                </a>
-                                <a href="{{ route('instructor.documents.printable', ['document' => $row->form23a, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Download"><i class="ti ti-download"></i></a>
-                            @elseif (! auth()->user()->instructor->canActOn($row->student))
-                                <span class="text-secondary small">Their instructor evaluates</span>
-                            @elseif ($partnerAgencyFormRequirement && $row->deployment && $row->deployment->status === 'completed')
-                                <a href="{{ route('instructor.forms.create', [$partnerAgencyFormRequirement, $row->deployment]) }}" class="btn btn-sm btn-outline-primary">
-                                    Evaluate
-                                </a>
-                            @else
-                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled
-                                        title="Available after the student's internship is completed">
-                                    Evaluate
-                                </button>
-                            @endif
-                        </td>
+                        @foreach ($internCodes as $code)
+                            @php $doc = $row->forms[$code]; @endphp
+                            <td class="text-nowrap">
+                                @if ($doc)
+                                    <span class="eval-done">RECEIVED</span>
+                                    <div class="mt-1">
+                                        <a href="{{ route('instructor.evaluations.show', $doc) }}" target="_blank" class="small me-2"><i class="ti ti-eye"></i> View</a>
+                                        <a href="{{ route('instructor.evaluations.show', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="small" title="Download"><i class="ti ti-download"></i></a>
+                                    </div>
+                                @elseif (! isset($requirements[$code]))
+                                    <span class="eval-wait">&mdash;</span>
+                                @else
+                                    <span class="eval-wait">Waiting</span>
+                                @endif
+                            </td>
+                        @endforeach
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-4">No deployed students yet.</td></tr>
+                    <tr><td colspan="5" class="text-center text-secondary py-4">No completed internships yet.</td></tr>
                 @endforelse
             </tbody>
         </table>

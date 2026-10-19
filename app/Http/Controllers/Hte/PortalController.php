@@ -34,18 +34,22 @@ class PortalController extends Controller
         $assignedDeployments = Deployment::where('hte_id', $hteId)->whereIn('status', ['pending','active','completed'])->with(['internship.student.user','internship.student.program','internship','hte'])->get();
         $pendingDtrCount = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->where('status','pending')->count();
 
-        // Dashboard evaluation counts come only from official HTE forms. The legacy
-        // numeric score record is not an independent evaluation workflow.
-        $hteFormCodes = ['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF'];
+        // Evaluations to do: Forms 13 and 21 for every intern who finished,
+        // plus the agency's own Form 23b once.
         $hteFormRequirementIds = DocumentRequirement::where('campus_id', $representative->hte->campus_id)
-            ->where('is_active', true)->where('audience', 'hte')->whereIn('code', $hteFormCodes)->pluck('id');
-        $submittedDocumentStatuses = ['submitted', 'for_review', 'approved', 'printed', 'completed'];
+            ->where('is_active', true)->where('audience', 'hte')->whereIn('code', \App\Support\EvaluationRouting::HTE_INTERN_CODES)->pluck('id');
+        $completedInternshipIds = $assignedDeployments->where('status', 'completed')->pluck('internship_id');
         $evaluationsSubmitted = Document::whereIn('document_requirement_id', $hteFormRequirementIds)
-            ->whereIn('status', $submittedDocumentStatuses)
-            ->whereHas('internship.deployment', fn ($q) => $q->where('hte_id', $hteId)->where('status', 'completed'))
+            ->whereIn('status', \App\Support\EvaluationRouting::SUBMITTED)
+            ->whereIn('internship_id', $completedInternshipIds)
             ->count();
-        $eligibleDeploymentCount = $assignedDeployments->where('status', 'completed')->count();
-        $evaluationsPending = max(0, ($eligibleDeploymentCount * $hteFormRequirementIds->count()) - $evaluationsSubmitted);
+        $evaluationsPending = max(0, $completedInternshipIds->count() * $hteFormRequirementIds->count() - $evaluationsSubmitted);
+        $selfRequirement = \App\Support\AgencyEvaluations::requirement('PARTNER_AGENCY_EVAL_SELF', (int) $representative->hte->campus_id);
+        if ($selfRequirement && $completedInternshipIds->isNotEmpty()) {
+            $selfDone = \App\Support\EvaluationRouting::isSubmitted(\App\Support\AgencyEvaluations::find($selfRequirement, $hteId));
+            $evaluationsSubmitted += $selfDone ? 1 : 0;
+            $evaluationsPending += $selfDone ? 0 : 1;
+        }
         $todayAttendance = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->where('status','pending')->with(['deployment.internship.student.user','deployment.internship.student.program','deployment.hte'])->orderBy('log_date')->limit(10)->get();
         return view('hte.dashboard', compact('representative','assignedDeployments','pendingDtrCount','evaluationsSubmitted','evaluationsPending','todayAttendance'));
     }
@@ -164,23 +168,33 @@ class PortalController extends Controller
         return redirect()->route('hte.dtr')->with('status', 'Declined. The day went back to the student to be corrected.');
     }
 
+    /**
+     * Evaluate Interns - like the PSU faculty evaluation: the list of this
+     * agency's interns who finished their internship, click a name and rate
+     * them (Form 13 Internship Evaluation, Form 21 Supervisor's Feedback),
+     * plus the agency's own rating of itself, once (Form 23b). Every one goes
+     * to the Subject Instructor; the intern never sees it.
+     */
     public function evaluations(): View
     {
         $representative = $this->representative();
         $deployments = Deployment::where('hte_id', $representative->hte_id)
-            ->whereIn('status', ['active', 'completed'])
-            ->with(['internship.student.user', 'internship.student.program', 'evaluation', 'internship.documents.requirement'])
-            ->latest('id')
-            ->get();
+            ->where('status', 'completed')
+            ->with(['internship.student.user', 'internship.student.program', 'internship.documents'])
+            ->get()
+            ->sortBy(fn ($d) => $d->internship->student->user->name)
+            ->values();
 
-        $officialFormRequirements = \App\Models\DocumentRequirement::where('campus_id', $representative->hte->campus_id)
+        $requirements = \App\Models\DocumentRequirement::where('campus_id', $representative->hte->campus_id)
             ->where('is_active', true)
             ->whereIn('code', ['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF'])
-            ->orderBy('display_order')
             ->get()
             ->keyBy('code');
 
-        return view('hte.evaluations', compact('representative', 'deployments', 'officialFormRequirements'));
+        $selfRequirement = $requirements->get('PARTNER_AGENCY_EVAL_SELF');
+        $selfEvaluation = $selfRequirement ? \App\Support\AgencyEvaluations::find($selfRequirement, $representative->hte_id) : null;
+
+        return view('hte.evaluations', compact('representative', 'deployments', 'requirements', 'selfRequirement', 'selfEvaluation'));
     }
 
     /**

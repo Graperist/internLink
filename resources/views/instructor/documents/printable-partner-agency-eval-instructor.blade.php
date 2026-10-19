@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Evaluation Instrument of PSU Partner Agencies (Subject Instructor) — {{ $document->internship->student->user->name }}</title>
+    <title>Evaluation Instrument of PSU Partner Agencies (Subject Instructor) — {{ $document->hte?->name ?? $document->internship?->deployment?->hte?->name }}</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -93,7 +93,8 @@
         $campusLabel .= ' Campus';
     }
 
-    $hte = $internship->deployment?->hte;
+    // The agency this one-per-agency evaluation is about.
+    $hte = $document->hte ?? $internship->deployment?->hte;
     $rate = fn (string $key) => $document->fieldValue($key);
 
     $evaluator = $rate('rater_name') ?: ($document->uploader?->name ?? '');

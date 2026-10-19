@@ -19,7 +19,7 @@ class Document extends Model
     }
 
     protected $fillable = [
-        'internship_id', 'document_requirement_id', 'uploaded_by_user_id',
+        'internship_id', 'hte_id', 'document_requirement_id', 'uploaded_by_user_id',
         'file_path', 'original_filename', 'status',
         'submitted_at', 'printed_at', 'signatures_confirmed_at', 'completed_at', 'packet_number',
     ];
@@ -49,6 +49,12 @@ class Document extends Model
     public function reviews()
     {
         return $this->hasMany(DocumentReview::class);
+    }
+
+    /** The agency an agency-level evaluation (Form 23a / 23b) is about. */
+    public function hte()
+    {
+        return $this->belongsTo(Hte::class);
     }
 
     public function latestReview()

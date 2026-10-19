@@ -81,6 +81,8 @@ class DocumentController extends Controller
         $requirements = DocumentRequirement::where('campus_id', $student->campus_id)
             ->where('is_active', true)
             ->whereIn('audience', ['student', 'coordinator'])
+            // The evaluations of the agency (Forms 20, 23c) are on Evaluate Agency.
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentEvaluationCodes())
             ->with('fieldDefinitions')
             ->get()
             // In process order: pre-deployment, then active (e.g. the weekly
@@ -153,12 +155,11 @@ class DocumentController extends Controller
         abort_if($document && in_array($document->status, ['printed', 'completed', 'approved']), 403,
             'This form has already been printed for signing and can no longer be edited here.');
 
-        // Forms 20 and 23c go straight to the HTE's Evaluations Received, so a
-        // delivered copy is final - the HTE could already have read it.
+        // Forms 20 and 23c go to the Subject Instructor; a submitted one is final.
         abort_if($document
-            && in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
+            && in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true)
             && \App\Support\EvaluationRouting::isSubmitted($document), 403,
-            'This evaluation was already sent to your Host Training Establishment and can no longer be edited.');
+            'You already evaluated your agency on this form.');
 
         if ($requirement->code === 'CERTIFICATE_OF_UNITS_EARNED') {
             return view('student.documents.certificate-units-earned', compact('requirement', 'document'));
@@ -560,12 +561,12 @@ class DocumentController extends Controller
         }
 
         abort_if(
-            in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
+            in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true)
                 && \App\Support\EvaluationRouting::isSubmitted(
                     $internship->documents()->where('document_requirement_id', $requirement->id)->first()
                 ),
             403,
-            'This evaluation was already sent to your Host Training Establishment and can no longer be edited.'
+            'You already evaluated your agency on this form.'
         );
 
         $wasReturned = $internship->documents()
@@ -609,22 +610,22 @@ class DocumentController extends Controller
 
         $verb = $wasReturned ? 'resubmitted' : 'submitted';
 
-        if (in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)) {
-            // Form 20 (Student-Intern's Feedback) and Form 23c (Partner Agency
-            // evaluation, Student) are addressed to the host training
-            // establishment, not to the instructor: they land in the HTE
-            // portal's Evaluations Received sidebar.
+        $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
+        if ($isEvaluation) {
+            // Form 20 (Student-Intern's Feedback) and Form 23c (evaluation of the
+            // partner agency) go to the Subject Instructor only - like the PSU
+            // faculty evaluation, the agency being rated never sees it.
             $formLabel = \App\Support\EvaluationRouting::FORMS[$requirement->code]['form'];
-            $hteId = $internship->deployment?->hte_id;
-            \App\Models\HteRepresentative::where('hte_id', $hteId)->pluck('user_id')->each(
-                fn ($userId) => \App\Models\Notification::create([
+            \App\Models\Instructor::where('campus_id', $internship->campus_id)
+                ->where('program_id', $internship->program_id)
+                ->pluck('user_id')
+                ->each(fn ($userId) => \App\Models\Notification::create([
                     'user_id' => $userId,
                     'type' => 'document_status',
-                    'title' => "Evaluation received from {$student->user->name} ({$formLabel})",
-                    'message' => "{$student->user->name} {$verb} {$requirement->name}. Open Evaluations Received to read it.",
-                    'url' => route('hte.evaluations.received', [], false),
-                ])
-            );
+                    'title' => "{$student->user->name} evaluated their agency ({$formLabel})",
+                    'message' => "{$student->user->name} submitted {$requirement->name}. Open Evaluations to view it.",
+                    'url' => route('instructor.evaluations', [], false).'#student-'.$student->id,
+                ]));
         } else {
             // Notify every instructor scoped to this student's program/campus -
             // there's no strict one-to-one assignment, so more than one
@@ -659,10 +660,13 @@ class DocumentController extends Controller
             }
         }
 
+        if ($isEvaluation) {
+            return redirect()->route('student.evaluations')
+                ->with('status', 'Thank you! Your evaluation is submitted. It goes to your Subject Instructor; your agency does not see it.');
+        }
+
         return redirect()->route('student.documents')
-            ->with('status', in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
-                ? \App\Support\EvaluationRouting::FORMS[$requirement->code]['form'].' submitted and sent to your Host Training Establishment.'
-                : 'Form submitted for instructor review.')
+            ->with('status', 'Form submitted for instructor review.')
             ->with('field_warnings', $fieldWarnings);
     }
 

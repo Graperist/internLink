@@ -3,12 +3,20 @@
 @section('title', $requirement->name.' - PSU Intern-Link')
 
 @section('content')
+@php
+    // The evaluations of the agency (Forms 20, 23c) are filled from Evaluate Agency.
+    $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
+    $backUrl = $isEvaluation ? route('student.evaluations') : route('student.documents');
+@endphp
 <div class="il-page-header">
     <h1 class="il-page-title">{{ $requirement->name }}</h1>
-    <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">
-        <i class="ti ti-arrow-left"></i> Back to My Documents
+    <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">
+        <i class="ti ti-arrow-left"></i> Back to {{ $isEvaluation ? 'Evaluate Agency' : 'My Documents' }}
     </a>
 </div>
+@if ($isEvaluation)
+    <div class="alert alert-info small"><i class="ti ti-lock"></i> Your evaluation goes to your Subject Instructor only. Your agency does not see it. You can submit it once.</div>
+@endif
 
 <div class="il-card" style="max-width: {{ $requirement->code === 'APPLICATION_FOR_OJT' ? '920px' : '640px' }};">
     @if ($errors->any())
@@ -1083,8 +1091,8 @@
         @endif
 
         <div class="d-flex gap-2 mt-3">
-            <button type="submit" class="il-btn-primary">Submit for review</button>
-            <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
+            <button type="submit" class="il-btn-primary">{{ $isEvaluation ? 'Submit evaluation' : 'Submit for review' }}</button>
+            <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>
 </div>

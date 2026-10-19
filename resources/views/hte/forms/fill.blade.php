@@ -7,7 +7,7 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">{{ $requirement->name }}</h1>
-        <p class="text-secondary mb-0">Student: <strong>{{ $student?->user?->name }}</strong> · {{ $deployment->hte?->name }}</p>
+        <p class="text-secondary mb-0">{!! isset($subtitle) ? e($subtitle) : 'Student: <strong>'.e($student?->user?->name).'</strong> · '.e($deployment->hte?->name) !!}</p>
     </div>
     <a href="{{ route('hte.evaluations') }}" class="il-btn-secondary text-decoration-none">Back to Evaluations</a>
 </div>
@@ -39,7 +39,7 @@
         };
     @endphp
 
-    <form method="POST" action="{{ route('hte.forms.store', [$requirement, $deployment]) }}">
+    <form method="POST" action="{{ $formAction ?? route('hte.forms.store', [$requirement, $deployment]) }}">
         @csrf
         @foreach ($requirement->groupedFieldDefinitions() as $groupLabel => $fields)
             @if ($groupLabel)

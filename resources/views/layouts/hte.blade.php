@@ -48,11 +48,8 @@
                 <a href="{{ route('hte.dtr') }}" class="il-nav-link {{ request()->routeIs('hte.dtr') ? 'active' : '' }}">
                     <i class="ti ti-clock-check"></i> Time Frame Approval
                 </a>
-                <a href="{{ route('hte.evaluations') }}" class="il-nav-link {{ request()->routeIs('hte.evaluations') ? 'active' : '' }}">
-                    <i class="ti ti-clipboard-check"></i> Submit Evaluation
-                </a>
-                <a href="{{ route('hte.evaluations.received') }}" class="il-nav-link {{ request()->routeIs('hte.evaluations.received*') ? 'active' : '' }}">
-                    <i class="ti ti-inbox"></i> Evaluations Received
+                <a href="{{ route('hte.evaluations') }}" class="il-nav-link {{ request()->routeIs('hte.evaluations', 'hte.forms.*', 'hte.self-evaluation.*') ? 'active' : '' }}">
+                    <i class="ti ti-clipboard-check"></i> Evaluate Interns
                 </a>
 
                 <p class="il-nav-label">Updates</p>

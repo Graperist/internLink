@@ -125,8 +125,9 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/documents/{document}/download', [DocumentReviewController::class, 'download'])->name('documents.download');
         Route::get('/documents/attachments/{attachment}', [DocumentReviewController::class, 'attachment'])->name('documents.attachment');
 
-        Route::get('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'create'])->name('forms.create');
-        Route::post('/forms/{requirement}/{deployment}', [InstructorFormController::class, 'store'])->name('forms.store');
+        // Form 23a: evaluate a partner agency (one per agency).
+        Route::get('/evaluations/agencies/{hte}', [InstructorFormController::class, 'create'])->name('agency-evaluations.create');
+        Route::post('/evaluations/agencies/{hte}', [InstructorFormController::class, 'store'])->name('agency-evaluations.store');
 
         // Partner Agencies - repository of partner industries per program
         // and term (step 1 of the internship process). Entries are kept by
@@ -230,8 +231,10 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
 
         Route::get('/evaluations', [HtePortalController::class, 'evaluations'])->name('evaluations');
 
-        Route::get('/evaluations/received', [\App\Http\Controllers\Hte\ReceivedEvaluationController::class, 'index'])->name('evaluations.received');
-        Route::get('/evaluations/received/{document}', [\App\Http\Controllers\Hte\ReceivedEvaluationController::class, 'show'])->name('evaluations.received.show');
+        // Evaluations of the agency go to the Subject Instructor now, not the HTE.
+        Route::redirect('/evaluations/received', '/hte/evaluations')->name('evaluations.received');
+        Route::get('/evaluations/self', [HteFormController::class, 'createSelf'])->name('self-evaluation.create');
+        Route::post('/evaluations/self', [HteFormController::class, 'storeSelf'])->name('self-evaluation.store');
 
         Route::get('/forms/{requirement}/{deployment}', [HteFormController::class, 'create'])->name('forms.create');
         Route::post('/forms/{requirement}/{deployment}', [HteFormController::class, 'store'])->name('forms.store');
@@ -277,7 +280,8 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
 
 
         Route::get('/hte', [HteInfoController::class, 'index'])->name('hte');
-        Route::get('/hte/feedback/{document}', [HteInfoController::class, 'feedback'])->whereNumber('document')->name('hte.feedback');
+        // Evaluate Agency: the student's evaluations of their agency (Forms 23c, 20) - to the instructor only.
+        Route::get('/evaluations', [\App\Http\Controllers\Student\EvaluationController::class, 'index'])->name('evaluations');
         Route::get('/progress', [ProgressController::class, 'index'])->name('progress');
         Route::get('/notifications', [StudentNotificationController::class, 'index'])->name('notifications');
 

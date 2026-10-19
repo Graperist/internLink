@@ -21,13 +21,13 @@ use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
- * Where each of the six evaluation forms is delivered:
- *   Form 13  HTE        -> Instructor   (Evaluations)
- *   Form 21  HTE        -> Student      (My HTE Info)
- *   Form 20  Student    -> HTE          (Evaluations Received)
- *   Form 23c Student    -> HTE          (Evaluations Received)
- *   Form 23a Instructor -> HTE          (Evaluations Received)
- *   Form 23b HTE        -> Coordinator  (Documents)
+ * Evaluations work like the PSU faculty evaluation: a list of names, click
+ * one and rate it; whoever is rated never sees it. Everything goes to the
+ * Subject Instructor (Evaluations):
+ *   Form 13, 21  HTE about the intern
+ *   Form 23c, 20 the intern about the agency
+ *   Form 23b     the HTE about itself (once per agency)
+ *   Form 23a     the instructor about the agency (once per agency, kept by the instructor)
  */
 class EvaluationRoutingTest extends TestCase
 {
@@ -130,7 +130,7 @@ class EvaluationRoutingTest extends TestCase
     {
         $requirement = $this->req($code);
         $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))
-            ->assertSessionHasNoErrors();
+            ->assertRedirect(route('hte.evaluations'))->assertSessionHasNoErrors();
 
         return Document::where('document_requirement_id', $requirement->id)->firstOrFail();
     }
@@ -139,216 +139,201 @@ class EvaluationRoutingTest extends TestCase
     {
         $requirement = $this->req($code);
         $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))
-            ->assertSessionHasNoErrors();
+            ->assertRedirect(route('student.evaluations'))->assertSessionHasNoErrors();
 
         return Document::where('document_requirement_id', $requirement->id)->firstOrFail();
     }
 
-    private function instructorSubmits(): Document
+    private function instructorSubmits(?Hte $hte = null): Document
     {
         $requirement = $this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR');
-        $this->actingAs($this->instructorUser)->post(route('instructor.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))
-            ->assertSessionHasNoErrors();
+        $this->actingAs($this->instructorUser)->post(route('instructor.agency-evaluations.store', $hte ?? $this->hte), $this->payload($requirement))
+            ->assertRedirect(route('instructor.evaluations'))->assertSessionHasNoErrors();
+
+        return Document::where('document_requirement_id', $requirement->id)->latest('id')->firstOrFail();
+    }
+
+    private function hteRatesItself(): Document
+    {
+        $requirement = $this->req('PARTNER_AGENCY_EVAL_SELF');
+        $this->actingAs($this->hteUser)->post(route('hte.self-evaluation.store'), $this->payload($requirement))
+            ->assertRedirect(route('hte.evaluations'))->assertSessionHasNoErrors();
 
         return Document::where('document_requirement_id', $requirement->id)->firstOrFail();
     }
 
-    // ------------------------------------------------ Form 13: HTE -> Instructor
+    // ------------------------------------------------ the HTE rates its interns -> instructor only
 
-    public function test_form_13_lands_in_the_instructors_evaluations_sidebar(): void
+    public function test_the_hte_lists_its_interns_and_rates_them_by_name(): void
     {
-        $document = $this->hteSubmits('EVALUATION_FORM');
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations'))->assertOk()
+            ->assertSee('Evaluate Interns')->assertSee($this->studentUser->name)->assertDontSee($this->otherStudentUser->name)
+            ->assertSee(route('hte.forms.create', [$this->req('EVALUATION_FORM'), $this->deployment]));
 
-        $this->assertSame(1, Notification::where('user_id', $this->instructorUser->id)->where('title', 'like', '%Form 13%')->count());
-        $this->assertSame(0, Notification::where('user_id', $this->otherProgramInstructorUser->id)->count());
-
-        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))
-            ->assertOk()->assertSee('Received')
-            ->assertSee(route('instructor.evaluations.show', $document), false);
-
-        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $document))
-            ->assertOk()->assertSee('Internship Evaluation Form');
+        $this->hteSubmits('EVALUATION_FORM');
+        $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations'))->assertOk()->assertSee('EVALUATED');
     }
 
-    public function test_form_13_is_not_visible_to_an_instructor_of_another_program_or_to_a_student(): void
-    {
-        $document = $this->hteSubmits('EVALUATION_FORM');
-
-        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
-        $this->actingAs($this->studentUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
-        $this->actingAs($this->hteUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
-    }
-
-    public function test_instructor_evaluations_route_only_opens_form_13(): void
-    {
-        $other = $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
-
-        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $other))->assertNotFound();
-    }
-
-    // ------------------------------------------------ Form 21: HTE -> Student
-
-    public function test_form_21_lands_in_the_students_my_hte_info_sidebar(): void
-    {
-        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()->assertSee('Not yet received');
-
-        $document = $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
-
-        $this->assertSame(1, Notification::where('user_id', $this->studentUser->id)->where('title', 'like', '%Form 21%')->count());
-        $this->assertSame(0, Notification::where('user_id', $this->otherStudentUser->id)->count());
-
-        $this->actingAs($this->studentUser)->get(route('student.hte'))
-            ->assertOk()->assertSee('Received')->assertSee('Agree')
-            ->assertSee(route('student.hte.feedback', $document), false);
-
-        $this->actingAs($this->studentUser)->get(route('student.hte.feedback', $document))
-            ->assertOk()->assertSee('FM-AA-INT-21');
-    }
-
-    public function test_a_student_cannot_open_another_students_form_21(): void
-    {
-        $document = $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
-
-        $this->actingAs($this->otherStudentUser)->get(route('student.hte.feedback', $document))->assertForbidden();
-        $this->actingAs($this->otherStudentUser)->get(route('student.hte'))->assertOk()->assertDontSee('Strongly Agree');
-    }
-
-    public function test_student_my_hte_info_only_opens_form_21(): void
-    {
-        $document = $this->hteSubmits('EVALUATION_FORM');   // Form 13 is for the instructor, not the student
-
-        $this->actingAs($this->studentUser)->get(route('student.hte.feedback', $document))->assertNotFound();
-    }
-
-    // ----------------------------------- Forms 20 / 23c / 23a: -> HTE received
-
-    public function test_student_forms_20_and_23c_land_in_the_htes_evaluations_received(): void
-    {
-        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-        $form23c = $this->studentSubmits('STUDENT_HTE_EVALUATION');
-
-        $this->assertSame(2, Notification::where('user_id', $this->hteUser->id)->count());
-        $this->assertSame(0, Notification::where('user_id', $this->otherHteUser->id)->count());
-        $this->assertSame(0, Notification::where('user_id', $this->instructorUser->id)->count(), 'instructor is not the recipient');
-
-        $page = $this->actingAs($this->hteUser)->get(route('hte.evaluations.received'))->assertOk();
-        $page->assertSee(route('hte.evaluations.received.show', $form20), false);
-        $page->assertSee(route('hte.evaluations.received.show', $form23c), false);
-
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received.show', $form20))->assertOk()->assertSee('FEEDBACK FORM');
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received.show', $form23c))->assertOk()->assertSee('EVALUATION INSTRUMENT OF PSU PARTNER AGENCIES');
-    }
-
-    public function test_form_23a_from_the_instructor_still_lands_in_the_htes_evaluations_received(): void
-    {
-        $document = $this->instructorSubmits();
-
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received'))
-            ->assertOk()->assertSee(route('hte.evaluations.received.show', $document), false);
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received.show', $document))->assertOk();
-    }
-
-    public function test_evaluations_received_filters_by_form(): void
-    {
-        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-        $form23a = $this->instructorSubmits();
-
-        $only20 = $this->actingAs($this->hteUser)->get(route('hte.evaluations.received', ['form' => 'STUDENT_FEEDBACK_FORM']))->assertOk();
-        $only20->assertSee(route('hte.evaluations.received.show', $form20), false);
-        $only20->assertDontSee(route('hte.evaluations.received.show', $form23a), false);
-    }
-
-    public function test_another_htes_evaluations_are_never_listed_or_opened(): void
-    {
-        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-
-        $this->actingAs($this->otherHteUser)->get(route('hte.evaluations.received'))
-            ->assertOk()->assertDontSee(route('hte.evaluations.received.show', $form20), false);
-        $this->actingAs($this->otherHteUser)->get(route('hte.evaluations.received.show', $form20))->assertForbidden();
-    }
-
-    public function test_hte_cannot_open_forms_it_sent_through_the_received_inbox(): void
+    public function test_forms_13_and_21_go_to_the_instructor_and_the_student_never_sees_them(): void
     {
         $form13 = $this->hteSubmits('EVALUATION_FORM');
-        $form23b = $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');
+        $form21 = $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
 
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received.show', $form13))->assertNotFound();
-        $this->actingAs($this->hteUser)->get(route('hte.evaluations.received.show', $form23b))->assertNotFound();
-    }
-
-    public function test_student_forms_20_and_23c_stay_out_of_instructor_document_review(): void
-    {
-        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-        $this->studentSubmits('STUDENT_HTE_EVALUATION');
-
-        $this->flushSession();   // drop the student's "sent to your HTE" flash message
-        $this->actingAs($this->instructorUser)->get(route('instructor.documents'))->assertOk()
-            ->assertDontSee($form20->requirement->name)
-            ->assertDontSee($this->req('STUDENT_HTE_EVALUATION')->name);
-        // The student's own review page lists their forms - still not these two.
-        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $form20->internship->student_id]))->assertOk()
-            ->assertDontSee($form20->requirement->name)
-            ->assertDontSee($this->req('STUDENT_HTE_EVALUATION')->name);
-
-        $this->actingAs($this->instructorUser)->post(route('instructor.documents.review', $form20), ['decision' => 'approved'])->assertForbidden();
-    }
-
-    public function test_student_sees_forms_20_and_23c_as_sent_and_cannot_edit_them_afterwards(): void
-    {
-        $requirement = $this->req('STUDENT_FEEDBACK_FORM');
-        $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-
-        $this->actingAs($this->studentUser)->get(route('student.documents'))->assertOk()->assertSee('Sent to HTE');
-        $this->actingAs($this->studentUser)->get(route('student.documents.fill', $requirement))->assertForbidden();
-
-        $before = Document::where('document_requirement_id', $requirement->id)->first()->fieldValue('problems_met');
-        $this->actingAs($this->studentUser)
-            ->post(route('student.documents.fill.store', $requirement), $this->payload($requirement) + ['problems_met' => 'changed'])
-            ->assertForbidden();
-        $this->assertSame($before, Document::where('document_requirement_id', $requirement->id)->first()->fieldValue('problems_met'));
-    }
-
-    // ------------------------------------------------ Form 23b: HTE -> Coordinator
-
-    public function test_form_23b_lands_in_the_coordinators_document_tracking_panel(): void
-    {
-        $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents'))
-            ->assertOk()->assertSee('HTE Evaluation Forms')->assertSee('Pending')->assertSee('Awaiting HTE');
-
-        $document = $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');
-
-        $this->assertSame(1, Notification::where('user_id', $this->coordinatorUser->id)->where('title', 'like', '%Form 23b%')->count());
-
-        $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents'))
-            ->assertOk()->assertSee('Fareheaven Boarding House')
-            ->assertSee(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]), false);
-
-        $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]))
-            ->assertOk()->assertDontSee('window.print()', false);
-    }
-
-    public function test_coordinator_panel_filters_and_searches(): void
-    {
-        $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');   // Fareheaven submitted, Other Company pending
-
-        $submitted = $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents', ['hte_eval' => 'submitted']))->assertOk();
-        $submitted->assertSee('Fareheaven Boarding House');
-        $submitted->assertDontSee('Awaiting HTE');
-
-        $pending = $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents', ['hte_eval' => 'pending']))->assertOk();
-        $pending->assertSee('Other Company');
-        $pending->assertDontSee('View Form 23b');
-
-        $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents', ['hte_search' => 'zzzz']))
-            ->assertOk()->assertSee('No HTE evaluation forms match this filter.');
-    }
-
-    public function test_form_23b_does_not_go_to_the_instructor_or_student(): void
-    {
-        $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');
-
-        $this->assertSame(0, Notification::where('user_id', $this->instructorUser->id)->count());
+        $this->assertSame(2, Notification::where('user_id', $this->instructorUser->id)->count());
         $this->assertSame(0, Notification::where('user_id', $this->studentUser->id)->count());
+
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSee(route('instructor.evaluations.show', $form13))->assertSee(route('instructor.evaluations.show', $form21));
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $form21))->assertOk();
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', ['document' => $form13, 'download' => 1]))->assertOk()
+            ->assertSee('pdfStatus', false);
+
+        // The student: nothing on My HTE Info, no way to open it.
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('student.hte.feedback'));
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()->assertDontSee('Training Supervisor');
+        $this->actingAs($this->studentUser)->get(route('instructor.evaluations.show', $form21))->assertForbidden();
+    }
+
+    public function test_another_program_instructor_cannot_open_them(): void
+    {
+        $form13 = $this->hteSubmits('EVALUATION_FORM');
+        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.evaluations.show', $form13))->assertForbidden();
+        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.evaluations'))->assertOk()->assertDontSee($this->studentUser->name);
+    }
+
+    public function test_the_hte_cannot_rate_another_agencys_intern_or_one_still_training(): void
+    {
+        $requirement = $this->req('EVALUATION_FORM');
+        $otherDeployment = Deployment::where('hte_id', $this->otherHte->id)->firstOrFail();
+        $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$requirement, $otherDeployment]))->assertForbidden();
+
+        $this->deployment->update(['status' => 'active']);
+        $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$requirement, $this->deployment]))->assertStatus(422);
+    }
+
+    // ------------------------------------------------ the HTE rates itself, once -> instructor only
+
+    public function test_form_23b_is_once_per_agency_and_goes_to_the_instructor(): void
+    {
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations'))->assertOk()->assertSee('Rate Your Agency')
+            ->assertSee(route('hte.self-evaluation.create'));
+        $this->actingAs($this->hteUser)->get(route('hte.self-evaluation.create'))->assertOk()->assertSee('Your agency: '.$this->hte->name);
+        $document = $this->hteRatesItself();
+        $this->actingAs($this->hteUser)->get(route('hte.self-evaluation.create'))->assertForbidden();
+        $this->assertSame($this->hte->id, $document->hte_id);
+
+        $requirement = $this->req('PARTNER_AGENCY_EVAL_SELF');
+        $this->actingAs($this->hteUser)->post(route('hte.self-evaluation.store'), $this->payload($requirement))->assertForbidden();
+        $this->assertSame(1, Document::where('document_requirement_id', $requirement->id)->count());
+
+        $this->assertTrue(Notification::where('user_id', $this->instructorUser->id)->where('title', 'like', 'Form 23b%')->exists());
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSee(route('instructor.evaluations.show', $document));
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $document))->assertOk();
+        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
+    }
+
+    // ------------------------------------------------ the student rates the agency -> instructor only
+
+    public function test_the_student_sees_only_their_agency_and_rates_it(): void
+    {
+        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
+            ->assertSee('Evaluate Agency')->assertSee($this->hte->name)->assertDontSee($this->otherHte->name)
+            ->assertSee(route('student.documents.fill', $this->req('STUDENT_HTE_EVALUATION')));
+        // Not in My Documents any more.
+        $this->actingAs($this->studentUser)->get(route('student.documents'))->assertOk()
+            ->assertDontSee('Form 23c')->assertDontSee('Student-Intern’s Feedback');
+
+        $this->studentSubmits('STUDENT_HTE_EVALUATION');
+        $this->studentSubmits('STUDENT_FEEDBACK_FORM');
+        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()->assertSee('EVALUATED');
+
+        // Once only.
+        $requirement = $this->req('STUDENT_HTE_EVALUATION');
+        $this->actingAs($this->studentUser)->get(route('student.documents.fill', $requirement))->assertForbidden();
+        $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))->assertForbidden();
+    }
+
+    public function test_the_students_evaluations_go_to_the_instructor_and_the_hte_never_sees_them(): void
+    {
+        $form23c = $this->studentSubmits('STUDENT_HTE_EVALUATION');
+        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
+
+        $this->assertSame(0, Notification::where('user_id', $this->hteUser->id)->count());
+        $this->assertSame(2, Notification::where('user_id', $this->instructorUser->id)->count());
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSee(route('instructor.evaluations.show', $form23c))->assertSee(route('instructor.evaluations.show', $form20));
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $form23c))->assertOk();
+
+        // The HTE: no Evaluations Received page, and cannot open them.
+        $this->actingAs($this->hteUser)->get('/hte/evaluations/received')->assertRedirect('/hte/evaluations');
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations'))->assertOk()->assertDontSee('Evaluations Received');
+        $this->actingAs($this->hteUser)->get(route('instructor.evaluations.show', $form23c))->assertForbidden();
+    }
+
+    public function test_the_students_evaluations_stay_out_of_document_review(): void
+    {
+        $this->studentSubmits('STUDENT_HTE_EVALUATION');
+        $studentId = $this->studentUser->student->id;
+        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $studentId]))->assertOk()
+            ->assertDontSee('Evaluation Instrument of PSU Partner Agencies (Student)');
+    }
+
+    public function test_the_student_cannot_evaluate_before_the_internship_is_completed(): void
+    {
+        $this->deployment->update(['status' => 'active']);
+        $this->deployment->internship->update(['status' => 'deployed']);
+        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
+            ->assertSee('once your internship is completed')->assertDontSee('Evaluate</a>', false);
+    }
+
+    // ------------------------------------------------ the instructor rates each agency, once -> kept by the instructor
+
+    public function test_the_instructor_lists_the_agencies_and_rates_each_once(): void
+    {
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSee('Evaluate Partner Agencies')->assertSee($this->hte->name)->assertSee($this->otherHte->name)
+            ->assertSee(route('instructor.agency-evaluations.create', $this->hte));
+        $this->actingAs($this->instructorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertOk()
+            ->assertSee('Partner agency: '.$this->hte->name);
+
+        $document = $this->instructorSubmits();
+        $this->assertSame($this->hte->id, $document->hte_id);
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()->assertSee('EVALUATED');
+
+        // Once per agency.
+        $requirement = $this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR');
+        $this->actingAs($this->instructorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertForbidden();
+        $this->actingAs($this->instructorUser)->post(route('instructor.agency-evaluations.store', $this->hte), $this->payload($requirement))->assertForbidden();
+        // The other agency is still to do.
+        $this->instructorSubmits($this->otherHte);
+        $this->assertSame(2, Document::where('document_requirement_id', $requirement->id)->count());
+    }
+
+    public function test_form_23a_stays_with_the_instructor(): void
+    {
+        $document = $this->instructorSubmits();
+        $this->assertSame(0, Notification::where('user_id', $this->hteUser->id)->count());
+        $this->assertSame(0, Notification::where('user_id', $this->studentUser->id)->count());
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $document))->assertOk()
+            ->assertSee($this->hte->name);
+        $this->actingAs($this->hteUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
+        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.evaluations.show', $document))->assertForbidden();
+    }
+
+    public function test_an_agency_without_a_completed_intern_of_the_program_cannot_be_rated(): void
+    {
+        $this->actingAs($this->otherProgramInstructorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertForbidden();
+    }
+
+    // ------------------------------------------------ the coordinator's Form 23b panel, one row per agency
+
+    public function test_the_coordinator_sees_form_23b_per_agency(): void
+    {
+        $this->hteRatesItself();
+        $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents'))->assertOk()
+            ->assertSee($this->hte->name)->assertSee($this->otherHte->name);
     }
 
     // ------------------------------------------------ notifications open the right sidebar
@@ -366,34 +351,6 @@ class EvaluationRoutingTest extends TestCase
 
         $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))
             ->assertOk()->assertSee('id="student-'.$studentId.'"', false);
-    }
-
-    public function test_legacy_instructor_notifications_are_rerouted_by_the_migration(): void
-    {
-        $row = fn (int $userId, string $title) => [
-            'user_id' => $userId, 'type' => 'document_status', 'title' => $title,
-            'message' => 'The form is available in Document Review.', 'url' => null, 'resolve_key' => 'document:9',
-            'created_at' => now(), 'updated_at' => now(),
-        ];
-        \DB::table('notifications')->insert([
-            $row($this->instructorUser->id, 'HTE submitted Form 13 – Internship Evaluation Form'),
-            $row($this->instructorUser->id, 'HTE submitted Form 21 – Training Supervisor’s Feedback Form'),
-            $row($this->instructorUser->id, 'HTE submitted Form 23b – Evaluation Instrument of PSU Partner Agencies (Self Ratee)'),
-            // Somebody else's notice with the same wording must be left alone.
-            $row($this->coordinatorUser->id, 'HTE submitted Form 13 – Internship Evaluation Form'),
-        ]);
-
-        (require database_path('migrations/2026_10_13_000001_reroute_legacy_hte_evaluation_notifications.php'))->up();
-
-        $mine = \DB::table('notifications')->where('user_id', $this->instructorUser->id)->get();
-        $this->assertCount(1, $mine, 'Forms 21 and 23b are no longer the instructor\'s');
-        $this->assertStringContainsString('Form 13', $mine[0]->title);
-        $this->assertSame('/instructor/evaluations', $mine[0]->url);
-        $this->assertNull($mine[0]->resolve_key);
-
-        $other = \DB::table('notifications')->where('user_id', $this->coordinatorUser->id)->first();
-        $this->assertNull($other->url);
-        $this->assertSame('document:9', $other->resolve_key);
     }
 
     // ------------------------------------------------ printable layouts (match the official 2024 forms)
@@ -425,7 +382,7 @@ class EvaluationRoutingTest extends TestCase
 
     public function test_form_23b_printout_uses_the_official_19b_layout(): void
     {
-        $document = $this->hteSubmits('PARTNER_AGENCY_EVAL_SELF');
+        $document = $this->hteRatesItself();
 
         $html = $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]))->assertOk()->getContent();
 
@@ -468,6 +425,6 @@ class EvaluationRoutingTest extends TestCase
         $requirement = $this->req('TRAINING_SUPERVISOR_FEEDBACK');
 
         $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))->assertForbidden();
-        $this->assertSame(1, Notification::where('user_id', $this->studentUser->id)->count());
+        $this->assertSame(1, Notification::where('user_id', $this->instructorUser->id)->count());
     }
 }

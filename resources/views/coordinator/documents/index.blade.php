@@ -45,7 +45,7 @@
             <thead>
                 <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
                     <th>Host training establishment</th>
-                    <th>Student</th>
+                    <th>Interns</th>
                     <th>Submitted by</th>
                     <th>Date submitted</th>
                     <th>Status</th>
@@ -57,8 +57,9 @@
                     <tr>
                         <td class="fw-semibold">{{ $row->hte?->name ?? '—' }}</td>
                         <td>
-                            {{ $row->student->user->name }}
-                            <div class="text-secondary" style="font-size: 0.78rem;">{{ $row->student->user->id_number }} &middot; {{ $row->student->program->code ?? '' }}</div>
+                            @foreach ($row->students as $intern)
+                                <div>{{ $intern->user->name }} <span class="text-secondary" style="font-size: 0.78rem;">{{ $intern->user->id_number }} &middot; {{ $intern->program->code ?? '' }}</span></div>
+                            @endforeach
                         </td>
                         <td>{{ $row->document?->uploader?->name ?? '—' }}</td>
                         <td>{{ $row->document ? ($row->document->submitted_at ?? $row->document->created_at)->format('M d, Y') : '—' }}</td>
