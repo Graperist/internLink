@@ -133,7 +133,7 @@ class FormController extends Controller
 
     private function validated(Request $request, DocumentRequirement $requirement, $representative): array
     {
-        return DocumentFormRules::coerceCheckboxes($request->validate(DocumentFormRules::rules($requirement, $representative->hte?->campus_id), DocumentFormRules::messages($requirement), DocumentFormRules::attributes($requirement)));
+        return DocumentFormRules::coerceCheckboxes($request->validate(DocumentFormRules::rules($requirement, $representative->hte?->campus_id)));
     }
 
     private function save(?Document $existing, array $keys, array $validated, $representative): Document

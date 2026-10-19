@@ -48,7 +48,7 @@ class FormController extends Controller
     {
         [$instructor, $requirement, $deployment] = $this->context($hte);
 
-        $validated = DocumentFormRules::coerceCheckboxes($request->validate(DocumentFormRules::rules($requirement, $instructor->campus_id), DocumentFormRules::messages($requirement), DocumentFormRules::attributes($requirement)));
+        $validated = DocumentFormRules::coerceCheckboxes($request->validate(DocumentFormRules::rules($requirement, $instructor->campus_id)));
 
         abort_if(EvaluationRouting::isSubmitted(AgencyEvaluations::find($requirement, $hte->id, $instructor->user_id)), 403,
             'You already evaluated this agency.');

@@ -46,7 +46,7 @@ class DocumentFormRules
                 $ruleSet[] = match ($field->validation_rule) {
                     'age' => 'integer|min:1|max:120',
                     'numeric' => 'numeric',
-                    'phone_ph' => 'string', // checked in FieldCorrectness (mobile or landline)
+                    'phone_ph' => 'regex:/^(?:\\+63|0)9\\d{9}$/',
                     'email' => 'email',
                     default => 'string',
                 };
@@ -64,23 +64,7 @@ class DocumentFormRules
             $rules[$field->field_key] = $ruleSet;
         }
 
-        // Is what was entered correct (names, phone numbers, dates in order...)?
-        foreach (FieldCorrectness::rules($requirement) as $key => $extra) {
-            $rules[$key] = array_merge($rules[$key] ?? ['nullable'], $extra);
-        }
-
         return $rules;
-    }
-
-    /** Messages and field labels to validate rules() with. */
-    public static function messages(DocumentRequirement $requirement): array
-    {
-        return FieldCorrectness::fieldMessages($requirement) + FieldCorrectness::messages();
-    }
-
-    public static function attributes(DocumentRequirement $requirement): array
-    {
-        return FieldCorrectness::attributes($requirement);
     }
 
     public static function enumRule(?string $rule): array

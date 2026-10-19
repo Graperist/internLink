@@ -80,20 +80,10 @@ class EveryFormSubmitsTest extends TestCase
                 $type === 'select' => $this->firstOption($xpath, $el),
                 $type === 'textarea' => trim($el->textContent) !== '' ? trim($el->textContent) : 'Sample text',
                 $type === 'date' => $el->getAttribute('value') ?: '2026-10-17',
-                $type === 'number' => $el->getAttribute('value') ?: match ($name) {
-                    'age' => '21',
-                    'hte_number_of_hours', 'required_hours' => '486',
-                    default => '1',
-                },
-                $type === 'tel' => $el->getAttribute('value') ?: '0917 123 4567',
+                $type === 'number' => $el->getAttribute('value') ?: '1',
                 $type === 'email' => $el->getAttribute('value') ?: 'lucy@example.com',
                 $type === 'hidden' => $el->getAttribute('value'),
-                // Filled the way a student would: real numbers and years where the field asks for them.
-                $el->getAttribute('value') !== '' => $el->getAttribute('value'),
-                str_contains($name, 'contact') => '0917 123 4567',
-                str_ends_with($name, '_date') => '2016-2022',
-                in_array($name, ['height', 'weight'], true) => '160',
-                default => 'Sample',
+                default => $el->getAttribute('value') !== '' ? $el->getAttribute('value') : 'Sample',
             };
             if ($type === 'radio' && isset($data[$name])) {
                 continue;   // keep the first choice
@@ -139,60 +129,5 @@ class EveryFormSubmitsTest extends TestCase
 
         $response->assertSessionHasNoErrors();
         $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->value('status'), "{$code} was saved");
-    }
-
-    /** Submitting checks that what was entered is correct; a wrong entry is not saved. */
-    public function test_wrong_entries_are_caught_on_submit(): void
-    {
-        $form1 = DocumentRequirement::where('code', 'APPLICATION_FOR_OJT')->firstOrFail();
-        $html = $this->actingAs($this->user)->get(route('student.documents.fill', $form1))->assertOk()->getContent();
-        $this->assertStringContainsString('type="tel"', $html);
-        $this->assertStringContainsString('fillForm', $html);
-
-        $data = array_merge($this->payloadFrom($html), [
-            'surname' => 'Ro123', 'age' => '7', 'contact_number' => '0917-ABC', 'hte_contact_number' => '12345',
-            'civil_status' => 'Complicated', 'hte_number_of_hours' => '0',
-        ]);
-        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form1), $data)
-            ->assertSessionHasErrors([
-                'surname' => 'The Surname may only contain letters, spaces, periods, commas, hyphens and apostrophes.',
-                'age' => 'The Age must be between 15 and 60.',
-                'contact_number', 'hte_contact_number', 'civil_status', 'hte_number_of_hours',
-            ]);
-        $this->assertNull(Document::where('document_requirement_id', $form1->id)->first(), 'nothing was saved');
-
-        // Corrected (a landline is fine too): accepted.
-        $data = array_merge($data, [
-            'surname' => 'Dela Cruz-Ro', 'age' => '21', 'contact_number' => '+63 917 123 4567', 'hte_contact_number' => '(075) 551 2345',
-            'civil_status' => 'Single', 'hte_number_of_hours' => '486',
-        ]);
-        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form1), $data)->assertSessionHasNoErrors();
-        $this->assertSame('submitted', Document::where('document_requirement_id', $form1->id)->value('status'));
-    }
-
-    public function test_the_resume_checks_years_email_and_measurements(): void
-    {
-        $resume = DocumentRequirement::where('code', 'OJT_RESUME')->firstOrFail();
-        $html = $this->actingAs($this->user)->get(route('student.documents.fill', $resume))->assertOk()->getContent();
-        $data = array_merge($this->payloadFrom($html), [
-            'education_college_date' => '2026-2022', 'education_elementary_date' => 'grade school', 'training_1_date' => 'June 2099',
-            'email' => 'lucy@gmail', 'height' => 'tall', 'gender' => 'Sample', 'reference_1_contact' => '123',
-        ]);
-        $this->actingAs($this->user)->post(route('student.documents.fill.store', $resume), $data)
-            ->assertSessionHasErrors([
-                'education_college_date' => 'The first year (2026) should not be after the second (2022).',
-                'education_elementary_date', 'training_1_date', 'email', 'height', 'gender', 'reference_1_contact',
-            ]);
-        $this->assertNull(Document::where('document_requirement_id', $resume->id)->first());
-    }
-
-    public function test_phone_numbers(): void
-    {
-        foreach (['09171234567', '0917 123 4567', '+639171234567', '(075) 551 2345', '551-2345'] as $ok) {
-            $this->assertTrue(\App\Support\FieldCorrectness::validPhone($ok), $ok);
-        }
-        foreach (['12345', '0917123', '0917-ABC-1234', '091712345678901', 'n/a'] as $bad) {
-            $this->assertFalse(\App\Support\FieldCorrectness::validPhone($bad), $bad);
-        }
     }
 }

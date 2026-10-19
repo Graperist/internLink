@@ -419,11 +419,8 @@ class DocumentController extends Controller
                         $query->where('campus_id', $student->campus_id)
                     ),
                 ],
-                'signed_date' => ['required', 'date', 'after_or_equal:'.now()->subYear()->toDateString(), 'before_or_equal:'.now()->addYear()->toDateString()],
-            ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES + [
-                'signed_date.after_or_equal' => 'The signing date is too far in the past - check the year.',
-                'signed_date.before_or_equal' => 'The signing date is too far in the future - check the year.',
-            ]);
+                'signed_date' => ['required', 'date'],
+            ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
 
             $requiredHours = (int) ($student->program?->required_hours
                 ?? $internship->required_hours
@@ -555,19 +552,7 @@ class DocumentController extends Controller
             $extraMessages = \App\Support\Form1Academics::messages();
         }
 
-        // Is what was entered correct? (names, phone numbers, ages, dates in
-        // order, inclusive years...) A wrong entry is not saved.
-        foreach (\App\Support\FieldCorrectness::rules($requirement) as $key => $extra) {
-            if (isset($rules[$key])) {
-                $rules[$key] = array_merge($rules[$key], $extra);
-            }
-        }
-
-        $validated = $request->validate(
-            $rules,
-            $extraMessages + \App\Support\FieldCorrectness::fieldMessages($requirement) + self::ATTACHMENT_MESSAGES + \App\Support\FieldCorrectness::messages(),
-            \App\Support\FieldCorrectness::attributes($requirement)
-        );
+        $validated = $request->validate($rules, $extraMessages + self::ATTACHMENT_MESSAGES);
         foreach (array_keys($attachmentKinds) as $kind) {
             unset($validated['attachment_'.$kind]);
         }
