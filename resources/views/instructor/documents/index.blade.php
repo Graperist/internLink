@@ -344,6 +344,10 @@
                                             <span class="text-secondary small">Returned for correction.</span>
                                         @endif
                                     </div>
+                                    @include('partials.week-downloads', [
+                                        'weeks' => \App\Support\TrainingWeeks::list($packet->entries->pluck('entry_date'), \App\Support\TrainingWeeks::anchorFor($packet)),
+                                        'route' => 'instructor.documents.printable', 'document' => $packet,
+                                    ])
                                 </div>
                             @empty
                                 <div class="text-secondary small">No Form 19 packets submitted yet.</div>
@@ -381,6 +385,10 @@
                                                     @endforelse
                                                 </tbody>
                                             </table>
+                                            @include('partials.week-downloads', [
+                                                'weeks' => \App\Support\TrainingWeeks::list($tfApproved->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
+                                                'route' => 'instructor.documents.printable', 'document' => $document,
+                                            ])
                                         </div>
                                         @elseif ($requirement->is_repeating)
                                             <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 220px; overflow-y: auto;">

@@ -82,6 +82,12 @@
                         @endif
                     </div>
                 </div>
+                @if (in_array($packet->status, ['printed', 'completed', 'approved'], true))
+                    @include('partials.week-downloads', [
+                        'weeks' => \App\Support\TrainingWeeks::list($packetEntries->pluck('entry_date'), \App\Support\TrainingWeeks::anchorFor($packet)),
+                        'route' => 'student.documents.printable', 'document' => $packet,
+                    ])
+                @endif
             </div>
         @empty
             <p class="small text-secondary mb-0">Your first packet will be created when you add your first training day.</p>

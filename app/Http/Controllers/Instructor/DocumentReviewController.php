@@ -621,6 +621,7 @@ class DocumentReviewController extends Controller
         if (request()->boolean('download')) {
             $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
                 .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+                .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
                 .' - '.$document->internship->student->user->name));
             $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
             $html = str_ireplace('</body>', $script.'</body>', $html);

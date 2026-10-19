@@ -96,6 +96,11 @@
     $entries = $deployment
         ? \App\Models\Dtr::where('deployment_id', $deployment->id)->where('status', 'approved')->orderBy('log_date')->get()
         : collect();
+    // Download by week (?week=...): only that week's days.
+    if ($onlyWeek = \App\Support\TrainingWeeks::requested($internship)) {
+        $weekEnd = $onlyWeek->copy()->addDays(6)->endOfDay();
+        $entries = $entries->filter(fn ($day) => $day->log_date->between($onlyWeek, $weekEnd))->values();
+    }
     $total = $entries->sum(fn ($day) => (float) $day->hours_logged);
     $blankRows = max(0, 28 - $entries->count()); // the paper form has 28 rows
     $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 2, '.', ''), '0'), '.');

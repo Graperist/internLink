@@ -289,6 +289,14 @@
                         @endif
                     </table>
                 </div>
+                @if ($doc && in_array($doc->status, ['printed', 'completed', 'approved'], true))
+                    @include('partials.week-downloads', [
+                        'weeks' => \App\Support\TrainingWeeks::list($tfApproved->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
+                        'route' => 'student.documents.printable', 'document' => $doc,
+                    ])
+                @else
+                    <div class="small text-secondary mt-2"><i class="ti ti-calendar-week"></i> Download by week opens once your instructor approves Form 17 for printing.</div>
+                @endif
             </div>
         @endif
 

@@ -201,6 +201,11 @@
     // Weeks start on the day the student first logged their DTR (7 days each).
     $weeks = \App\Support\TrainingWeeks::group($allEntries, \App\Support\TrainingWeeks::anchorFor($document));
 
+    // Download by week (?week=...): only that week's page.
+    if ($onlyWeek = \App\Support\TrainingWeeks::requested($document->internship)) {
+        $weeks = $weeks->filter(fn ($entries, $start) => $start === $onlyWeek->toDateString());
+    }
+
     /*
      * Keep the header fields if they exist from older Form 19 records.
      * The actual weekly date range comes from the entries on each page.

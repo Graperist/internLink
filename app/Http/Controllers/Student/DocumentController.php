@@ -1306,6 +1306,7 @@ class DocumentController extends Controller
 
         $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
             .($document->packet_number ? ' - Packet '.$document->packet_number : '')
+            .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
             .' - '.$student->user->name));
 
         $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();

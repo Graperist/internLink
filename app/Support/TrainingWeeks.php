@@ -73,4 +73,58 @@ class TrainingWeeks
             ->groupBy(fn ($entry) => self::weekStart(Carbon::parse($entry->entry_date), $anchor)->toDateString())
             ->sortKeys();
     }
+
+    /** "Week 3" style number of the 7-day week starting on $weekStart. */
+    public static function number(Carbon $weekStart, Carbon $anchor): int
+    {
+        return (int) floor($anchor->copy()->startOfDay()->diffInDays($weekStart->copy()->startOfDay(), false) / 7) + 1;
+    }
+
+    /**
+     * The week asked for with ?week=Y-m-d (a download of one week only), as
+     * the start of that 7-day week - or null for the whole form.
+     */
+    public static function requested(Internship $internship): ?Carbon
+    {
+        $week = request()->query('week');
+        if (! is_string($week) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $week)) {
+            return null;
+        }
+        $anchor = self::anchorForInternship($internship);
+
+        return $anchor ? self::weekStart(Carbon::parse($week), $anchor) : null;
+    }
+
+    /** " - Week 3 (Oct 05 - Oct 11, 2026)" for a one-week download's file name, else "". */
+    public static function downloadSuffix(Internship $internship): string
+    {
+        $start = self::requested($internship);
+        if (! $start) {
+            return '';
+        }
+        $anchor = self::anchorForInternship($internship);
+
+        return ' - Week '.self::number($start, $anchor).' ('.$start->format('M d').' to '.$start->copy()->addDays(6)->format('M d, Y').')';
+    }
+
+    /**
+     * The weeks that have days in them, for "download by week" buttons:
+     * [['start' => Carbon, 'end' => Carbon, 'number' => int, 'count' => int], ...]
+     */
+    public static function list(iterable $dates, ?Carbon $anchor): array
+    {
+        if (! $anchor) {
+            return [];
+        }
+        $weeks = [];
+        foreach ($dates as $date) {
+            $start = self::weekStart(Carbon::parse($date), $anchor);
+            $key = $start->toDateString();
+            $weeks[$key] ??= ['start' => $start, 'end' => $start->copy()->addDays(6), 'number' => self::number($start, $anchor), 'count' => 0];
+            $weeks[$key]['count']++;
+        }
+        ksort($weeks);
+
+        return array_values($weeks);
+    }
 }
