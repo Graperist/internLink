@@ -12,7 +12,7 @@ class Dtr extends Model
         // "awaiting verification" / "flagged" / "re-verification" notices.
         static::updated(function (Dtr $dtr) {
             if ($dtr->wasChanged('status')) {
-                \App\Models\Notification::resolve('dtr:'.$dtr->id);
+                \App\Models\Notification::resolveDtr($dtr->id);
             }
         });
     }

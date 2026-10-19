@@ -109,7 +109,7 @@ class DtrVerificationTest extends TestCase
         $this->assertEquals(7, (float) $dtr->hours_logged);   // undertime: 4 + 3 hours
         $this->assertSame('8:00 AM - 12:00 PM', $dtr->period('am'));
         $this->assertSame('1:00 PM - 4:00 PM', $dtr->period('pm'));
-        $this->assertTrue(Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'dtr:'.$dtr->id)->exists());
+        $this->assertTrue(Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.':%')->exists());
 
         $this->actingAs($this->studentUser)->get('/student/dtr')->assertOk()
             ->assertSee('Form 17 – Internship Time Frame')->assertSee('Waiting for supervisor')->assertDontSee('GPS');
@@ -139,11 +139,20 @@ class DtrVerificationTest extends TestCase
         $this->assertSame('Left early', $dtr->notes);
         $this->assertSame('pending', $dtr->status);
 
+        // The supervisor got a notice for the morning and another for the afternoon.
+        $notices = Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.':%')->orderBy('id')->get();
+        $this->assertCount(2, $notices);
+        $this->assertStringStartsWith('Morning time in/out', $notices[0]->title);
+        $this->assertStringContainsString('7:00 AM - 12:00 PM', $notices[0]->message);
+        $this->assertStringStartsWith('Afternoon time in/out', $notices[1]->title);
+        $this->assertStringContainsString('1:00 PM - 4:00 PM', $notices[1]->message);
+
         // Correcting only the morning keeps the afternoon and the note.
         $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00'])->assertSessionHasNoErrors();
         $dtr->refresh();
         $this->assertEquals(7, (float) $dtr->hours_logged);
         $this->assertSame('Left early', $dtr->notes);
+        $this->assertSame(3, Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.':%')->count());
 
         // The afternoon must start after the saved morning ends.
         $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '11:00', 'pm_out' => '16:00'])->assertSessionHasErrors('pm_in');
@@ -151,8 +160,9 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
             ->assertSee('Save morning and resend')->assertSee('Save afternoon and resend')->assertSee('value="08:00"', false);
 
-        // Once approved, neither half can be changed.
+        // Once approved, neither half can be changed, and the supervisor's notices clear.
         $dtr->update(['status' => 'approved']);
+        $this->assertSame(0, Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.'%')->count());
         $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '17:00'])->assertSessionHasErrors('pm_in');
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()->assertSee('can no longer be changed')->assertDontSee('Save afternoon');
     }

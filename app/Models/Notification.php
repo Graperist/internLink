@@ -64,6 +64,17 @@ class Notification extends Model
     }
 
     /**
+     * Clear every notice about one DTR day: the main one ('dtr:ID') and the
+     * supervisor's one-per-save time in/out notices ('dtr:ID:...').
+     */
+    public static function resolveDtr(int $dtrId): void
+    {
+        static::withoutGlobalScopes()
+            ->where(fn ($q) => $q->where('resolve_key', 'dtr:'.$dtrId)->orWhere('resolve_key', 'like', 'dtr:'.$dtrId.':%'))
+            ->delete();
+    }
+
+    /**
      * Notices with no open issue behind them (an approval, a "ready for
      * upload" FYI, older notifications) are cleared when the user opens them.
      * Notices tied to an open issue stay until it is actually resolved.

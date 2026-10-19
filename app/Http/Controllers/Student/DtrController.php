@@ -159,7 +159,7 @@ class DtrController extends Controller
             return Dtr::create($values + ['deployment_id' => $deployment->id]);
         });
 
-        $this->notifySupervisor($dtr, $student, $wasDeclined);
+        $this->notifySupervisor($dtr, $student, $wasDeclined, $part);
 
         $what = ['am' => 'Morning saved', 'pm' => 'Afternoon saved'][$part] ?? ($wasDeclined ? 'Corrected' : 'Saved');
 
@@ -175,7 +175,7 @@ class DtrController extends Controller
         abort_if($dtr->status === 'approved', 422, 'An approved day can no longer be removed.');
 
         $date = $dtr->log_date->format('M d, Y');
-        Notification::resolve('dtr:'.$dtr->id);
+        Notification::resolveDtr($dtr->id);
         $dtr->delete();
 
         return redirect()->route('student.dtr')->with('status', "{$date} removed.");
@@ -223,17 +223,32 @@ class DtrController extends Controller
         return redirect()->route('student.dtr')->with('status', 'Form 17 sent to your instructor. Once it is approved for printing, download it from My Documents to have it signed.');
     }
 
-    private function notifySupervisor(Dtr $dtr, $student, bool $corrected): void
+    /**
+     * The HTE supervisor is notified every time the student saves a time in /
+     * time out (the morning, the afternoon, or a correction) - one notice per
+     * save, so earlier ones are kept. They all clear once the day is approved
+     * or declined.
+     */
+    private function notifySupervisor(Dtr $dtr, $student, bool $corrected, ?string $part = null): void
     {
-        $hteId = $dtr->deployment?->hte_id;
-        Notification::resolve('dtr:'.$dtr->id);   // replace an earlier notice for the same day
-        HteRepresentative::where('hte_id', $hteId)->pluck('user_id')->each(fn ($userId) => Notification::create([
+        $date = $dtr->log_date->format('M d, Y');
+        [$what, $times] = match ($part) {
+            'am' => ['Morning time in/out', $dtr->period('am')],
+            'pm' => ['Afternoon time in/out', $dtr->period('pm')],
+            default => ['Time in/out', trim($dtr->period('am').' / '.$dtr->period('pm'), ' /')],
+        };
+        $stamp = now()->format('YmdHisv').\Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(4));
+        $title = ($corrected ? 'Corrected ' : '').($corrected ? lcfirst($what) : $what).": {$student->user->name} · {$date}";
+
+        HteRepresentative::where('hte_id', $dtr->deployment?->hte_id)->pluck('user_id')->each(fn ($userId) => Notification::create([
             'user_id' => $userId,
             'type' => 'dtr',
-            'title' => ($corrected ? 'Corrected time: ' : 'Time to approve: ')."{$student->user->name} · ".$dtr->log_date->format('M d, Y'),
-            'message' => TimeFrame::format($dtr->hours_logged).' hours ('.trim($dtr->period('am').' / '.$dtr->period('pm'), ' /').'). Approve or decline it in Time Frame Approval.',
+            'title' => $title,
+            'message' => "{$times}. Total for the day: ".TimeFrame::format($dtr->hours_logged).' hours. Approve or decline it in Time Frame Approval.',
             'url' => route('hte.dtr', [], false),
-            'resolve_key' => 'dtr:'.$dtr->id,
+            // A key of its own per save (so this notice doesn't replace the
+            // earlier ones); resolveDtr() clears them all together.
+            'resolve_key' => 'dtr:'.$dtr->id.':'.$stamp,
         ]));
     }
 }
