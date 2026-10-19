@@ -37,6 +37,12 @@
                             <div class="text-end flex-shrink-0">
                                 <div class="small fw-semibold">{{ $fmt($row['approved']) }} / {{ $fmt($row['required']) }} h</div>
                                 <div class="text-secondary" style="font-size:.72rem;">{{ $row['count'] }} approved {{ \Illuminate\Support\Str::plural('day', $row['count']) }}{{ $row['last'] ? ' · last '.\Carbon\Carbon::parse($row['last'])->format('M d') : '' }}</div>
+                                @if ($row['waiting'])
+                                    <div class="text-warning fw-semibold" style="font-size:.72rem;">{{ $row['waiting'] }} waiting for HTE approval</div>
+                                @endif
+                                @if ($row['declined'])
+                                    <div class="text-danger" style="font-size:.72rem;">{{ $row['declined'] }} returned to the student</div>
+                                @endif
                             </div>
                         </div>
                         <div class="progress mt-2" style="height:5px;"><div class="progress-bar {{ $percent >= 100 ? 'bg-success' : '' }}" style="width: {{ $percent }}%"></div></div>
@@ -47,6 +53,14 @@
                     </div>
                 @endforelse
             </div>
+            @if ($notDeployed->isNotEmpty())
+                <div class="px-3 py-2 border-top small text-secondary">
+                    <div class="fw-semibold mb-1">Not deployed yet ({{ $notDeployed->count() }})</div>
+                    <div style="font-size:.75rem;">A Time Frame starts once the intern is deployed:
+                        {{ $notDeployed->take(30)->map(fn ($s) => $s->user?->name.($s->currentInternship?->deployment ? ' ('.$s->currentInternship->deployment->status.')' : ''))->join(', ') }}{{ $notDeployed->count() > 30 ? ' and '.($notDeployed->count() - 30).' more' : '' }}
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 
@@ -89,7 +103,18 @@
                                 <td class="text-end fw-semibold">{{ $fmt($day->hours_logged) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="4" class="text-center text-secondary py-4">No approved days yet.</td></tr>
+                            <tr><td colspan="4" class="text-center text-secondary py-4">
+                                No approved days yet.
+                                @if ($selected['waiting'])
+                                    <div class="mt-1">{{ $selected['waiting'] }} {{ \Illuminate\Support\Str::plural('day', $selected['waiting']) }} entered by the student {{ $selected['waiting'] === 1 ? 'is' : 'are' }} waiting for the HTE supervisor to approve {{ $selected['waiting'] === 1 ? 'it' : 'them' }}.</div>
+                                @endif
+                                @if ($selected['declined'])
+                                    <div class="mt-1">{{ $selected['declined'] }} {{ \Illuminate\Support\Str::plural('day', $selected['declined']) }} {{ $selected['declined'] === 1 ? 'was' : 'were' }} returned to the student for correction.</div>
+                                @endif
+                                @if (! $selected['waiting'] && ! $selected['declined'])
+                                    <div class="mt-1">The student hasn't entered any time in/out yet.</div>
+                                @endif
+                            </td></tr>
                         @endforelse
                     </tbody>
                     @if ($days->isNotEmpty())

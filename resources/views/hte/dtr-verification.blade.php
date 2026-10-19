@@ -63,8 +63,11 @@
                             <td>{{ $dtr->period('pm') ?: '—' }}</td>
                             <td class="fw-semibold">{{ $fmt($dtr->hours_logged) }}</td>
                             <td>
+                                @if ($dtr->am_notes)
+                                    <div class="small text-secondary mb-1"><i class="ti ti-message"></i> <span class="fw-semibold">Morning:</span> {{ $dtr->am_notes }}</div>
+                                @endif
                                 @if ($dtr->notes)
-                                    <div class="small text-secondary mb-1"><i class="ti ti-message"></i> {{ $dtr->notes }}</div>
+                                    <div class="small text-secondary mb-1"><i class="ti ti-message"></i> <span class="fw-semibold">{{ $dtr->am_notes || $dtr->am_in ? 'Afternoon:' : '' }}</span> {{ $dtr->notes }}</div>
                                 @endif
                                 @if ($dtr->status === 'approved')
                                     <span class="badge text-bg-success">Approved</span>

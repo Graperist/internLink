@@ -75,7 +75,8 @@ class DtrController extends Controller
             'part' => ['nullable', 'in:am,pm'],   // the Morning or the Afternoon card
             'log_date' => ['required', 'date', 'before_or_equal:today'],
             'am_in' => $time, 'am_out' => $time, 'pm_in' => $time, 'pm_out' => $time,
-            'notes' => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:500'],      // the afternoon's note
+            'am_notes' => ['nullable', 'string', 'max:500'],   // the morning's note
         ], [
             'log_date.before_or_equal' => 'You can only enter a date that has already happened.',
             '*.date_format' => 'Enter the time like 08:00.',
@@ -105,8 +106,12 @@ class DtrController extends Controller
                 $data[$other.$suffix] = $sameDay?->{$other.$suffix} ? Carbon::parse($sameDay->{$other.$suffix})->format('H:i') : null;
             }
             $data['dtr_id'] = $sameDay?->id;
+            // Each card sends only its own note; the other one stays as saved.
             if (! $request->has('notes')) {
                 $data['notes'] = $sameDay?->notes;
+            }
+            if (! $request->has('am_notes')) {
+                $data['am_notes'] = $sameDay?->am_notes;
             }
         }
 
@@ -137,6 +142,7 @@ class DtrController extends Controller
             'time_out' => $data['pm_out'] ?? $data['am_out'] ?? null,
             'hours_logged' => $result['hours'],
             'notes' => $data['notes'] ?? null,
+            'am_notes' => $data['am_notes'] ?? null,
             'status' => 'pending',
             'verified_by' => null,
         ];

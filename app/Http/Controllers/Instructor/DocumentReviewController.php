@@ -670,7 +670,10 @@ class DocumentReviewController extends Controller
             'PARTNER_AGENCY_EVAL_SELF' => 'instructor.documents.printable-partner-agency-eval-self',
             'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
         ];
-                return $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
+                $view = $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
+
+                // A retired form whose own template is gone uses the generic one.
+                return view()->exists($view) ? $view : 'instructor.documents.printable';
     }
 
     /**

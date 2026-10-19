@@ -167,6 +167,28 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()->assertSee('can no longer be changed')->assertDontSee('Save afternoon');
     }
 
+    public function test_the_morning_has_its_own_note(): void
+    {
+        $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
+            ->assertSee('name="am_notes"', false)->assertSee('name="notes"', false);
+
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00', 'am_notes' => 'Came in late because of the rain'])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early'])
+            ->assertSessionHasNoErrors();
+        $dtr = Dtr::sole();
+        $this->assertSame('Came in late because of the rain', $dtr->am_notes); // the afternoon save keeps it
+        $this->assertSame('Left early', $dtr->notes);
+
+        // Saving the morning again keeps the afternoon note.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:30', 'am_out' => '12:00', 'am_notes' => 'Rain'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('Left early', $dtr->fresh()->notes);
+
+        $this->actingAs($this->repUser)->get('/hte/dtr')->assertOk()
+            ->assertSeeInOrder(['Morning:', 'Rain', 'Afternoon:', 'Left early']);
+    }
+
     public function test_wrong_times_are_rejected(): void
     {
         $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['am_out' => '07:00']))->assertSessionHasErrors('am_out');

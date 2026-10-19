@@ -50,6 +50,7 @@
             body { padding: 0; }
         }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 @php

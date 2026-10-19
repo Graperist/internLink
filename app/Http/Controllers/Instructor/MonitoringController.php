@@ -27,10 +27,15 @@ class MonitoringController extends Controller
 
         $deploymentIds = $deployedStudents->map(fn ($s) => $s->currentInternship?->deployment?->id)->filter();
         $allDays = Dtr::whereIn('deployment_id', $deploymentIds)->where('status', 'approved')->get()->groupBy('deployment_id');
+        // Only counts of the days not approved yet - so an intern with an empty
+        // Time Frame shows why (still with the supervisor, or returned).
+        $otherDays = Dtr::whereIn('deployment_id', $deploymentIds)->where('status', '!=', 'approved')
+            ->selectRaw('deployment_id, status, count(*) as n')->groupBy('deployment_id', 'status')->get()->groupBy('deployment_id');
 
-        $rows = $deployedStudents->map(function ($student) use ($allDays) {
+        $rows = $deployedStudents->map(function ($student) use ($allDays, $otherDays) {
             $internship = $student->currentInternship;
             $days = $allDays->get($internship?->deployment?->id, collect());
+            $other = $otherDays->get($internship?->deployment?->id, collect());
 
             return [
                 'student' => $student,
@@ -39,6 +44,8 @@ class MonitoringController extends Controller
                 'approved' => (float) $days->sum('hours_logged'),
                 'count' => $days->count(),
                 'last' => $days->max('log_date'),
+                'waiting' => (int) $other->where('status', '!=', 'flagged')->sum('n'),
+                'declined' => (int) $other->where('status', 'flagged')->sum('n'),
             ];
         })->sortBy(fn ($row) => $row['student']->user->name)->values();
 
@@ -47,7 +54,12 @@ class MonitoringController extends Controller
             ? Dtr::where('deployment_id', $selected['deployment']->id)->where('status', 'approved')->orderByDesc('log_date')->get()
             : collect();
 
-        return view('instructor.monitoring.index', compact('rows', 'selected', 'days'));
+        // Advisees who don't have a Time Frame yet because they aren't deployed.
+        $notDeployed = $instructor->visibleStudents()->with(['user', 'currentInternship.deployment'])
+            ->whereNotIn('id', $deployedStudents->pluck('id'))->get()
+            ->sortBy(fn ($s) => $s->user?->name)->values();
+
+        return view('instructor.monitoring.index', compact('rows', 'selected', 'days', 'notDeployed'));
     }
 
     /** Form 17 of one intern, from the approved days: view or download (?download=1, ?week=). */

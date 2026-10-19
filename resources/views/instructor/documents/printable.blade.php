@@ -16,6 +16,7 @@
             .no-print { display: none; }
         }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
     <button class="no-print" onclick="window.print()">Print</button>

@@ -113,6 +113,7 @@
             /* Signatory names are printed in capital letters on every form. */
         .registrar-name { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 

@@ -82,6 +82,7 @@
             body { max-width: none; }
         }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 

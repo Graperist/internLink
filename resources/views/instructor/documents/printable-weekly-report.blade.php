@@ -157,6 +157,7 @@
             /* Signatory names are printed in capital letters on every form. */
         .sig-line { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body>
 

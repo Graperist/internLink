@@ -120,12 +120,15 @@
                                         @if ($failedHere) @error($p.'_out')<div class="invalid-feedback">{{ $message }}</div>@enderror @endif
                                     </div>
                                 </div>
-                                @if ($p === 'pm')
-                                    <div class="mt-2">
-                                        <label class="form-label small mb-1" for="notes">Note for your supervisor <span class="text-secondary">(optional)</span></label>
-                                        <input type="text" class="form-control form-control-sm" id="notes" name="notes" maxlength="500" value="{{ old('notes', $form?->notes) }}" placeholder="e.g. Left early for a medical check-up" @disabled($locked)>
-                                    </div>
-                                @endif
+                                @php
+                                    $noteField = $p === 'am' ? 'am_notes' : 'notes';
+                                    $notePlaceholder = $p === 'am' ? 'e.g. Came in late because of the rain' : 'e.g. Left early for a medical check-up';
+                                @endphp
+                                <div class="mt-2">
+                                    <label class="form-label small mb-1" for="{{ $noteField }}">Note for your supervisor <span class="text-secondary">(optional)</span></label>
+                                    <input type="text" class="form-control form-control-sm" id="{{ $noteField }}" name="{{ $noteField }}" maxlength="500"
+                                           value="{{ $failedHere ? old($noteField) : $form?->{$noteField} }}" placeholder="{{ $notePlaceholder }}" @disabled($locked)>
+                                </div>
                                 @unless ($locked)
                                     <button type="submit" class="btn btn-primary w-100 mt-3">
                                         <i class="ti ti-send"></i> {{ $saved ? 'Save '.strtolower($label).' and resend' : 'Save '.strtolower($label) }}

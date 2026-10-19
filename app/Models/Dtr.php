@@ -23,7 +23,7 @@ class Dtr extends Model
         'deployment_id', 'verified_by', 'log_date',
         'time_in', 'time_out', 'original_time_in', 'original_time_out',
         'am_in', 'am_out', 'pm_in', 'pm_out', 'declined_by_user_id',
-        'hours_logged', 'notes', 'status',
+        'hours_logged', 'notes', 'am_notes', 'status',
         'flagged_by', 'flagged_at', 'flag_reason', 'flag_note', 'flag_target',
         'resolved_by', 'resolved_at',
         'clock_in_verified_by', 'clock_in_verified_at',
