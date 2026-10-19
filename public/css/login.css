@@ -526,6 +526,99 @@
     .login-features { grid-template-columns: 1fr; }
 }
 
+/* ---------------- One panel (Change / Set password) ---------------- */
+
+.login-shell-single {
+    grid-template-columns: 1fr;
+    background:
+        radial-gradient(1200px 600px at 110% -10%, rgba(240, 180, 41, 0.16), transparent 60%),
+        radial-gradient(900px 700px at -10% 110%, rgba(59, 111, 214, 0.28), transparent 60%),
+        linear-gradient(160deg, var(--lg-navy-800) 0%, var(--lg-navy-900) 55%, var(--lg-navy-950) 100%);
+}
+
+.login-shell-single .login-panel {
+    background: transparent;
+    padding: 2.5rem 1.25rem;
+}
+
+.login-shell-single .login-panel-inner {
+    max-width: 460px;
+    min-height: 0;
+    padding: 2.5rem 2.5rem 1.75rem;
+    background: var(--lg-paper);
+    border-radius: 24px;
+    box-shadow: 0 30px 80px rgba(5, 16, 32, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    border-top: 4px solid var(--lg-gold);
+}
+
+.login-shell-single .login-intro {
+    padding-top: 2rem;
+}
+
+.login-shell-single .login-intro h1 {
+    font-size: 1.85rem;
+}
+
+.login-shell-single .login-foot {
+    margin-top: 1.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--lg-line);
+    text-align: center;
+}
+
+.login-checklist {
+    list-style: none;
+    margin: -0.25rem 0 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    font-size: 0.8rem;
+    color: var(--lg-ink-3);
+}
+
+.login-checklist li {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: color 0.15s ease;
+}
+
+.login-checklist li::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    background: transparent center / 10px no-repeat;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.login-checklist li.is-ok {
+    color: var(--lg-ok);
+    font-weight: 600;
+}
+
+.login-checklist li.is-ok::before {
+    border-color: var(--lg-ok);
+    background-color: var(--lg-ok);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+
+.login-checklist li.is-bad:not(.is-ok) {
+    color: var(--lg-danger);
+    font-weight: 600;
+}
+
+.login-link-button {
+    border: 0;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+}
+
 @media (max-width: 900px) {
     .login-shell { grid-template-columns: 1fr; }
 
@@ -548,4 +641,13 @@
 @media (prefers-reduced-motion: reduce) {
     .login-detect-chip, .login-detect-kind { animation: none; }
     .login-submit, .login-submit svg { transition: none; }
+}
+
+@media (max-width: 520px) {
+    .login-shell-single .login-panel { padding: 1.25rem 0.75rem; align-items: flex-start; }
+    .login-shell-single .login-panel-inner { padding: 2rem 1.35rem 1.5rem; border-radius: 20px; }
+}
+
+@media (max-width: 900px) {
+    .login-shell-single .login-foot { display: block; }
 }
