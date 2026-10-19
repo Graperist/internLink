@@ -27,7 +27,7 @@
 
             <div class="login-intro">
                 <h1 id="login-heading">Welcome back</h1>
-                <p>Sign in with your Student or Employee ID.</p>
+                <p>Sign in with your Student or Employee ID. We'll take you to your campus and your portal automatically.</p>
             </div>
 
             @if (session('status'))
@@ -61,7 +61,7 @@
                         >
                     </div>
                     <div id="id-detect" class="login-detect" aria-live="polite">
-
+                        <span class="login-detect-idle">Your campus is detected from your ID.</span>
                     </div>
                 </div>
 
@@ -93,7 +93,9 @@
                 </button>
             </form>
 
-            <p class="login-help">No account? Ask your OJT Coordinator.</p>
+            <p class="login-help">
+                No account yet? Accounts are created by your campus OJT Coordinator.
+            </p>
 
             <footer class="login-foot">
                 &copy; {{ now()->year }} Pangasinan State University &middot; PSU Intern-Link
@@ -191,7 +193,7 @@
                 '</span>' +
                 '<span class="login-detect-kind">' + kind + '</span>';
         } else {
-            out.innerHTML = idleHtml;
+            out.innerHTML = '<span class="login-detect-idle">Keep typing &mdash; your campus will show here.</span>';
         }
     }
 
