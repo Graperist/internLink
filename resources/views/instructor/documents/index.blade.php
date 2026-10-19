@@ -690,12 +690,11 @@
                                                         type="button"
                                                         class="btn btn-sm btn-primary"
                                                         data-bs-toggle="modal"
-                                                        data-bs-target="#reviewModal"
+                                                        data-bs-target="#approveModal"
                                                         data-document-id="{{ $document->id }}"
-                                                        data-student-name="{{ $student->user->name }}"
                                                         data-document-name="{{ $requirement->name }}"
                                                     >
-                                                        Approve / Return
+                                                        Approve
                                                     </button>
                                                     @endif
                                                 @endif
@@ -807,12 +806,11 @@
                                                     type="button"
                                                     class="btn btn-sm btn-primary"
                                                     data-bs-toggle="modal"
-                                                    data-bs-target="#reviewModal"
+                                                    data-bs-target="#approveModal"
                                                     data-document-id="{{ $document->id }}"
-                                                    data-student-name="{{ $student->user->name }}"
                                                     data-document-name="{{ $requirement->name }}"
                                                 >
-                                                    Approve / Return
+                                                    Approve
                                                 </button>
                                                 @endif
                                             @elseif ($status === 'returned')
@@ -867,31 +865,28 @@
     .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
 </style>
 
-{{-- Shared review modal - populated per-card via the data-* attributes above --}}
-<div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true">
+{{-- Approve modal (forms reviewed directly, e.g. an uploaded document) - the same
+     confirm step as Approve for printing / Approve signed copy. Returning is done
+     with remarks in the Review panel. --}}
+<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" id="reviewForm" action="">
+            <form method="POST" id="approveForm" action="">
                 @csrf
+                <input type="hidden" name="decision" value="approved">
                 <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold" id="reviewModalLabel">Review document</h2>
+                    <h2 class="modal-title h6 fw-bold" id="approveModalLabel">Approve</h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="small text-secondary mb-3" id="reviewModalContext"></p>
-
-                    <label class="form-label small fw-semibold">Decision</label>
-                    <select name="decision" id="decision" class="form-select mb-3" required>
-                        <option value="approved">Approve</option>
-                        <option value="returned">Return for revision</option>
-                    </select>
-
-                    <label class="form-label small fw-semibold">Remarks</label>
-                    <textarea name="remarks" id="remarks" class="form-control" rows="3" placeholder="Required if returning the document"></textarea>
+                    <p class="small text-secondary mb-0">
+                        Confirm the submitted document is complete and correct. This approves the form.
+                        To ask for a correction, return it with remarks instead.
+                    </p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Submit decision</button>
+                    <button type="submit" class="btn btn-primary">Approve</button>
                 </div>
             </form>
         </div>
@@ -974,16 +969,10 @@
 </div>
 
 <script>
-    document.getElementById('reviewModal').addEventListener('show.bs.modal', function (event) {
+    document.getElementById('approveModal').addEventListener('show.bs.modal', function (event) {
         const button = event.relatedTarget;
-        const documentId = button.getAttribute('data-document-id');
-        const studentName = button.getAttribute('data-student-name');
-        const documentName = button.getAttribute('data-document-name');
-
-        document.getElementById('reviewModalContext').textContent = documentName + ' — ' + studentName;
-        document.getElementById('reviewForm').action = '/instructor/documents/' + documentId + '/review';
-        document.getElementById('decision').value = 'approved';
-        document.getElementById('remarks').value = '';
+        document.getElementById('approveModalLabel').textContent = 'Approve ' + button.getAttribute('data-document-name');
+        document.getElementById('approveForm').action = '/instructor/documents/' + button.getAttribute('data-document-id') + '/review';
     });
 
     document.getElementById('returnModal').addEventListener('show.bs.modal', function (event) {
