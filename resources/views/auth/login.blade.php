@@ -27,7 +27,7 @@
 
             <div class="login-intro">
                 <h1 id="login-heading">Welcome back</h1>
-                <p>Sign in with your Student or Employee ID. We'll take you to your campus and your portal automatically.</p>
+                <p>Sign in with your Student or Employee ID.</p>
             </div>
 
             @if (session('status'))
@@ -61,7 +61,7 @@
                         >
                     </div>
                     <div id="id-detect" class="login-detect" aria-live="polite">
-                        <span class="login-detect-idle">Your campus is detected from your ID.</span>
+
                     </div>
                 </div>
 
@@ -93,9 +93,7 @@
                 </button>
             </form>
 
-            <p class="login-help">
-                No account yet? Accounts are created by your campus OJT Coordinator.
-            </p>
+            <p class="login-help">No account? Ask your OJT Coordinator.</p>
 
             <footer class="login-foot">
                 &copy; {{ now()->year }} Pangasinan State University &middot; PSU Intern-Link
@@ -116,60 +114,32 @@
 
             <h2>Every OJT hour, form, and evaluation &mdash; in one place.</h2>
 
-            <p class="login-lede">
-                PSU Intern-Link replaces paper-based practicum tracking across Pangasinan State University.
-                Students, instructors, coordinators, and host training establishments work from the same
-                live record, from the first endorsement letter to the final evaluation.
-            </p>
-
             <ul class="login-features">
                 <li>
                     <span class="login-feature-icon">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4.5 4.5v12.5H7z"/><path d="M14 3.5V8h4.5M9.8 13h5.4M9.8 16.5h5.4"/></svg>
                     </span>
-                    <div>
-                        <strong>Digital OJT documents</strong>
-                        <span>Fill out, submit, and track every pre-deployment requirement online.</span>
-                    </div>
+                    <strong>OJT documents</strong>
                 </li>
                 <li>
                     <span class="login-feature-icon">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
                     </span>
-                    <div>
-                        <strong>Internship time frame</strong>
-                        <span>Daily time in and out, totalled by the system and approved by the HTE supervisor.</span>
-                    </div>
+                    <strong>Time frame</strong>
                 </li>
                 <li>
                     <span class="login-feature-icon">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5h15M7 16V11M12 16V6.5M17 16v-3.5"/></svg>
                     </span>
-                    <div>
-                        <strong>Real-time monitoring</strong>
-                        <span>Coordinators see deployment progress and rendered hours across the campus.</span>
-                    </div>
+                    <strong>Live monitoring</strong>
                 </li>
                 <li>
                     <span class="login-feature-icon">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
                     </span>
-                    <div>
-                        <strong>Weekly reports &amp; evaluations</strong>
-                        <span>Instructors review reports; HTEs and students complete evaluations online.</span>
-                    </div>
+                    <strong>Reports &amp; evaluations</strong>
                 </li>
             </ul>
-
-            <div class="login-roles">
-                <span class="login-roles-label">One sign-in for</span>
-                <div class="login-role-chips">
-                    <span>Student Interns</span>
-                    <span>Subject Instructors</span>
-                    <span>OJT Coordinators</span>
-                    <span>HTE Supervisors</span>
-                </div>
-            </div>
         </div>
     </aside>
 </main>
@@ -221,7 +191,7 @@
                 '</span>' +
                 '<span class="login-detect-kind">' + kind + '</span>';
         } else {
-            out.innerHTML = '<span class="login-detect-idle">Keep typing &mdash; your campus will show here.</span>';
+            out.innerHTML = idleHtml;
         }
     }
 

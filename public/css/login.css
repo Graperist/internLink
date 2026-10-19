@@ -422,7 +422,7 @@
     font-weight: 800;
     letter-spacing: -0.03em;
     color: #fff;
-    margin: 0 0 1.1rem;
+    margin: 0 0 2.2rem;
     text-wrap: balance;
 }
 
@@ -481,17 +481,10 @@
 
 .login-features strong {
     display: block;
-    font-size: 0.92rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: #fff;
-    margin-bottom: 0.2rem;
-}
-
-.login-features span {
-    display: block;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: #a9b9ce;
+    align-self: center;
 }
 
 .login-roles-label {
