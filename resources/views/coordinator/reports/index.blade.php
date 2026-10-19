@@ -70,16 +70,6 @@
     <div class="row g-3">
         <div class="col-md-6">
             <div class="border rounded p-3 h-100">
-                <p class="fw-semibold small mb-1">Evaluation Summary</p>
-                <p class="text-secondary small mb-3">Grades and evaluation data per student, all programs</p>
-                <a href="{{ route('coordinator.reports.export-evaluations') }}" class="btn btn-primary btn-sm">
-                    <i class="ti ti-download"></i> Generate &amp; Download
-                </a>
-            </div>
-        </div>
-
-        <div class="col-md-6">
-            <div class="border rounded p-3 h-100">
                 <p class="fw-semibold small mb-1">HTE Directory</p>
                 <p class="text-secondary small mb-3">List of all partner agencies and contacts</p>
                 <a href="{{ route('coordinator.reports.export-hte') }}" class="btn btn-primary btn-sm">

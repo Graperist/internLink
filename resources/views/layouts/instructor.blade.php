@@ -65,9 +65,12 @@
                 <a href="{{ route('instructor.monitoring') }}" class="il-nav-link {{ request()->routeIs('instructor.monitoring*') ? 'active' : '' }}">
                     <i class="ti ti-clock"></i> Time Frame
                 </a>
-                <a href="{{ route('instructor.evaluations') }}" class="il-nav-link {{ request()->routeIs('instructor.evaluations*') ? 'active' : '' }}">
-                    <i class="ti ti-star"></i> Evaluations
-                </a>
+                @unless ($isCoordinator)
+                    {{-- Evaluations go to the Subject Instructor only. --}}
+                    <a href="{{ route('instructor.evaluations') }}" class="il-nav-link {{ request()->routeIs('instructor.evaluations*', 'instructor.agency-evaluations.*') ? 'active' : '' }}">
+                        <i class="ti ti-star"></i> Evaluations
+                    </a>
+                @endunless
                 <a href="{{ route('instructor.reports') }}" class="il-nav-link {{ request()->routeIs('instructor.reports*') ? 'active' : '' }}">
                     <i class="ti ti-report"></i> Generate Reports
                 </a>

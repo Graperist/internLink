@@ -3,11 +3,8 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
-use App\Models\Deployment;
-use App\Models\DocumentRequirement;
 use App\Models\Program;
 use App\Models\Student;
-use App\Support\EvaluationRouting;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
@@ -15,9 +12,9 @@ use Illuminate\View\View;
 class DocumentController extends Controller
 {
     /**
-     * Figure 6 - Document Tracking: five tracked items per student -
-     * Endorsement Letter, MOA Status, Latest DTR, Narrative Report, and
-     * Evaluation Form - each pulled from its real source table rather
+     * Figure 6 - Document Tracking: four tracked items per student -
+     * Endorsement Letter, MOA Status, Latest DTR and Narrative Report
+     * (evaluations are the Subject Instructor's only) - each pulled from its real source table rather
      * than a single generic "documents" loop, since MOA and DTR aren't
      * document uploads.
      */
@@ -28,80 +25,8 @@ class DocumentController extends Controller
 
         $programs = Program::where('campus_id', auth()->user()->campus_id)->orderBy('name')->get();
 
-        [$hteEvaluations, $hteEvalCounts, $hteEvalFilter] = $this->hteEvaluationForms($request);
-
-        return view('coordinator.documents.index', compact('students', 'programs', 'hteEvaluations', 'hteEvalCounts', 'hteEvalFilter'));
-    }
-
-    /**
-     * HTE Evaluation Forms - the tracking panel for Form 23b (Evaluation
-     * Instrument of PSU Partner Agencies, Self Ratee). Each host training
-     * establishment submits one per completed student deployment; the
-     * Coordinator sees every one of them here, submitted or still outstanding.
-     *
-     * @return array{0: \Illuminate\Support\Collection, 1: array<string,int>, 2: string}
-     */
-    private function hteEvaluationForms(Request $request): array
-    {
-        $campusId = auth()->user()->campus_id;
-
-        $requirement = DocumentRequirement::where('campus_id', $campusId)
-            ->where('code', 'PARTNER_AGENCY_EVAL_SELF')
-            ->where('is_active', true)
-            ->first();
-
-        if (! $requirement) {
-            return [collect(), ['all' => 0, 'submitted' => 0, 'pending' => 0], 'all'];
-        }
-
-        // One per agency: every agency where an intern finished, with its
-        // self-rating (if submitted) and the interns who trained there.
-        $rows = Deployment::where('status', 'completed')
-            ->whereHas('internship', fn ($q) => $q->where('campus_id', $campusId))
-            ->with(['hte', 'internship.student.user', 'internship.student.program'])
-            ->get()
-            ->filter(fn ($d) => $d->hte)
-            ->groupBy('hte_id')
-            ->map(function ($deployments) use ($requirement) {
-                $document = \App\Support\AgencyEvaluations::find($requirement, $deployments->first()->hte_id);
-                $document?->load('uploader');
-
-                return (object) [
-                    'deployment' => $deployments->first(),
-                    'hte' => $deployments->first()->hte,
-                    'student' => $deployments->first()->internship->student,
-                    'students' => $deployments->map(fn ($d) => $d->internship->student),
-                    'document' => EvaluationRouting::isSubmitted($document) ? $document : null,
-                ];
-            })
-            ->values()
-            // Submitted first (newest first), then the outstanding ones by HTE name.
-            ->sortBy(fn ($row) => [
-                $row->document ? 0 : 1,
-                $row->document ? -($row->document->submitted_at?->timestamp ?? 0) : 0,
-                $row->hte?->name,
-            ])
-            ->values();
-
-        $counts = [
-            'all' => $rows->count(),
-            'submitted' => $rows->filter(fn ($r) => $r->document)->count(),
-            'pending' => $rows->filter(fn ($r) => ! $r->document)->count(),
-        ];
-
-        $filter = in_array($request->query('hte_eval'), ['submitted', 'pending'], true) ? $request->query('hte_eval') : 'all';
-        $rows = match ($filter) {
-            'submitted' => $rows->filter(fn ($r) => $r->document)->values(),
-            'pending' => $rows->filter(fn ($r) => ! $r->document)->values(),
-            default => $rows,
-        };
-
-        if ($search = trim((string) $request->query('hte_search'))) {
-            $needle = mb_strtolower($search);
-            $rows = $rows->filter(fn ($r) => str_contains(mb_strtolower(($r->hte?->name ?? '').' '.$r->students->map(fn ($s) => $s->user->name)->join(' ')), $needle))->values();
-        }
-
-        return [$rows, $counts, $filter];
+        // Evaluations are not tracked here: they go to the Subject Instructor only.
+        return view('coordinator.documents.index', compact('students', 'programs'));
     }
 
     /**
@@ -117,7 +42,7 @@ class DocumentController extends Controller
 
             fputcsv($handle, [
                 'Student', 'ID Number', 'Program', 'Endorsement Letter',
-                'MOA Status', 'Latest DTR', 'Narrative Report', 'Evaluation Form',
+                'MOA Status', 'Latest DTR', 'Narrative Report',
             ]);
 
             foreach ($students as $student) {
@@ -132,7 +57,6 @@ class DocumentController extends Controller
                     $this->moaLabel($student, $hte),
                     $latestDtr ? $latestDtr->log_date->format('M d, Y') : 'Missing',
                     $this->docLabel($student, 'NARRATIVE_REPORT'),
-                    $this->docLabel($student, 'EVALUATION_FORM'),
                 ]);
             }
 

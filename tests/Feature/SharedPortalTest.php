@@ -436,7 +436,7 @@ class SharedPortalTest extends TestCase
         $this->student('23-AC-0002', $this->bshm);
 
         $shared = ['instructor.dashboard', 'instructor.advisees', 'instructor.documents', 'instructor.monitoring',
-            'instructor.htes', 'instructor.evaluations', 'instructor.reports', 'instructor.announcements',
+            'instructor.htes', 'instructor.reports', 'instructor.announcements',
             'instructor.notifications', 'instructor.profile', 'instructor.interns.create', 'instructor.interns.import', 'instructor.htes.create'];
 
         foreach ([$coordinator, $instructor] as $user) {
@@ -444,6 +444,9 @@ class SharedPortalTest extends TestCase
                 $this->actingAs($user)->get(route($name))->assertOk();
             }
         }
+        // Evaluations are the Subject Instructor's only.
+        $this->actingAs($instructor)->get(route('instructor.evaluations'))->assertOk();
+        $this->actingAs($coordinator)->get(route('instructor.evaluations'))->assertForbidden();
 
         foreach (['coordinator.programs.index', 'coordinator.programs.create', 'coordinator.instructors.index',
             'coordinator.hte-accounts.index', 'coordinator.documents', 'coordinator.repository',

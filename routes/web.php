@@ -214,7 +214,6 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/reports/export/roster', [ReportController::class, 'exportInternRoster'])->name('reports.export-roster');
         Route::get('/reports/export/htes', [ReportController::class, 'exportHtePartnership'])->name('reports.export-hte');
         Route::get('/reports/export/approved-documents', [ReportController::class, 'downloadApprovedDocuments'])->name('reports.export-approved-documents');
-        Route::get('/reports/export/evaluations', [ReportController::class, 'exportEvaluationSummary'])->name('reports.export-evaluations');
         Route::get('/reports/export/compliance', [ReportController::class, 'exportDocumentsCompliance'])->name('reports.export-compliance');
     });
 

@@ -336,11 +336,28 @@ class EvaluationRoutingTest extends TestCase
 
     // ------------------------------------------------ the coordinator's Form 23b panel, one row per agency
 
-    public function test_the_coordinator_sees_form_23b_per_agency(): void
+    public function test_the_coordinator_does_not_see_any_evaluation(): void
     {
-        $this->hteRatesItself();
+        $form13 = $this->hteSubmits('EVALUATION_FORM');
+        $form23b = $this->hteRatesItself();
+        $form23c = $this->studentSubmits('STUDENT_HTE_EVALUATION');
+
+        // Not on Document Tracking, and no way to open them.
         $this->actingAs($this->coordinatorUser)->get(route('coordinator.documents'))->assertOk()
-            ->assertSee($this->hte->name)->assertSee($this->otherHte->name);
+            ->assertDontSee('HTE Evaluation Forms')->assertDontSee('Form 23b')->assertDontSee('Evaluation form');
+        foreach ([$form13, $form23b, $form23c] as $document) {
+            $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', $document))->assertNotFound();
+        }
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('coordinator.reports.export-evaluations'));
+        $this->assertSame(0, Notification::where('user_id', $this->coordinatorUser->id)->count());
+
+        // In the portal: no Evaluations menu, page or agency evaluation.
+        Instructor::firstOrCreate(['user_id' => $this->coordinatorUser->id], ['campus_id' => $this->campus->id, 'program_id' => $this->program->id]);
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.dashboard'))->assertOk()
+            ->assertDontSee(route('instructor.evaluations'));
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations'))->assertForbidden();
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations.show', $form13))->assertForbidden();
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertForbidden();
     }
 
     // ------------------------------------------------ notifications open the right sidebar
@@ -391,7 +408,7 @@ class EvaluationRoutingTest extends TestCase
     {
         $document = $this->hteRatesItself();
 
-        $html = $this->actingAs($this->coordinatorUser)->get(route('instructor.documents.printable', ['document' => $document, 'preview' => 1]))->assertOk()->getContent();
+        $html = $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', $document))->assertOk()->getContent();
 
         foreach (['FM-AA-INT-19b', 'Rev. 1', '14-Nov-2024', 'EVALUATION INSTRUMENT OF PSU PARTNER AGENCIES', 'PANGASINAN STATE UNIVERSITY',
                   'Agency / Institution', 'Unit/Division', 'Sex - Gender', 'Type of Rater', 'Self Ratee (Representative of HTE)',

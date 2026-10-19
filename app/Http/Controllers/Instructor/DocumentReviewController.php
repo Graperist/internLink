@@ -595,6 +595,10 @@ class DocumentReviewController extends Controller
 
         $this->authorizeViewer($document, $instructor);
 
+        // Evaluations are read on the instructor's Evaluations page only
+        // (never by the coordinator, the rated party or anyone else).
+        abort_if(isset(\App\Support\EvaluationRouting::FORMS[$document->requirement?->code]), 404);
+
 
 
         $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user');

@@ -7,96 +7,6 @@
     <h1 class="il-page-title">Document Tracking</h1>
 </div>
 
-{{-- HTE Evaluation Forms: Form 23b (Evaluation Instrument of PSU Partner Agencies - Self Ratee) --}}
-<div class="il-card mb-4" id="hte-evaluation-forms">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
-        <h2 class="h6 fw-bold mb-0">HTE Evaluation Forms <span class="text-secondary fw-normal">(Form 23b)</span></h2>
-        <div class="d-flex flex-wrap gap-2">
-            @foreach (['all' => 'All', 'submitted' => 'Submitted', 'pending' => 'Pending'] as $key => $label)
-                <a href="{{ route('coordinator.documents', array_merge(request()->except('hte_eval', 'page'), $key === 'all' ? [] : ['hte_eval' => $key])) }}#hte-evaluation-forms"
-                   class="btn btn-sm {{ $hteEvalFilter === $key ? 'btn-primary' : 'btn-outline-secondary' }}">
-                    {{ $label }} <span class="badge text-bg-light ms-1">{{ $hteEvalCounts[$key] }}</span>
-                </a>
-            @endforeach
-        </div>
-    </div>
-    <p class="text-secondary small mb-3">
-        Each host training establishment submits the Partner Agency self-evaluation once a student&rsquo;s internship is
-        completed. Every submitted form lands here for your records.
-    </p>
-
-    <form method="GET" class="row g-2 mb-3">
-        @foreach (request()->except('hte_search', 'page') as $k => $v)
-            @if (is_scalar($v))<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endif
-        @endforeach
-        <div class="col-md-8">
-            <input type="text" name="hte_search" class="form-control form-control-sm" placeholder="Search by HTE or student name..." value="{{ request('hte_search') }}">
-        </div>
-        <div class="col-md-4">
-            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-search"></i> Search</button>
-            @if (request()->filled('hte_search'))
-                <a href="{{ route('coordinator.documents', request()->except('hte_search', 'page')) }}#hte-evaluation-forms" class="btn btn-sm btn-link">Clear</a>
-            @endif
-        </div>
-    </form>
-
-    <div class="table-responsive">
-        <table class="table align-middle mb-0">
-            <thead>
-                <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                    <th>Host training establishment</th>
-                    <th>Interns</th>
-                    <th>Submitted by</th>
-                    <th>Date submitted</th>
-                    <th>Status</th>
-                    <th class="text-end"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($hteEvaluations as $row)
-                    <tr>
-                        <td class="fw-semibold">{{ $row->hte?->name ?? '—' }}</td>
-                        <td>
-                            @foreach ($row->students as $intern)
-                                <div>{{ $intern->user->name }} <span class="text-secondary" style="font-size: 0.78rem;">{{ $intern->user->id_number }} &middot; {{ $intern->program->code ?? '' }}</span></div>
-                            @endforeach
-                        </td>
-                        <td>{{ $row->document?->uploader?->name ?? '—' }}</td>
-                        <td>{{ $row->document ? ($row->document->submitted_at ?? $row->document->created_at)->format('M d, Y') : '—' }}</td>
-                        <td>
-                            @if ($row->document)
-                                <span class="badge rounded-pill text-bg-primary">Submitted</span>
-                            @else
-                                <span class="badge rounded-pill text-bg-warning">Pending</span>
-                            @endif
-                        </td>
-                        <td class="text-end text-nowrap">
-                            @if ($row->document)
-                                <a href="{{ route('instructor.documents.printable', ['document' => $row->document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                    <i class="ti ti-eye"></i> View Form 23b
-                                </a>
-                                <a href="{{ route('instructor.documents.printable', ['document' => $row->document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Download"><i class="ti ti-download"></i></a>
-                            @else
-                                <span class="text-secondary small">Awaiting HTE</span>
-                            @endif
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="6" class="text-center text-secondary py-4">
-                            @if (request()->filled('hte_search') || $hteEvalFilter !== 'all')
-                                No HTE evaluation forms match this filter.
-                            @else
-                                No completed internships yet, so no HTE evaluation forms are due.
-                            @endif
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
-</div>
-
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">Document Tracking - All Interns</h2>
@@ -144,7 +54,6 @@
                 <th>MOA status</th>
                 <th>Latest DTR</th>
                 <th>Narrative report</th>
-                <th>Evaluation form</th>
                 <th>Forms</th>
             </tr>
         </thead>
@@ -176,7 +85,6 @@
 
                     $endorsement = $student->docs_by_code->get('ENDORSEMENT_LETTER');
                     $narrative = $student->docs_by_code->get('NARRATIVE_REPORT');
-                    $evaluation = $student->docs_by_code->get('EVALUATION_FORM');
 
                     $labelFor = fn ($doc) => match ($doc?->status) {
                         'approved' => 'Approved',
@@ -215,11 +123,6 @@
                         </span>
                     </td>
                     <td>
-                        <span class="badge rounded-pill {{ $badgeColor($labelFor($evaluation)) }}">
-                            {{ $labelFor($evaluation) }}
-                        </span>
-                    </td>
-                    <td>
                         <a href="{{ route('instructor.documents', ['student' => $student->id]) }}" class="btn btn-sm btn-outline-secondary">
                             <i class="ti ti-eye"></i> View All
                         </a>
@@ -227,7 +130,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center text-secondary py-4">
+                    <td colspan="6" class="text-center text-secondary py-4">
                         @if (request()->hasAny(['search', 'program_id']))
                             No interns match this search or filter.
                         @else

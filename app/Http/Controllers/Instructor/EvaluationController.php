@@ -25,7 +25,7 @@ class EvaluationController extends Controller
 {
     public function index(): View
     {
-        $instructor = auth()->user()->instructor;
+        $instructor = $this->subjectInstructor();
         $agencies = AgencyEvaluations::agenciesFor($instructor);
 
         $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
@@ -67,8 +67,7 @@ class EvaluationController extends Controller
     /** Read or (?download=1) download a received evaluation, or your own Form 23a. */
     public function show(Document $document): Response
     {
-        $instructor = auth()->user()->instructor;
-        abort_unless($instructor, 403);
+        $instructor = $this->subjectInstructor();
         $document->load('requirement', 'internship');
         $code = $document->requirement?->code;
         abort_unless(isset(EvaluationRouting::FORMS[$code]), 404);
@@ -78,12 +77,21 @@ class EvaluationController extends Controller
         if (EvaluationRouting::isPerAgency($code)) {
             // An agency where this instructor's students trained; Form 23a only the instructor's own.
             abort_unless($document->hte_id && AgencyEvaluations::agenciesFor($instructor)->has($document->hte_id), 403);
-            abort_if($code === 'PARTNER_AGENCY_EVAL_INSTRUCTOR' && $document->uploaded_by_user_id !== $instructor->user_id && ! $instructor->isCoordinator(), 403);
+            abort_if($code === 'PARTNER_AGENCY_EVAL_INSTRUCTOR' && $document->uploaded_by_user_id !== $instructor->user_id, 403);
         } else {
             abort_unless($instructor->canView($document->internship), 403);
         }
 
         return EvaluationView::response($document, route('instructor.evaluations'));
+    }
+
+    /** Evaluations are the Subject Instructor's only - not the coordinator's. */
+    private function subjectInstructor()
+    {
+        $instructor = auth()->user()->instructor;
+        abort_unless($instructor && ! $instructor->isCoordinator(), 403, 'Evaluations go to the Subject Instructor only.');
+
+        return $instructor;
     }
 
     private function submitted(?Document $document): ?Document

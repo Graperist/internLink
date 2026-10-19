@@ -236,59 +236,6 @@ class ReportController extends Controller
     }
 
     /**
-     * HTE rating, instructor rating, and computed final grade for every
-     * deployed intern on the campus (all programs).
-     */
-    public function exportEvaluationSummary(): StreamedResponse
-    {
-        $campusId = auth()->user()->campus_id;
-        $formCodes = [
-            'EVALUATION_FORM' => 'Form 13 Status',
-            'TRAINING_SUPERVISOR_FEEDBACK' => 'Form 21 Status',
-            'STUDENT_HTE_EVALUATION' => 'Form 23c Status',
-            'STUDENT_FEEDBACK_FORM' => 'Form 20 Status',
-            'PARTNER_AGENCY_EVAL_SELF' => 'Form 23b Status (agency)',
-            'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'Form 23a Status (agency)',
-        ];
-        $requirements = DocumentRequirement::where('campus_id', $campusId)
-            ->whereIn('code', array_keys($formCodes))->pluck('id', 'code');
-        $students = Student::with(['user', 'program', 'currentInternship.deployment.hte', 'currentInternship.documents'])
-            ->where('campus_id', $campusId)
-            ->whereHas('currentInternship.deployment')
-            ->get()
-            ->sortBy(fn ($student) => [$student->program?->code, $student->user->name]);
-
-        // Forms 23a / 23b are one per agency: the status of the intern's agency.
-        $agencyDocs = \App\Models\Document::whereIn('document_requirement_id', $requirements->only(['PARTNER_AGENCY_EVAL_SELF', 'PARTNER_AGENCY_EVAL_INSTRUCTOR']))
-            ->whereNotNull('hte_id')->get()->groupBy(fn ($d) => $d->document_requirement_id.':'.$d->hte_id);
-
-        $callback = function () use ($students, $requirements, $formCodes, $agencyDocs) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, array_merge(['Name', 'ID Number', 'Program', 'HTE'], array_values($formCodes)));
-            $submittedStatuses = ['submitted', 'for_review', 'approved', 'printed', 'completed'];
-
-            foreach ($students as $student) {
-                $deployment = $student->currentInternship?->deployment;
-                $docs = $student->currentInternship?->documents?->keyBy('document_requirement_id') ?? collect();
-                $row = [$student->user->name, $student->user->id_number, $student->program?->code ?? '', $deployment?->hte?->name ?? ''];
-                foreach (array_keys($formCodes) as $code) {
-                    $docId = $requirements->get($code);
-                    $status = ! $docId ? null : (\App\Support\EvaluationRouting::isPerAgency($code)
-                        ? $agencyDocs->get($docId.':'.$deployment?->hte_id)?->first()?->status
-                        : $docs->get($docId)?->status);
-                    $row[] = $status && in_array($status, $submittedStatuses, true)
-                        ? ucfirst(str_replace('_', ' ', $status))
-                        : ($status ? ucfirst(str_replace('_', ' ', $status)) : 'Missing');
-                }
-                fputcsv($handle, $row);
-            }
-            fclose($handle);
-        };
-
-        return $this->streamCsv($callback, 'official-evaluation-forms-summary');
-    }
-
-    /**
      * One row per intern on the campus, one column per required document,
      * showing each document's submission status.
      */

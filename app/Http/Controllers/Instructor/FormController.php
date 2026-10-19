@@ -77,7 +77,7 @@ class FormController extends Controller
     private function context(Hte $hte): array
     {
         $instructor = auth()->user()->instructor;
-        abort_unless($instructor, 403);
+        abort_unless($instructor && ! $instructor->isCoordinator(), 403, 'Partner agencies are evaluated by the Subject Instructor.');
         $requirement = AgencyEvaluations::requirement(self::CODE, $instructor->campus_id);
         abort_unless($requirement, 404);
         // Only agencies where this instructor's students finished their internship.
