@@ -110,4 +110,20 @@ class DownloadByWeekTest extends TestCase
         $this->assertSame(2, substr_count($all, 'class="entries-table"'));     // a page per week
         $this->assertSame(1, substr_count($week2, 'class="entries-table"'));   // just week 2
     }
+
+    public function test_an_entry_before_the_first_dtr_day_is_week_1_not_week_0(): void
+    {
+        $form19 = $this->requirement('WEEKLY_REPORT', 'Form 19 – Internship/Practicum Weekly Report', '19');
+        $packet = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => 1, 'status' => 'approved']);
+        foreach (['2026-09-28', '2026-10-09'] as $date) {   // first DTR day is Oct 01
+            DocumentEntry::forceCreate(['document_id' => $packet->id, 'entry_date' => $date]);
+        }
+
+        $page = $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk();
+        $page->assertDontSee('Week 0')->assertSee('Week 1 (Sep 28')->assertSee('Week 2 (Oct 05');
+        // The weekly list and the download buttons use the same numbers.
+        $html = $page->getContent();
+        $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">Sep 28, 2026#', $html);
+        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 05, 2026#', $html);
+    }
 }

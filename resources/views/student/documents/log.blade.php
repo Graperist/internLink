@@ -6,7 +6,7 @@
 @if ($requirement->code === 'WEEKLY_REPORT')
     @php
         $entries = $entries ?? ($document?->entries ?? collect());
-        // Week 1 starts on the first DTR day. Each official Form 19 packet contains four consecutive weeks.
+        // Week 1 starts on the first DTR day (or an earlier entry). Each official Form 19 packet contains four consecutive weeks.
         $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $entries->pluck('entry_date'));
         $weeks = $anchor ? \App\Support\TrainingWeeks::group($entries, $anchor) : collect();
         $packetStatus = fn ($packet) => $packet?->status ?? 'draft';
@@ -127,7 +127,8 @@
                 @php
                     $start = \Carbon\Carbon::parse($weekStart);
                     $end = $start->copy()->addDays(6);
-                    $weekNumber = $loop->iteration;
+                    // The real week number (same as the downloads), even if a week has no entries.
+                    $weekNumber = \App\Support\TrainingWeeks::number($start, $anchor);
                     // Weeks fold to keep the page short; the latest week starts open.
                     $isOpen = $loop->last;
                     $weekId = 'week-'.$weekStart;

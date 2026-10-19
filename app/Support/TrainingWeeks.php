@@ -15,17 +15,26 @@ use Illuminate\Support\Collection;
  */
 class TrainingWeeks
 {
-    /** The first day the student logged a DTR (falls back to the earliest entry). */
+    /**
+     * Week 1's first day: the first day the student logged a DTR - or an
+     * earlier Form 19 entry, if they logged one before their first DTR day,
+     * so no week is ever numbered 0.
+     */
     public static function anchorForInternship(Internship $internship, iterable $entryDates = []): ?Carbon
     {
-        $firstDtr = Dtr::whereHas('deployment', fn ($q) => $q->where('internship_id', $internship->id))
-            ->min('log_date');
+        $dates = collect($entryDates)->filter();
 
+        $firstDtr = Dtr::whereHas('deployment', fn ($q) => $q->where('internship_id', $internship->id))->min('log_date');
         if ($firstDtr) {
-            return Carbon::parse($firstDtr)->startOfDay();
+            $dates->push($firstDtr);
+        }
+        $firstEntry = \App\Models\DocumentEntry::whereHas('document', fn ($q) => $q->where('internship_id', $internship->id)
+            ->whereHas('requirement', fn ($r) => $r->where('code', 'WEEKLY_REPORT')))->min('entry_date');
+        if ($firstEntry) {
+            $dates->push($firstEntry);
         }
 
-        return self::anchor($entryDates);
+        return self::anchor($dates);
     }
 
     public static function anchorFor(Document $document): ?Carbon
