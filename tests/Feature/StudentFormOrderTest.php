@@ -93,7 +93,7 @@ class StudentFormOrderTest extends TestCase
 
         $this->actingAs($user)->get(route('student.documents'))->assertOk()
             ->assertSeeInOrder(['Form 1 – Application', 'Form 19 – Weekly Report', 'Narrative Report'])
-            ->assertDontSee('Form 20 – Feedback');   // an evaluation: on Evaluate Agency, not My Documents
+            ->assertDontSee('Form 20 – Feedback');   // an evaluation: on My HTE, not My Documents
     }
 
     public function test_my_documents_shows_the_list_and_one_open_form(): void

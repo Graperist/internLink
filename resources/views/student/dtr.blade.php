@@ -24,7 +24,7 @@
     @if ($deployment?->status === 'pending')
         @include('student._deployment-blockers', ['internship' => $deployment->internship])
     @endif
-    <div class="il-card"><p class="text-secondary mb-0">Your time frame opens once your subject instructor starts your deployment. Check <a href="{{ route('student.hte') }}">My HTE Info</a>.</p></div>
+    <div class="il-card"><p class="text-secondary mb-0">Your time frame opens once your subject instructor starts your deployment. Check <a href="{{ route('student.hte') }}">My HTE</a>.</p></div>
 @else
     {{-- Totals --}}
     <div class="row g-3 mb-3">

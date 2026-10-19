@@ -46,11 +46,8 @@
                 <a href="{{ route('student.documents') }}" class="il-nav-link {{ request()->routeIs('student.documents*') ? 'active' : '' }}">
                     <i class="ti ti-file-text"></i> My Documents
                 </a>
-                <a href="{{ route('student.evaluations') }}" class="il-nav-link {{ request()->routeIs('student.evaluations') ? 'active' : '' }}">
-                    <i class="ti ti-star"></i> Evaluate Agency
-                </a>
                 <a href="{{ route('student.hte') }}" class="il-nav-link {{ request()->routeIs('student.hte') ? 'active' : '' }}">
-                    <i class="ti ti-building"></i> My HTE Info
+                    <i class="ti ti-building"></i> My HTE
                 </a>
 
                 <p class="il-nav-label">Records</p>

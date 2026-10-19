@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Models\DocumentRequirement;
 use App\Support\EvaluationRouting;
-use Illuminate\View\View;
+use Illuminate\Http\RedirectResponse;
 
 /**
- * Evaluate Agency - like the PSU faculty evaluation: the name of the agency
+ * Evaluate Your Agency (on My HTE) - like the PSU faculty evaluation: the name of the agency
  * the student was deployed to, click it and rate it. Form 23c (Evaluation of
  * the Partner Agency) and Form 20 (Student-Intern's Feedback). They go to the
  * Subject Instructor only; the agency never sees them. Open once the
@@ -16,9 +16,9 @@ use Illuminate\View\View;
  */
 class EvaluationController extends Controller
 {
-    public function index(): View
+    /** The rows for the Evaluate Your Agency card on My HTE. */
+    public static function data($student): array
     {
-        $student = auth()->user()->student;
         $internship = $student?->currentInternship;
         $deployment = $internship?->deployment;
         $completed = $internship && $internship->hasCompletedDeployment();
@@ -40,6 +40,12 @@ class EvaluationController extends Controller
             'done' => EvaluationRouting::isSubmitted($documents->get($requirement->id)),
         ]);
 
-        return view('student.evaluations', compact('deployment', 'completed', 'rows'));
+        return compact('deployment', 'completed', 'rows');
+    }
+
+    /** The evaluation now lives on My HTE. */
+    public function index(): RedirectResponse
+    {
+        return redirect()->to(route('student.hte').'#evaluate');
     }
 }

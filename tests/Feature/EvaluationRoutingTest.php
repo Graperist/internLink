@@ -139,7 +139,7 @@ class EvaluationRoutingTest extends TestCase
     {
         $requirement = $this->req($code);
         $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))
-            ->assertRedirect(route('student.evaluations'))->assertSessionHasNoErrors();
+            ->assertRedirect(route('student.hte').'#evaluate')->assertSessionHasNoErrors();
 
         return Document::where('document_requirement_id', $requirement->id)->firstOrFail();
     }
@@ -189,7 +189,7 @@ class EvaluationRoutingTest extends TestCase
         $this->actingAs($this->instructorUser)->get(route('instructor.evaluations.show', ['document' => $form13, 'download' => 1]))->assertOk()
             ->assertSee('pdfStatus', false);
 
-        // The student: nothing on My HTE Info, no way to open it.
+        // The student: nothing on My HTE, no way to open it.
         $this->assertFalse(\Illuminate\Support\Facades\Route::has('student.hte.feedback'));
         $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()->assertDontSee('Training Supervisor');
         $this->actingAs($this->studentUser)->get(route('instructor.evaluations.show', $form21))->assertForbidden();
@@ -238,8 +238,8 @@ class EvaluationRoutingTest extends TestCase
 
     public function test_the_student_sees_only_their_agency_and_rates_it(): void
     {
-        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
-            ->assertSee('Evaluate Agency')->assertSee($this->hte->name)->assertDontSee($this->otherHte->name)
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()
+            ->assertSee('My HTE')->assertSee('Evaluate Your Agency')->assertSee($this->hte->name)->assertDontSee($this->otherHte->name)
             ->assertSee(route('student.documents.fill', $this->req('STUDENT_HTE_EVALUATION')));
         // Not in My Documents any more.
         $this->actingAs($this->studentUser)->get(route('student.documents'))->assertOk()
@@ -247,7 +247,7 @@ class EvaluationRoutingTest extends TestCase
 
         $this->studentSubmits('STUDENT_HTE_EVALUATION');
         $this->studentSubmits('STUDENT_FEEDBACK_FORM');
-        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()->assertSee('EVALUATED');
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()->assertSee('EVALUATED');
 
         // Once only.
         $requirement = $this->req('STUDENT_HTE_EVALUATION');
@@ -280,11 +280,18 @@ class EvaluationRoutingTest extends TestCase
             ->assertDontSee('Evaluation Instrument of PSU Partner Agencies (Student)');
     }
 
+    public function test_the_old_evaluate_agency_link_opens_my_hte(): void
+    {
+        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertRedirect(route('student.hte').'#evaluate');
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()
+            ->assertSee('id="evaluate"', false)->assertDontSee('Evaluate Agency</a>', false)->assertDontSee('My HTE Info');
+    }
+
     public function test_the_student_cannot_evaluate_before_the_internship_is_completed(): void
     {
         $this->deployment->update(['status' => 'active']);
         $this->deployment->internship->update(['status' => 'deployed']);
-        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()
             ->assertSee('once your internship is completed')->assertDontSee('Evaluate</a>', false);
     }
 

@@ -1,5 +1,5 @@
 {{--
-    Why the student's deployment hasn't started yet (shown on My HTE Info
+    Why the student's deployment hasn't started yet (shown on My HTE
     and the Internship Time Frame (Form 17) while the deployment is pending).
 --}}
 @php

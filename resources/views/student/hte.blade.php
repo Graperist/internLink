@@ -1,11 +1,14 @@
 @extends('layouts.student')
 
-@section('title', 'My HTE Info - PSU Intern-Link')
+@section('title', 'My HTE - PSU Intern-Link')
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">My HTE info</h1>
+    <h1 class="il-page-title">My HTE</h1>
 </div>
+
+@if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
+@if ($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
 
 @if (! $deployment)
     <div class="il-card">
@@ -54,6 +57,7 @@
             in the system yet — check with them for exact hours.
         </p>
     </div>
+    @include('student._agency-evaluations', $evaluation)
 @endif
 
 

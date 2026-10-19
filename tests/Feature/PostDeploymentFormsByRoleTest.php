@@ -107,14 +107,14 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
         // their own forms are listed, and each is actionable when opened
         // (the page shows one form at a time, like Document Review)
-        // (Forms 20 / 23c are on Evaluate Agency, not My Documents.)
+        // (Forms 20 / 23c are on My HTE, not My Documents.)
         foreach (['WEEKLY_REPORT' => 'log'] as $code => $action) {
             $page->assertSee(route('student.documents', ['form' => $this->req($code)->id]), false);
             $this->actingAs($this->studentUser)->get(route('student.documents', ['form' => $this->req($code)->id]))
                 ->assertSee(route('student.documents.'.$action, $this->req($code)), false);
         }
         $page->assertSee('Narrative Report');
-        $this->actingAs($this->studentUser)->get(route('student.evaluations'))->assertOk()
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()
             ->assertSee(route('student.documents.fill', $this->req('STUDENT_FEEDBACK_FORM')), false)
             ->assertSee(route('student.documents.fill', $this->req('STUDENT_HTE_EVALUATION')), false);
 
@@ -143,7 +143,7 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
             $this->actingAs($this->studentUser)->get(route('student.documents.fill', $requirement))->assertOk();
             $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))
-                ->assertRedirect(route('student.evaluations'))->assertSessionHasNoErrors();
+                ->assertRedirect(route('student.hte').'#evaluate')->assertSessionHasNoErrors();
 
             $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status, $code);
         }

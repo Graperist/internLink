@@ -661,7 +661,7 @@ class DocumentController extends Controller
         }
 
         if ($isEvaluation) {
-            return redirect()->route('student.evaluations')
+            return redirect()->to(route('student.hte').'#evaluate')
                 ->with('status', 'Thank you! Your evaluation is submitted. It goes to your Subject Instructor; your agency does not see it.');
         }
 

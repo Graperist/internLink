@@ -6,12 +6,12 @@
 @php
     // The evaluations of the agency (Forms 20, 23c) are filled from Evaluate Agency.
     $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
-    $backUrl = $isEvaluation ? route('student.evaluations') : route('student.documents');
+    $backUrl = $isEvaluation ? route('student.hte').'#evaluate' : route('student.documents');
 @endphp
 <div class="il-page-header">
     <h1 class="il-page-title">{{ $requirement->name }}</h1>
     <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">
-        <i class="ti ti-arrow-left"></i> Back to {{ $isEvaluation ? 'Evaluate Agency' : 'My Documents' }}
+        <i class="ti ti-arrow-left"></i> Back to {{ $isEvaluation ? 'My HTE' : 'My Documents' }}
     </a>
 </div>
 @if ($isEvaluation)

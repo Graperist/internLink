@@ -1,23 +1,13 @@
-@extends('layouts.student')
-
-@section('title', 'Evaluate Agency - PSU Intern-Link')
-
-@section('content')
+{{-- The student's evaluations of their agency (Forms 23c, 20), on My HTE. --}}
 <style>
     .eval-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: #6c757d; }
     .eval-done { color: #1f9d3a; font-weight: 700; letter-spacing: .02em; font-size: .85rem; }
 </style>
-<div class="il-page-header">
-    <div>
-        <h1 class="il-page-title">Evaluate Agency</h1>
-        <p class="text-secondary small mb-0">Your evaluation goes to your Subject Instructor. Your agency does not see it.</p>
+<div class="il-card mt-3" id="evaluate">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h2 class="h6 fw-bold mb-0">Evaluate Your Agency</h2>
+        <span class="small text-secondary"><i class="ti ti-lock"></i> Goes to your Subject Instructor only &mdash; your agency does not see it.</span>
     </div>
-</div>
-
-@if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
-@if ($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
-
-<div class="il-card">
     @if (! $deployment?->hte)
         <p class="text-secondary mb-0">You have no agency yet.</p>
     @elseif (! $completed)
@@ -55,4 +45,3 @@
         </div>
     @endif
 </div>
-@endsection
