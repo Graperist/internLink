@@ -48,7 +48,7 @@
     $tfApprovedHours = $internship?->deployment
         ? (float) \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->where('status', 'approved')->sum('hours_logged')
         : 0.0;
-    $tfRequiredHours = (float) ($internship?->required_hours ?? $internship?->student?->program?->required_hours ?? 0);
+    $tfRequiredHours = (float) ($internship?->requiredHours() ?? 0);
 
     // Form 19: one document per week.
     $weeklyDocs = $internship

@@ -29,7 +29,11 @@ class CampusSettingsController extends Controller
             'ced_name' => ['nullable', 'string', 'max:255'],
             'college_dean_name' => ['nullable', 'string', 'max:255'],
             'registrar_name' => ['nullable', 'string', 'max:255'],
+            'weekly_report_due_days' => ['nullable', 'integer', 'min:0', 'max:14'],
         ]);
+        if (($validated['weekly_report_due_days'] ?? null) === null) {
+            unset($validated['weekly_report_due_days']);
+        }
 
         auth()->user()->campus->update($validated);
 

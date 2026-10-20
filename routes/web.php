@@ -55,6 +55,10 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
+    // A time in / time out photo (student, their HTE supervisor, their instructor).
+    Route::get('/dtr/{dtr}/photo/{stamp}', [\App\Http\Controllers\DtrPhotoController::class, 'show'])
+        ->where('stamp', 'am_in|am_out|pm_in|pm_out')->name('dtr.photo');
+
     // Forced/self-service password change - reachable by any authenticated
     // role, deliberately outside the role-specific prefixed groups below.
     Route::get('/password/change', [PasswordChangeController::class, 'show'])->name('password.change');

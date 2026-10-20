@@ -86,6 +86,18 @@ class DtrVerificationTest extends TestCase
         ]);
     }
 
+    /** Adds a photo taken at the HTE for every time in / time out being saved. */
+    private function withPhotos(array $data): array
+    {
+        foreach (['am_in', 'am_out', 'pm_in', 'pm_out'] as $stamp) {
+            if (filled($data[$stamp] ?? null) && ! isset($data[$stamp.'_photo'])) {
+                $data[$stamp.'_photo'] = \Illuminate\Http\UploadedFile::fake()->image($stamp.'.jpg', 40, 40);
+            }
+        }
+
+        return $data;
+    }
+
     private function day(array $attrs = []): array
     {
         return $attrs + ['log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00', 'pm_in' => '13:00', 'pm_out' => '16:00'];
@@ -102,7 +114,7 @@ class DtrVerificationTest extends TestCase
 
     public function test_student_enters_a_day_and_the_system_totals_it_without_the_lunch_break(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day())->assertRedirect('/student/dtr?date=2026-10-02')->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day()))->assertRedirect('/student/dtr?date=2026-10-02')->assertSessionHasNoErrors();
 
         $dtr = Dtr::sole();
         $this->assertSame('pending', $dtr->status);
@@ -117,20 +129,20 @@ class DtrVerificationTest extends TestCase
 
     public function test_a_half_day_counts_only_the_morning(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['pm_in' => null, 'pm_out' => null]))->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['pm_in' => null, 'pm_out' => null])))->assertSessionHasNoErrors();
         $this->assertEquals(4, (float) Dtr::sole()->hours_logged);
     }
 
     public function test_morning_and_afternoon_are_saved_separately_into_one_day(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '07:00', 'am_out' => '12:00'])
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '07:00', 'am_out' => '12:00']))
             ->assertRedirect('/student/dtr?date=2026-10-02')->assertSessionHasNoErrors();
         $dtr = Dtr::sole();
         $this->assertEquals(5, (float) $dtr->hours_logged);
         $this->assertNull($dtr->pm_in);
 
         // Later the same day: the afternoon is added to the same day, the morning is kept.
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early'])
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early']))
             ->assertSessionHasNoErrors();
         $dtr = Dtr::sole();
         $this->assertSame('07:00', substr($dtr->am_in, 0, 5));
@@ -148,14 +160,14 @@ class DtrVerificationTest extends TestCase
         $this->assertStringContainsString('1:00 PM - 4:00 PM', $notices[1]->message);
 
         // Correcting only the morning keeps the afternoon and the note.
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00'])->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00']))->assertSessionHasNoErrors();
         $dtr->refresh();
         $this->assertEquals(7, (float) $dtr->hours_logged);
         $this->assertSame('Left early', $dtr->notes);
         $this->assertSame(3, Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.':%')->count());
 
         // The afternoon must start after the saved morning ends.
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '11:00', 'pm_out' => '16:00'])->assertSessionHasErrors('pm_in');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '11:00', 'pm_out' => '16:00']))->assertSessionHasErrors('pm_in');
 
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
             ->assertSee('Save morning and resend')->assertSee('Save afternoon and resend')->assertSee('value="08:00"', false);
@@ -163,7 +175,7 @@ class DtrVerificationTest extends TestCase
         // Once approved, neither half can be changed, and the supervisor's notices clear.
         $dtr->update(['status' => 'approved']);
         $this->assertSame(0, Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.'%')->count());
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '17:00'])->assertSessionHasErrors('pm_in');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '17:00']))->assertSessionHasErrors('pm_in');
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()->assertSee('can no longer be changed')->assertDontSee('Save afternoon');
     }
 
@@ -172,16 +184,16 @@ class DtrVerificationTest extends TestCase
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
             ->assertSee('name="am_notes"', false)->assertSee('name="notes"', false);
 
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00', 'am_notes' => 'Came in late because of the rain'])
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00', 'am_notes' => 'Came in late because of the rain']))
             ->assertSessionHasNoErrors();
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early'])
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00', 'notes' => 'Left early']))
             ->assertSessionHasNoErrors();
         $dtr = Dtr::sole();
         $this->assertSame('Came in late because of the rain', $dtr->am_notes); // the afternoon save keeps it
         $this->assertSame('Left early', $dtr->notes);
 
         // Saving the morning again keeps the afternoon note.
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:30', 'am_out' => '12:00', 'am_notes' => 'Rain'])
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:30', 'am_out' => '12:00', 'am_notes' => 'Rain']))
             ->assertSessionHasNoErrors();
         $this->assertSame('Left early', $dtr->fresh()->notes);
 
@@ -191,19 +203,19 @@ class DtrVerificationTest extends TestCase
 
     public function test_wrong_times_are_rejected(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['am_out' => '07:00']))->assertSessionHasErrors('am_out');
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['pm_in' => '11:00']))->assertSessionHasErrors('pm_in');
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['am_out' => null]))->assertSessionHasErrors('am_out');
-        $this->actingAs($this->studentUser)->post('/student/dtr', ['log_date' => '2026-10-02'])->assertSessionHasErrors();
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['log_date' => '2026-10-05']))->assertSessionHasErrors('log_date');  // future
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['log_date' => '2026-09-29']))->assertSessionHasErrors('log_date');  // before deployment
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['am_out' => '07:00'])))->assertSessionHasErrors('am_out');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['pm_in' => '11:00'])))->assertSessionHasErrors('pm_in');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['am_out' => null])))->assertSessionHasErrors('am_out');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['log_date' => '2026-10-02']))->assertSessionHasErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['log_date' => '2026-10-05'])))->assertSessionHasErrors('log_date');  // future
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['log_date' => '2026-09-29'])))->assertSessionHasErrors('log_date');  // before deployment
         $this->assertSame(0, Dtr::count());
     }
 
     public function test_one_entry_per_date(): void
     {
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day());
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day())->assertSessionHasErrors('log_date');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day()));
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day()))->assertSessionHasErrors('log_date');
         $this->assertSame(1, Dtr::count());
     }
 
@@ -232,7 +244,7 @@ class DtrVerificationTest extends TestCase
 
         $this->actingAs($this->studentUser)->get('/student/dtr?edit='.$dtr->id)->assertOk()->assertSee('The student was undertime')->assertSee('Save afternoon and resend');
 
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['dtr_id' => $dtr->id, 'pm_out' => '16:00']))->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['dtr_id' => $dtr->id, 'pm_out' => '16:00'])))->assertSessionHasNoErrors();
         $dtr->refresh();
         $this->assertSame('pending', $dtr->status);
         $this->assertEquals(7, (float) $dtr->hours_logged);
@@ -244,7 +256,7 @@ class DtrVerificationTest extends TestCase
     {
         $dtr = $this->makeDtr(['status' => 'approved']);
 
-        $this->actingAs($this->studentUser)->post('/student/dtr', $this->day(['dtr_id' => $dtr->id]))->assertSessionHasErrors('log_date');
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day(['dtr_id' => $dtr->id])))->assertSessionHasErrors('log_date');
         $this->actingAs($this->studentUser)->delete("/student/dtr/{$dtr->id}")->assertStatus(422);
         $this->assertEquals(8, (float) $dtr->fresh()->hours_logged);
     }
@@ -325,5 +337,63 @@ class DtrVerificationTest extends TestCase
 
         // The old log page sends the student to the time frame.
         $this->actingAs($this->studentUser)->get("/student/documents/{$requirement->id}/log")->assertRedirect('/student/dtr');
+    }
+
+    public function test_every_time_in_and_out_needs_a_photo_taken_at_the_hte(): void
+    {
+        $page = $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk();
+        $page->assertSee('name="am_in_photo"', false)->assertSee('name="am_out_photo"', false)
+            ->assertSee('name="pm_in_photo"', false)->assertSee('name="pm_out_photo"', false)
+            ->assertSee('capture="environment"', false)->assertSee('enctype="multipart/form-data"', false);
+
+        // No photos: not saved.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00'])
+            ->assertSessionHasErrors(['am_in_photo' => 'Take a photo at the HTE for the morning time in.', 'am_out_photo']);
+        $this->assertSame(0, Dtr::count());
+
+        // Only the time-in photo: the time out still needs one.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00',
+            'am_in_photo' => \Illuminate\Http\UploadedFile::fake()->image('in.jpg')])->assertSessionHasErrors('am_out_photo');
+
+        // Not a picture: refused.
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00',
+            'am_in_photo' => \Illuminate\Http\UploadedFile::fake()->create('in.pdf', 10, 'application/pdf')]))->assertSessionHasErrors('am_in_photo');
+
+        // Both photos: saved, privately.
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:00', 'am_out' => '12:00']))
+            ->assertSessionHasNoErrors();
+        $dtr = Dtr::sole();
+        $this->assertNotNull($dtr->photo('am_in'));
+        $this->assertNotNull($dtr->photo('am_out'));
+        $this->assertNull($dtr->photo('pm_in'));
+        Storage::assertExists($dtr->photo('am_in')['path']);
+        $this->assertStringStartsWith('dtr_photos/', $dtr->photo('am_in')['path']);
+
+        // Correcting the morning time keeps the saved photos; the afternoon needs its own.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '08:05', 'am_out' => '12:00'])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '16:00'])
+            ->assertSessionHasErrors(['pm_in_photo', 'pm_out_photo']);
+
+        // The HTE supervisor sees the photos when approving; the student and instructor can open them.
+        $url = $dtr->fresh()->photoUrl('am_in');
+        $this->actingAs($this->repUser)->get('/hte/dtr')->assertOk()->assertSee($url, false)->assertSee('Photo at time in');
+        $this->actingAs($this->repUser)->get($url)->assertOk();
+        $this->actingAs($this->studentUser)->get($url)->assertOk();
+        $this->actingAs($this->instructorUser)->get($url)->assertOk();
+
+        // Nobody else.
+        $otherHte = Hte::forceCreate(['campus_id' => $this->campus->id, 'name' => 'Other']);
+        $otherRepUser = $this->makeUser('hte_representative', 'R-2');
+        HteRepresentative::forceCreate(['user_id' => $otherRepUser->id, 'hte_id' => $otherHte->id]);
+        $this->actingAs($otherRepUser)->get($url)->assertForbidden();
+        $otherStudentUser = $this->makeUser('student', 'S-2');
+        Student::forceCreate(['user_id' => $otherStudentUser->id, 'campus_id' => $this->campus->id, 'program_id' => $this->program->id]);
+        $this->actingAs($otherStudentUser)->get($url)->assertForbidden();
+
+        // Removing the day removes its photos.
+        $path = $dtr->fresh()->photo('am_in')['path'];
+        $this->actingAs($this->studentUser)->delete("/student/dtr/{$dtr->id}");
+        Storage::assertMissing($path);
     }
 }

@@ -324,6 +324,15 @@
                                 @if ($n = $form19Packets->filter(fn ($p) => in_array($p->status, ['submitted', 'for_review'], true))->count())
                                     &middot; <span class="text-warning fw-semibold">{{ $n }} waiting for your review</span>
                                 @endif
+                                @php
+                                    $f19Late = $f19Anchor && $internship ? $form19Packets->countBy(fn ($p) => \App\Support\TrainingWeeks::lateness($p, \App\Support\TrainingWeeks::dueDate($f19Anchor->copy()->addDays(7 * ((int) $p->packet_number - 1)), $internship))) : collect();
+                                @endphp
+                                @if ($f19Late->get('late'))
+                                    &middot; <span class="text-warning fw-semibold">{{ $f19Late->get('late') }} late</span>
+                                @endif
+                                @if ($f19Late->get('missing'))
+                                    &middot; <span class="text-danger fw-semibold">{{ $f19Late->get('missing') }} missing</span>
+                                @endif
                             </div>
                             @forelse ($f19Months as $month => $monthWeeks)
                                 @php $open = $loop->last || $monthWeeks->contains($toCheck); $mid = 'f19-'.$month; @endphp
@@ -340,6 +349,8 @@
                                                 $packetStatus = $packet->status;
                                                 $weekStart = $f19Anchor?->copy()->addDays(((int) $packet->packet_number - 1) * 7);
                                                 $weekName = 'Week '.($packet->packet_number ?? 1);
+                                                $due = $weekStart && $internship ? \App\Support\TrainingWeeks::dueDate($weekStart, $internship) : null;
+                                                $late = $due ? \App\Support\TrainingWeeks::lateness($packet, $due) : null;
                                             @endphp
                                             <div class="border-top px-2 py-2">
                                                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -348,9 +359,17 @@
                                                         <span class="text-secondary" style="font-size:.75rem;">
                                                             @if ($weekStart) {{ $weekStart->format('M d') }} – {{ $weekStart->copy()->addDays(6)->format('M d') }} &middot; @endif
                                                             {{ $packet->entries->count() }} {{ \Illuminate\Support\Str::plural('day', $packet->entries->count()) }}
+                                                            @if ($due) &middot; due {{ $due->format('M d') }} @endif
                                                         </span>
                                                     </div>
+                                                    <span class="d-flex gap-1 align-items-center">
+                                                    @if ($late === 'late')
+                                                        <span class="badge rounded-pill text-bg-warning" title="First submitted {{ ($packet->first_submitted_at ?? $packet->submitted_at)?->format('M d, Y g:i A') }}">Late</span>
+                                                    @elseif ($late === 'missing')
+                                                        <span class="badge rounded-pill text-bg-danger" title="Past the due date and not submitted yet">Missing</span>
+                                                    @endif
                                                     <span class="badge rounded-pill {{ $badgeColor($packetStatus) }}">{{ $packetStatus === 'draft' ? 'Not submitted yet' : $statusLabelStructured($packetStatus) }}</span>
+                                                    </span>
                                                 </div>
                                                 @if ($packetStatus !== 'draft')
                                                 <div class="d-flex gap-2 flex-wrap mt-1 align-items-center">

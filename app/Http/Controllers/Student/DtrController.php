@@ -26,6 +26,8 @@ use Illuminate\View\View;
  */
 class DtrController extends Controller
 {
+    private const PHOTO_RULE = ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'];
+
     public function index(Request $request): View
     {
         $student = auth()->user()->student;
@@ -54,7 +56,7 @@ class DtrController extends Controller
         $totals = [
             'approved' => (float) $days->where('status', 'approved')->sum('hours_logged'),
             'pending' => (float) $days->where('status', 'pending')->sum('hours_logged'),
-            'required' => (float) ($internship?->required_hours ?? $student?->program?->required_hours ?? 0),
+            'required' => (float) ($internship?->requiredHours() ?? 0),
             'declined' => $days->where('status', 'flagged')->count(),
             'waiting' => $days->where('status', 'pending')->count(),
         ];
@@ -77,9 +79,15 @@ class DtrController extends Controller
             'am_in' => $time, 'am_out' => $time, 'pm_in' => $time, 'pm_out' => $time,
             'notes' => ['nullable', 'string', 'max:500'],      // the afternoon's note
             'am_notes' => ['nullable', 'string', 'max:500'],   // the morning's note
+            // A photo taken at the HTE for every time in and time out.
+            'am_in_photo' => self::PHOTO_RULE, 'am_out_photo' => self::PHOTO_RULE,
+            'pm_in_photo' => self::PHOTO_RULE, 'pm_out_photo' => self::PHOTO_RULE,
         ], [
             'log_date.before_or_equal' => 'You can only enter a date that has already happened.',
             '*.date_format' => 'Enter the time like 08:00.',
+            '*_photo.image' => 'The photo must be a picture (JPG or PNG).',
+            '*_photo.mimes' => 'The photo must be a picture (JPG or PNG).',
+            '*_photo.max' => 'The photo is too large (10 MB at most).',
         ]);
 
         $date = Carbon::parse($data['log_date'])->startOfDay();
@@ -132,6 +140,32 @@ class DtrController extends Controller
             $existing = Dtr::where('deployment_id', $deployment->id)->whereKey($data['dtr_id'])->where('status', '!=', 'approved')->first();
         }
 
+        // Every time in and time out needs a photo taken at the HTE: a new one,
+        // or the one already saved for it.
+        $stamps = $part ? [$part.'_in', $part.'_out'] : array_keys(Dtr::PHOTO_STAMPS);
+        $photoErrors = [];
+        foreach ($stamps as $stamp) {
+            if (filled($data[$stamp] ?? null) && ! $request->hasFile($stamp.'_photo') && ! $existing?->photo($stamp)) {
+                $photoErrors[$stamp.'_photo'] = 'Take a photo at the HTE for the '.strtolower(Dtr::PHOTO_STAMPS[$stamp]).'.';
+            }
+        }
+        if ($photoErrors) {
+            throw ValidationException::withMessages($photoErrors);
+        }
+
+        $photos = $existing?->photos ?? [];
+        foreach ($stamps as $stamp) {
+            if ($request->hasFile($stamp.'_photo') && filled($data[$stamp] ?? null)) {
+                if ($old = $existing?->photo($stamp)) {
+                    \Illuminate\Support\Facades\Storage::delete($old['path']);
+                }
+                $photos[$stamp] = [
+                    'path' => $request->file($stamp.'_photo')->store('dtr_photos/deployment_'.$deployment->id),
+                    'at' => now()->toDateTimeString(),
+                ];
+            }
+        }
+
         $wasDeclined = $existing?->status === 'flagged';
         $values = [
             'log_date' => $date->toDateString(),
@@ -143,6 +177,7 @@ class DtrController extends Controller
             'hours_logged' => $result['hours'],
             'notes' => $data['notes'] ?? null,
             'am_notes' => $data['am_notes'] ?? null,
+            'photos' => $photos ?: null,
             'status' => 'pending',
             'verified_by' => null,
         ];
@@ -177,6 +212,11 @@ class DtrController extends Controller
 
         $date = $dtr->log_date->format('M d, Y');
         Notification::resolveDtr($dtr->id);
+        foreach (array_keys(Dtr::PHOTO_STAMPS) as $stamp) {
+            if ($photo = $dtr->photo($stamp)) {
+                \Illuminate\Support\Facades\Storage::delete($photo['path']);
+            }
+        }
         $dtr->delete();
 
         return redirect()->route('student.dtr')->with('status', "{$date} removed.");

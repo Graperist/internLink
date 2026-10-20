@@ -534,8 +534,7 @@
                 $consentStudentName = $student?->user?->name ?? auth()->user()->name ?? '';
                 $consentAddress = $consentValue('address', $agreementStudentAddress ?? $student?->address ?? '');
                 $consentCourse = $consentValue('course', $courseMajorDefaults['course'] ?? '');
-                $consentRequiredHours = (int) ($student?->program?->required_hours
-                    ?? $internship?->required_hours
+                $consentRequiredHours = (int) ($internship?->requiredHours()
                     ?? 0);
 
                 $storedCompanyName = $consentValue('company_name');
@@ -723,8 +722,7 @@
                 $releaseCompanyName = $releaseValue('company_name');
                 $selectedReleaseHte = $htes->firstWhere('name', $releaseCompanyName)
                     ?? $internship?->deployment?->hte;
-                $releaseRequiredHours = (int) ($student->program?->required_hours
-                    ?? $internship->required_hours
+                $releaseRequiredHours = (int) ($internship->requiredHours()
                     ?? 0);
                 $releaseStartDate = $releaseValue('start_date', $internship?->deployment?->start_date?->format('Y-m-d') ?? '');
                 $releaseEndDate = $releaseValue('end_date', $internship?->deployment?->end_date?->format('Y-m-d') ?? '');
@@ -859,8 +857,7 @@
                 $storedCompanyName = $practicumValue('company_name');
                 $selectedPracticumHte = $htes->firstWhere('name', $storedCompanyName)
                     ?? $internship?->deployment?->hte;
-                $practicumRequiredHours = (int) ($student->program?->required_hours
-                    ?? $internship?->required_hours
+                $practicumRequiredHours = (int) ($internship?->requiredHours()
                     ?? 0);
                 $practicumCourse = $courseMajorDefaults['course'];
                 $practicumMajor = $courseMajorDefaults['major'];

@@ -75,7 +75,7 @@ class Form19WeeklyReviewTest extends TestCase
 
         // Submitting Week 1 doesn't touch Week 2: the student keeps logging.
         $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))
-            ->assertSessionHasNoErrors()->assertSessionHas('status', 'Week 1 submitted for instructor review.');
+            ->assertSessionHasNoErrors()->assertSessionHas('status', 'Week 1 submitted for instructor review. It was due Oct 09, 2026, so it is marked Late.');
         $this->assertSame('submitted', Document::where('packet_number', 1)->value('status'));
         $this->assertSame('draft', Document::where('packet_number', 2)->value('status'));
         $this->addDay('2026-10-03')->assertSessionHasErrors('entry_date'); // week 1 is with the instructor
@@ -187,5 +187,63 @@ class Form19WeeklyReviewTest extends TestCase
             ->assertSeeInOrder(['Before Week 1', 'Week 1', 'Approved'])->assertDontSee('Week 0');
         $this->addDay('2026-10-25')->assertSessionHasNoErrors();
         $this->assertSame('draft', Document::where('packet_number', 2)->value('status'));
+    }
+
+    public function test_each_week_has_a_due_date_and_a_late_week_is_flagged_like_ms_teams(): void
+    {
+        // Week 1 = Oct 01-07, due 2 days later: Oct 09, 11:59 PM (Campus Settings default).
+        $this->travelTo(CarbonImmutable::parse('2026-10-08 12:00:00'));
+        $this->addDay('2026-10-01')->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSee('Due Oct 09, 11:59 PM')->assertDontSee('>Late<', false)->assertDontSee('>Missing<', false);
+
+        // Past due and not sent: Missing, for the student and the instructor.
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 09:00:00'));
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee('>Missing<', false);
+        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $this->internship->student_id, 'form' => $this->form19->id]))
+            ->assertOk()->assertSee('due Oct 09')->assertSee('1 missing');
+
+        // Sent late: marked Late and the instructor is told.
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))->assertSessionHasNoErrors();
+        $week1 = Document::where('packet_number', 1)->firstOrFail();
+        $this->assertNotNull($week1->first_submitted_at);
+        $notice = \App\Models\Notification::where('user_id', $this->instructorUser->id)->where('title', 'like', '%submitted Week 1 late%')->first();
+        $this->assertNotNull($notice, 'the instructor is told the week came in late');
+        $this->assertStringContainsString('was due Oct 09, 2026 11:59 PM; submitted 1 day late', $notice->message);
+        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $this->internship->student_id, 'form' => $this->form19->id]))
+            ->assertOk()->assertSee('>Late<', false)->assertSee('1 late');
+
+        // Returned and sent again: still counted from the first submission (still Late, not a new date).
+        $first = $week1->first_submitted_at;
+        $week1->update(['status' => 'returned']);
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00:00'));
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))->assertSessionHasNoErrors();
+        $this->assertTrue($week1->fresh()->first_submitted_at->equalTo($first));
+    }
+
+    public function test_a_week_sent_on_time_is_not_late_and_the_deadline_is_a_campus_setting(): void
+    {
+        $this->internship->campus->forceFill(['weekly_report_due_days' => 0])->save();
+        $this->travelTo(CarbonImmutable::parse('2026-10-07 18:00:00'));   // Week 1's last day = its due date
+        $this->addDay('2026-10-01')->assertSessionHasNoErrors();
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee('Due Oct 07, 11:59 PM');
+        $this->actingAs($this->studentUser)->post(route('student.documents.log.packet.submit', [$this->form19, 1]))
+            ->assertSessionHas('status', 'Week 1 submitted for instructor review.');
+        $this->assertSame(0, \App\Models\Notification::where('title', 'like', '%late%')->count());
+    }
+
+    public function test_the_overdue_reminder_uses_the_due_date(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-08 08:00:00'));
+        $this->addDay('2026-10-01')->assertSessionHasNoErrors();
+
+        // Oct 09 is the due day: no overdue notice yet.
+        $this->travelTo(CarbonImmutable::parse('2026-10-09 08:00:00'));
+        $this->artisan('internlink:send-reminders --overdue')->assertSuccessful();
+        $this->assertSame(0, \App\Models\Notification::where('title', 'Week 1 report is overdue')->count());
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 08:00:00'));
+        $this->artisan('internlink:send-reminders --overdue')->assertSuccessful();
+        $this->assertSame(1, \App\Models\Notification::where('user_id', $this->studentUser->id)->where('title', 'Week 1 report is overdue')->count());
     }
 }

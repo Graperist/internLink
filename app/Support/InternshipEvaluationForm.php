@@ -113,34 +113,6 @@ class InternshipEvaluationForm
         ],
     ];
 
-    /** Weighted points (max 50): (A + B + ... + H) x 10, each competency = rating x weight%. */
-    public static function totalPoints(array $ratings): ?float
-    {
-        $sum = 0.0;
-        foreach (self::COMPETENCIES as $key => $competency) {
-            $rating = $ratings[$key] ?? null;
-            if ($rating === null || $rating === '' || ! in_array((int) $rating, [1, 2, 3, 4, 5], true)) {
-                return null; // all eight must be rated
-            }
-            $sum += (int) $rating * $competency['weight'] / 100;
-        }
-
-        return round($sum * 10, 2);
-    }
-
-    /**
-     * OJT GRADE = Total Points / 50 x 50 + 50 (official formula), i.e. 60 for
-     * all 1s up to 100 for all 5s. Null until every competency is rated.
-     *
-     * @param array<string, int|string|null> $ratings competency key => 1..5
-     */
-    public static function grade(array $ratings): ?float
-    {
-        $points = self::totalPoints($ratings);
-
-        return $points === null ? null : round($points / 50 * 50 + 50, 2);
-    }
-
     /** Pull "rating_<key>" values out of a field-value lookup callable. */
     public static function ratingsFrom(callable $value): array
     {

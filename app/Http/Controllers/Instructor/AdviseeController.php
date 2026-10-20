@@ -160,7 +160,7 @@ class AdviseeController extends Controller
                 ]);
             }
 
-            $requiredHours = (float) ($internship->program?->required_hours ?? 0);
+            $requiredHours = (float) ($internship->requiredHours() ?? 0);
 
             if ($requiredHours <= 0) {
                 throw ValidationException::withMessages([
@@ -266,7 +266,7 @@ class AdviseeController extends Controller
                     $student->user->name,
                     $student->user->id_number,
                     $student->program?->code ?? '',
-                    $internship?->required_hours ?? $student->program->required_hours,
+                    $internship?->requiredHours() ?? $student->program->required_hours,
                     $deployment?->hte?->name ?? '',
                     $student->approved_documents_count,
                     $requiredDocsCount,

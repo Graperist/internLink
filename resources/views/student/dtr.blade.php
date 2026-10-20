@@ -98,7 +98,7 @@
                             $failedHere = old('part') === $p;
                         @endphp
                         <div class="il-card mb-3">
-                            <form method="POST" action="{{ route('student.dtr.store') }}" class="js-half" data-part="{{ $p }}">
+                            <form method="POST" action="{{ route('student.dtr.store') }}" class="js-half" data-part="{{ $p }}" enctype="multipart/form-data">
                                 @csrf
                                 <input type="hidden" name="part" value="{{ $p }}">
                                 <input type="hidden" name="log_date" value="{{ $selectedDate }}">
@@ -112,12 +112,14 @@
                                         <input type="time" class="form-control @if($failedHere) @error($p.'_in') is-invalid @enderror @endif js-time" id="{{ $p }}_in" name="{{ $p }}_in"
                                                value="{{ $failedHere ? old($p.'_in') : $hm($form?->{$p.'_in'}) }}" @disabled($locked)>
                                         @if ($failedHere) @error($p.'_in')<div class="invalid-feedback">{{ $message }}</div>@enderror @endif
+                                        @include('student._dtr-photo', ['stamp' => $p.'_in', 'label' => 'Photo at time in'])
                                     </div>
                                     <div class="col-6">
                                         <label class="form-label small mb-1" for="{{ $p }}_out">Time out</label>
                                         <input type="time" class="form-control @if($failedHere) @error($p.'_out') is-invalid @enderror @endif js-time" id="{{ $p }}_out" name="{{ $p }}_out"
                                                value="{{ $failedHere ? old($p.'_out') : $hm($form?->{$p.'_out'}) }}" @disabled($locked)>
                                         @if ($failedHere) @error($p.'_out')<div class="invalid-feedback">{{ $message }}</div>@enderror @endif
+                                        @include('student._dtr-photo', ['stamp' => $p.'_out', 'label' => 'Photo at time out'])
                                     </div>
                                 </div>
                                 @php
@@ -237,6 +239,32 @@
         // Picking another date opens that day in the Morning and Afternoon cards.
         f('log_date')?.addEventListener('change', e => { if (e.target.value) f('dateForm').submit(); });
         update();
+
+        // Photos: a preview of the picture taken, and a reminder before saving
+        // when a time has no photo yet.
+        document.querySelectorAll('.js-photo').forEach(input => input.addEventListener('change', () => {
+            const preview = input.parentElement.querySelector('.js-photo-preview');
+            if (!preview) return;
+            if (input.files && input.files[0]) {
+                preview.src = URL.createObjectURL(input.files[0]);
+                preview.classList.remove('d-none');
+            } else {
+                preview.classList.add('d-none');
+            }
+            input.setCustomValidity('');
+        }));
+        document.querySelectorAll('.js-half').forEach(form => form.addEventListener('submit', e => {
+            const p = form.dataset.part;
+            for (const which of ['_in', '_out']) {
+                const time = f(p + which), photo = f(p + which + '_photo');
+                if (time && time.value && photo && photo.dataset.hasPhoto !== '1' && !photo.files.length) {
+                    e.preventDefault();
+                    photo.setCustomValidity('Take a photo at the HTE for this time ' + (which === '_in' ? 'in' : 'out') + '.');
+                    photo.reportValidity();
+                    return;
+                }
+            }
+        }));
     })();
     </script>
 @endif

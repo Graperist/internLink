@@ -39,7 +39,7 @@
                         <td>{{ $student->program->code ?? '—' }}</td>
                         <td>{{ $deployment->start_date?->format('M d, Y') ?? '—' }}</td>
                         <td class="fw-semibold text-primary">{{ number_format($student->hours_rendered ?? 0, 0) }}h</td>
-                        <td>{{ number_format($deployment->internship->required_hours ?? $student->program->required_hours ?? 0, 0) }}h</td>
+                        <td>{{ number_format($deployment->internship->requiredHours() ?? 0, 0) }}h</td>
                         <td>
                             @if($evaluation?->rating !== null)
                                 <span class="il-status-pill approved">Submitted</span>

@@ -92,7 +92,7 @@
         $campusLabel .= ' Campus';
     }
 
-    $requiredHours = $internship->required_hours ?? $student->program?->required_hours;
+    $requiredHours = $internship->requiredHours();
     // The days the HTE supervisor approved in the student's Time Frame (DTR).
     $entries = $deployment
         ? \App\Models\Dtr::where('deployment_id', $deployment->id)->where('status', 'approved')->orderBy('log_date')->get()

@@ -70,8 +70,7 @@
     $course = $v('course', '') ?: ($student?->program?->courseTitle() ?? $student?->program?->name ?? '');
     $major = $student?->major?->name ?: $v('major', '');
 
-    $requiredHours = $student?->program?->required_hours
-        ?? $document->internship?->required_hours
+    $requiredHours = $document->internship?->requiredHours()
         ?? $v('required_hours', '');
 
     $companyName = $v('company_name', '');

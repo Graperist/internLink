@@ -172,7 +172,7 @@
                 @php
                     $internship = $student->currentInternship;
                     $deployment = $internship?->deployment;
-                    $requiredHours = $student->program?->required_hours;
+                    $requiredHours = $internship?->requiredHours() ?? $student->program?->required_hours;
                     $canAct = $instructor->canActOn($student);
                     $approved = $student->approved_documents_count;
                     $missing = max($requiredDocsCount - $approved, 0);

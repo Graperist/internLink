@@ -105,6 +105,8 @@
                                     $doc = $weekNumber >= 1 ? $weekDocs->get($weekNumber) : $weekEntries->first()?->document;
                                     $beforeWeekOne = $weekNumber < 1;
                                     $finished = \App\Support\TrainingWeeks::weekFinished($start, $internship);
+                                    $due = \App\Support\TrainingWeeks::dueDate($start, $internship);
+                                    $late = $beforeWeekOne ? null : \App\Support\TrainingWeeks::lateness($doc, $due);
                                     [$label, $color] = $status($doc);
                                     $canEditWeek = $editable($doc);
                                     $isOpen = $monthOpen && $loop->last;
@@ -117,10 +119,15 @@
                                             <i class="ti ti-chevron-right log-chevron fs-5 text-secondary"></i>
                                             <span>
                                                 <span class="fw-bold d-block">{{ $beforeWeekOne ? 'Before Week 1' : 'Week '.$weekNumber }}</span>
-                                                <span class="text-secondary small">{{ $start->format('M d') }} – {{ $end->format('M d, Y') }} · {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}</span>
+                                                <span class="text-secondary small">{{ $start->format('M d') }} – {{ $end->format('M d, Y') }} · {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}@unless ($beforeWeekOne) · <span class="{{ $late === 'missing' ? 'text-danger fw-semibold' : '' }}">Due {{ $due->format('M d') }}, 11:59 PM</span>@endunless</span>
                                             </span>
                                         </button>
                                         <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                                            @if ($late === 'late')
+                                                <span class="badge rounded-pill text-bg-warning" title="Submitted after the due date">Late</span>
+                                            @elseif ($late === 'missing')
+                                                <span class="badge rounded-pill text-bg-danger" title="Past the due date and not submitted yet">Missing</span>
+                                            @endif
                                             <span class="badge rounded-pill {{ $color }}">{{ $label }}</span>
                                             @if ($beforeWeekOne)
                                                 <span class="small text-secondary">Before your Week 1 – delete these days</span>

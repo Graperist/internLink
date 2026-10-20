@@ -40,7 +40,7 @@ class MonitoringController extends Controller
             return [
                 'student' => $student,
                 'deployment' => $internship?->deployment,
-                'required' => (float) ($internship?->required_hours ?? $student->program?->required_hours ?? 0),
+                'required' => (float) ($internship?->requiredHours() ?? 0),
                 'approved' => (float) $days->sum('hours_logged'),
                 'count' => $days->count(),
                 'last' => $days->max('log_date'),

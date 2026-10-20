@@ -88,32 +88,6 @@
             @endforeach
         @endforeach
 
-        @if ($isForm13)
-            <div class="alert alert-secondary mt-4 mb-0" id="ojtGradeBox">
-                <div class="fw-bold">OJT GRADE</div>
-                <div class="small text-secondary">Official template formula: (Total Points ÷ 50 × 50) + 50</div>
-                <div>Weighted total points: <strong id="ojtPoints">—</strong> / 50 &nbsp;·&nbsp; Calculated OJT grade: <strong id="ojtGrade">—</strong> / 100</div>
-                <div class="small text-secondary" id="ojtGradeHint">Rate all 8 competencies to see the grade.</div>
-            </div>
-            <script>
-                (function () {
-                    const weights = @json(collect($competencies)->map(fn ($c) => $c['weight']));
-                    function update() {
-                        let sum = 0, rated = 0;
-                        Object.keys(weights).forEach(function (key) {
-                            const picked = document.querySelector('input[name="rating_' + key + '"]:checked');
-                            if (picked) { rated++; sum += parseInt(picked.value, 10) * weights[key] / 100; }
-                        });
-                        const done = rated === Object.keys(weights).length;
-                        document.getElementById('ojtPoints').textContent = done ? (sum * 10).toFixed(2) : '—';
-                        document.getElementById('ojtGrade').textContent = done ? (sum * 10 + 50).toFixed(2) : '—';
-                        document.getElementById('ojtGradeHint').textContent = done ? 'All eight competencies are rated. This is the Form 13 evaluation grade, not an automatic internship-completion decision.' : (Object.keys(weights).length - rated) + ' competenc' + ((Object.keys(weights).length - rated) === 1 ? 'y' : 'ies') + ' left to rate.';
-                    }
-                    document.querySelectorAll('.form13-rating').forEach(function (el) { el.addEventListener('change', update); });
-                    update();
-                })();
-            </script>
-        @endif
 
         <div class="d-flex gap-2 mt-4">
             <button type="submit" class="il-btn-primary">Submit for Review</button>

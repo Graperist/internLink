@@ -376,7 +376,8 @@ class OfficialOjtFormsSeeder extends Seeder
                 }
                 $add('other_termination_reason', 'Other termination reason / remarks', 'textarea', 'Disposition', null, false, 60);
                 $add('strengths_weaknesses', 'Strengths and Weaknesses (discuss with student-trainee)', 'textarea', 'Performance Discussion', null, false, 61);
-                $add('ojt_grade', 'OJT Grade', 'number', 'Final Rating', 'numeric|min:0|max:100', true, 62);
+                // No OJT Grade here: the Subject Instructor computes the final grade
+                // outside the system (with seminar attendance etc.).
                 $add('evaluation_date', 'Evaluation Date', 'date', 'Signature', null, true, 63);
                 $add('supervisor_signature_name', 'Host Training Supervisor / Designated Evaluator', 'text', 'Signature', null, true, 64);
                 break;

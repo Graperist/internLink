@@ -21,11 +21,12 @@ class Document extends Model
     protected $fillable = [
         'internship_id', 'hte_id', 'document_requirement_id', 'uploaded_by_user_id',
         'file_path', 'original_filename', 'status',
-        'submitted_at', 'printed_at', 'signatures_confirmed_at', 'completed_at', 'packet_number',
+        'submitted_at', 'first_submitted_at', 'printed_at', 'signatures_confirmed_at', 'completed_at', 'packet_number',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
+        'first_submitted_at' => 'datetime',
         'printed_at' => 'datetime',
         'signatures_confirmed_at' => 'datetime',
         'completed_at' => 'datetime',

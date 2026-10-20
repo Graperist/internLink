@@ -147,6 +147,47 @@ class TrainingWeeks
             || $internship->hasCompletedDeployment();
     }
 
+    /** Days after a week ends that its Form 19 is still on time (Campus Settings). */
+    public static function dueDays(Internship $internship): int
+    {
+        $days = $internship->campus?->weekly_report_due_days;
+
+        return $days === null ? 2 : max(0, (int) $days);
+    }
+
+    /** When the week starting on $weekStart is due: 11:59 PM, dueDays() after its last day. */
+    public static function dueDate(Carbon $weekStart, Internship $internship): Carbon
+    {
+        return $weekStart->copy()->addDays(6 + self::dueDays($internship))->endOfDay();
+    }
+
+    /** The due date of one week's Form 19 document, or null if it has no week. */
+    public static function dueDateFor(Document $document): ?Carbon
+    {
+        $internship = $document->internship;
+        $anchor = $internship ? self::anchorForInternship($internship) : null;
+        if (! $anchor || ! $document->packet_number) {
+            return null;
+        }
+
+        return self::dueDate($anchor->copy()->addDays(7 * ((int) $document->packet_number - 1)), $internship);
+    }
+
+    /**
+     * Like MS Teams: 'late' when the week was first sent after its due date,
+     * 'missing' when it is past due and not sent yet, otherwise null.
+     */
+    public static function lateness(?Document $document, Carbon $due): ?string
+    {
+        $sent = $document?->first_submitted_at
+            ?? ($document && $document->status !== 'draft' ? $document->submitted_at : null);
+        if ($sent) {
+            return $sent->gt($due) ? 'late' : null;
+        }
+
+        return now()->gt($due) ? 'missing' : null;
+    }
+
     /** The first day of the 7-day week that $date falls in. */
     public static function weekStart(Carbon $date, Carbon $anchor): Carbon
     {

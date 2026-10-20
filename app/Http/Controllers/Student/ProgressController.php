@@ -21,7 +21,7 @@ class ProgressController extends Controller
         $internship = $student->currentInternship;
         $deployment = $internship?->deployment;
 
-        $requiredHours = $student->program?->required_hours;
+        $requiredHours = $internship?->requiredHours() ?? $student->program?->required_hours;
         $requiredHours = is_numeric($requiredHours) && (float) $requiredHours > 0 ? (float) $requiredHours : null;
         $hoursPercent = $requiredHours !== null ? min(100, (int) round(($student->hours_rendered / $requiredHours) * 100)) : 0;
 

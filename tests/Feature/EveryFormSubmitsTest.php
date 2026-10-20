@@ -130,4 +130,26 @@ class EveryFormSubmitsTest extends TestCase
         $response->assertSessionHasNoErrors();
         $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->value('status'), "{$code} was saved");
     }
+
+    /** The "Number of Hours" the student types in Form 1 is their required hours everywhere. */
+    public function test_required_hours_come_from_form_1(): void
+    {
+        $internship = Internship::firstOrFail();
+        $this->assertSame(486, $internship->requiredHours(), 'before Form 1: the program hours');
+
+        $form1 = DocumentRequirement::where('code', 'APPLICATION_FOR_OJT')->firstOrFail();
+        $html = $this->actingAs($this->user)->get(route('student.documents.fill', $form1))->assertOk()->getContent();
+        $data = $this->payloadFrom($html);
+        $data['hte_number_of_hours'] = '600';
+        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form1), $data)->assertSessionHasNoErrors();
+
+        $internship = $internship->fresh();
+        $this->assertSame(600, $internship->requiredHours());
+        $this->assertSame(600, (int) $internship->required_hours, 'saved on the internship too');
+
+        // Forms filled after Form 1 carry the typed hours.
+        $consent = DocumentRequirement::where('code', 'PARENT_CONSENT')->firstOrFail();
+        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('600 hours');
+        $this->actingAs($this->user)->get(route('student.dashboard'))->assertOk()->assertSee('600');
+    }
 }

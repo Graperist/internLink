@@ -125,8 +125,6 @@
 
     $competencies = \App\Support\InternshipEvaluationForm::COMPETENCIES;
     $ratings = \App\Support\InternshipEvaluationForm::ratingsFrom($value);
-    $points = \App\Support\InternshipEvaluationForm::totalPoints($ratings);
-    $grade = \App\Support\InternshipEvaluationForm::grade($ratings);
 
     // "Alaminos City Campus" - campus label without the university prefix.
     $campusLabel = preg_replace('/^Pangasinan State University\s*[-,:]\s*/i', '', trim((string) ($campus?->name ?? ''))) ?: '';
@@ -135,7 +133,7 @@
     }
     $campusLabel = $campusLabel ?: '_________ Campus';
 
-    $hours = $student?->program?->required_hours ?? $internship->required_hours ?? null;
+    $hours = $internship->requiredHours() ?? null;
     $evaluator = $value('supervisor_signature_name') ?: ($value('supervisor_name') ?: ($document->uploader?->name ?? ''));
     $supervisor = $value('supervisor_name') ?: $evaluator;
     $dash = fn ($v) => filled($v) ? $v : '';
@@ -230,11 +228,9 @@
         <td class="formula">
             <b>OJT GRADE</b><br>
             = Total Points (A + B + C + D + E + F + G+H x 10) / 50 x 50 + 50
-            @if ($points !== null)
-                <div class="pts">Total Points: {{ number_format($points, 2) }} / 50</div>
-            @endif
         </td>
-        <td class="result">{{ $grade !== null ? number_format($grade, 2) : '' }}</td>
+        {{-- Left blank: the Subject Instructor computes the OJT grade. --}}
+        <td class="result"></td>
     </tr>
 </table>
 

@@ -42,8 +42,8 @@
                     @forelse ($entries as $dtr)
                         <tr>
                             <td><div class="fw-semibold">{{ $dtr->log_date?->format('M d, Y') }}</div><div class="text-secondary" style="font-size:.76rem;">{{ $dtr->log_date?->format('l') }}</div></td>
-                            <td>{{ $dtr->period('am') ?: '—' }}</td>
-                            <td>{{ $dtr->period('pm') ?: '—' }}</td>
+                            <td>{{ $dtr->period('am') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'am'])</td>
+                            <td>{{ $dtr->period('pm') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'pm'])</td>
                             <td class="fw-semibold">{{ \App\Support\TimeFrame::format($dtr->hours_logged) }}</td>
                             <td>
                                 <span class="badge {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$dtr->status] ?? 'text-bg-warning' }}">{{ $dtr->statusLabel() }}</span>

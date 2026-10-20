@@ -124,13 +124,38 @@ class SendWeeklyReportReminders extends Command
                 if ($this->trainedInWeek($deploymentId, $document, $weekStart)) {
                     $hasEntries = $document && $this->hasEntriesInWeek($document, $weekStart);
 
+                    $due = TrainingWeeks::dueDate($weekStart, $internship);
+                    $dueText = $due->isSameDay($today) ? '11:59 PM tonight' : $due->format('M d, Y').', 11:59 PM';
                     $sent += $this->notifyOnce(
                         $student,
                         "Submit your Week {$weekNumber} report",
                         "Week {$weekNumber} ({$weekStart->format('M d')} – {$today->format('M d, Y')}) ends today. "
                         .($hasEntries
-                            ? 'Submit your Form 19 weekly report for instructor review before 11:59 PM tonight.'
-                            : 'It has no weekly report entries yet — add your training days and submit your Form 19 before 11:59 PM tonight.'),
+                            ? "Submit your Form 19 weekly report for instructor review. It is due {$dueText}."
+                            : "It has no weekly report entries yet — add your training days and submit your Form 19. It is due {$dueText}."),
+                        false,
+                        'logsubmit:'.$student->id,
+                        $this->logUrl($internship)
+                    );
+                }
+            }
+        }
+
+        // 3) A finished week whose due date is today (when the campus gives extra days).
+        if ($anchor && TrainingWeeks::dueDays($internship) > 0) {
+            $dayIndex = (int) $anchor->diffInDays($today, false);
+            $weekNumber = intdiv($dayIndex + 1 - TrainingWeeks::dueDays($internship), 7);
+            if ($weekNumber >= 1) {
+                $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
+                $due = TrainingWeeks::dueDate($weekStart, $internship);
+                $weekDoc = $weeks->get($weekNumber);
+                if ($due->isSameDay($today) && ! ($weekDoc && in_array($weekDoc->status, self::SUBMITTED, true))
+                    && $this->trainedInWeek($deploymentId, $weekDoc, $weekStart)) {
+                    $sent += $this->notifyOnce(
+                        $student,
+                        "Week {$weekNumber} report is due tonight",
+                        "Your Form 19 weekly report for Week {$weekNumber} ({$weekStart->format('M d')} – {$weekStart->copy()->addDays(6)->format('M d, Y')}) is due tonight at 11:59 PM. "
+                        .'After that it is marked Late.',
                         false,
                         'logsubmit:'.$student->id,
                         $this->logUrl($internship)
@@ -150,38 +175,41 @@ class SendWeeklyReportReminders extends Command
             return 0;
         }
 
-        // The most recently completed week and how long ago its deadline passed.
+        // Recent weeks that are past their due date and still not sent.
         $dayIndex = (int) $anchor->diffInDays($today, false);
-        if ($dayIndex < 7) {
-            return 0;
+        $completed = intdiv($dayIndex, 7); // weeks finished so far
+        $sent = 0;
+
+        for ($weekNumber = max(1, $completed - 3); $weekNumber <= $completed; $weekNumber++) {
+            $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
+            $due = TrainingWeeks::dueDate($weekStart, $internship);
+            $document = $weeks->get($weekNumber);   // that week's Form 19
+            if ($document && in_array($document->status, self::SUBMITTED, true)) {
+                continue;
+            }
+            if ($today->lte($due)) {
+                continue;   // not due yet
+            }
+            $daysLate = (int) $due->copy()->startOfDay()->diffInDays($today);
+            if ($daysLate < 1 || $daysLate > self::OVERDUE_DAYS) {
+                continue;
+            }
+            if (! $this->trainedInWeek($internship->deployment->id, $document, $weekStart)) {
+                continue;
+            }
+
+            $sent += $this->notifyOnce(
+                $student,
+                "Week {$weekNumber} report is overdue",
+                "Your Form 19 weekly report for Week {$weekNumber} was due {$due->format('M d, Y')} 11:59 PM and hasn't been submitted. "
+                .'Please submit it as soon as possible. It will be marked Late.',
+                true,
+                'logsubmit:'.$student->id,
+                $this->logUrl($internship)
+            );
         }
 
-        $weekNumber = intdiv($dayIndex, 7); // completed weeks so far
-        $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
-        $document = $weeks->get($weekNumber);   // that week's Form 19
-        if ($document && in_array($document->status, self::SUBMITTED, true)) {
-            return 0;
-        }
-        $deadline = $weekStart->copy()->addDays(6);
-        $daysLate = (int) $deadline->diffInDays($today);
-
-        if ($daysLate < 1 || $daysLate > self::OVERDUE_DAYS) {
-            return 0;
-        }
-
-        if (! $this->trainedInWeek($internship->deployment->id, $document, $weekStart)) {
-            return 0;
-        }
-
-        return $this->notifyOnce(
-            $student,
-            "Week {$weekNumber} report is overdue",
-            "Your Form 19 weekly report for Week {$weekNumber} was due {$deadline->format('M d, Y')} 11:59 PM and hasn't been submitted. "
-            .'Please submit it for instructor review as soon as possible.',
-            true,
-            'logsubmit:'.$student->id,
-            $this->logUrl($internship)
-        );
+        return $sent;
     }
 
     private function trainedInWeek(int $deploymentId, ?Document $document, Carbon $weekStart): bool

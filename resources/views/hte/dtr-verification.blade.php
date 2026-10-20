@@ -59,8 +59,8 @@
                                 <div class="fw-semibold">{{ $dtr->log_date?->format('M d, Y') }}</div>
                                 <div class="text-secondary" style="font-size:.76rem;">{{ $dtr->log_date?->format('l') }}</div>
                             </td>
-                            <td>{{ $dtr->period('am') ?: '—' }}</td>
-                            <td>{{ $dtr->period('pm') ?: '—' }}</td>
+                            <td>{{ $dtr->period('am') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'am'])</td>
+                            <td>{{ $dtr->period('pm') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'pm'])</td>
                             <td class="fw-semibold">{{ $fmt($dtr->hours_logged) }}</td>
                             <td>
                                 @if ($dtr->am_notes)

@@ -20,7 +20,7 @@ class DashboardController extends Controller
             && $internship->deployment
             && $internship->deployment->status === 'active';
 
-        $requiredHours = $student->program?->required_hours;
+        $requiredHours = $internship?->requiredHours() ?? $student->program?->required_hours;
         $requiredHours = is_numeric($requiredHours) && (float) $requiredHours > 0 ? (float) $requiredHours : null;
         $hoursRendered = $student->hours_rendered;
         $hoursRemaining = $requiredHours !== null ? max($requiredHours - $hoursRendered, 0) : null;

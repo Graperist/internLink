@@ -159,14 +159,9 @@
 
 @if ($requirement->code === 'EVALUATION_FORM')
     @php
-        $ratings = \App\Support\InternshipEvaluationForm::ratingsFrom($value);
-        $totalPoints = \App\Support\InternshipEvaluationForm::totalPoints($ratings);
-        $ojtGrade = \App\Support\InternshipEvaluationForm::grade($ratings);
     @endphp
     <div class="section-title">Evaluation Summary</div>
     <table class="field-table">
-        <tr><td class="label">Total points (A + B + C + D + E + F + G + H × 10)</td><td>{{ $totalPoints !== null ? number_format($totalPoints, 2).' / 50' : 'Incomplete — not all competencies rated' }}</td></tr>
-        <tr><td class="label">OJT GRADE = Total Points / 50 × 50 + 50</td><td><strong>{{ $ojtGrade !== null ? number_format($ojtGrade, 2) : '—' }}</strong></td></tr>
         <tr><td class="label">Disposition / remarks</td><td>{{ $value('other_termination_reason') ?: '—' }}</td></tr>
         <tr><td class="label">Evaluation Date</td><td>{{ $value('evaluation_date') ?: '—' }}</td></tr>
     </table>

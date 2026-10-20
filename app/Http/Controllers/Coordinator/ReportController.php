@@ -88,7 +88,7 @@ class ReportController extends Controller
                     $deployment?->hte?->name ?? '',
                     $deployment?->status ? ucfirst($deployment->status) : 'Not deployed',
                     $student->hours_rendered,
-                    $student->program->required_hours,
+                    $student->currentInternship?->requiredHours() ?? $student->program->required_hours,
                 ]);
             }
 

@@ -260,8 +260,7 @@ class DocumentController extends Controller
         // the student's program as its source of truth. These values are
         // displayed read-only in the student form and re-derived server-side
         // on submission so they cannot be tampered with in the browser.
-        $agreementRequiredHours = (int) ($student->program?->required_hours
-            ?? $internship->required_hours
+        $agreementRequiredHours = (int) ($internship->requiredHours()
             ?? 0);
 
         $agreementStudentAddress = $document?->fieldValue('address');
@@ -338,8 +337,7 @@ class DocumentController extends Controller
                 ]);
             }
 
-            $requiredHours = (int) ($student->program?->required_hours
-                ?? $internship->required_hours
+            $requiredHours = (int) ($internship->requiredHours()
                 ?? 0);
 
             if ($requiredHours <= 0) {
@@ -422,8 +420,7 @@ class DocumentController extends Controller
                 'signed_date' => ['required', 'date'],
             ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
 
-            $requiredHours = (int) ($student->program?->required_hours
-                ?? $internship->required_hours
+            $requiredHours = (int) ($internship->requiredHours()
                 ?? 0);
 
             if ($requiredHours <= 0) {
@@ -609,6 +606,11 @@ class DocumentController extends Controller
         });
 
         $verb = $wasReturned ? 'resubmitted' : 'submitted';
+
+        // The "Number of Hours" the student typed in Form 1 is their required hours.
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            $internship->syncRequiredHoursFromForm1();
+        }
 
         $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
         if ($isEvaluation) {
@@ -1030,9 +1032,30 @@ class DocumentController extends Controller
             \App\Support\TrainingWeeks::pin($internship);
         }
 
-        $document->update(['status' => 'submitted', 'submitted_at' => now()]);
+        $document->update(['status' => 'submitted', 'submitted_at' => now(), 'first_submitted_at' => $document->first_submitted_at ?? now()]);
 
         \App\Models\Notification::resolve('logsubmit:'.$student->id);
+
+        // Like MS Teams: a week first sent after its due date is "Late", and
+        // the Subject Instructor is told.
+        if ($requirement->code === 'WEEKLY_REPORT' && ($due = \App\Support\TrainingWeeks::dueDateFor($document->fresh()))
+            && \App\Support\TrainingWeeks::lateness($document->fresh(), $due) === 'late') {
+            $daysLate = (int) ceil($due->diffInHours(now()) / 24);
+            \App\Models\Instructor::where('campus_id', $internship->campus_id)
+                ->where('program_id', $internship->program_id)
+                ->pluck('user_id')
+                ->each(fn ($userId) => \App\Models\Notification::create([
+                    'user_id' => $userId,
+                    'type' => 'document_status',
+                    'title' => "{$student->user->name} submitted Week {$packet} late",
+                    'message' => "Form 19 Week {$packet} was due {$due->format('M d, Y')} 11:59 PM; submitted {$daysLate} ".\Illuminate\Support\Str::plural('day', $daysLate).' late. Awaiting your review.',
+                    'url' => route('instructor.documents', ['student' => $student->id, 'form' => $requirement->id], false),
+                    'resolve_key' => 'document:'.$document->id,
+                ]));
+
+            return redirect()->route('student.documents.log', $requirement)
+                ->with('status', 'Week '.$packet.' submitted for instructor review. It was due '.$due->format('M d, Y').', so it is marked Late.');
+        }
 
         return redirect()->route('student.documents.log', $requirement)->with('status', $requirement->code === 'WEEKLY_REPORT' ? 'Week '.$packet.' submitted for instructor review.' : 'Log submitted for instructor review.');
     }

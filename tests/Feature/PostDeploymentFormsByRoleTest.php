@@ -202,7 +202,7 @@ class PostDeploymentFormsByRoleTest extends TestCase
             ->assertOk()
             ->assertSee('Curiosity goes beyond immediate job procedures; eager to learn more; works hard.')   // D / 5
             ->assertSee('Generally not presentable: clothes dirty and not appropriate for the job')           // H / 1
-            ->assertSee('OJT GRADE');
+            ->assertDontSee('OJT GRADE');   // the instructor computes the grade
 
         $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$this->req('TRAINING_SUPERVISOR_FEEDBACK'), $this->deployment]))
             ->assertOk()->assertSee('Strongly Agree')->assertSee('Strongly Disagree');
@@ -245,28 +245,15 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
     // ------------------------------------------------------- Form 13 grade/print
 
-    public function test_ojt_grade_formula_matches_the_official_form(): void
+    public function test_the_system_does_not_compute_an_ojt_grade(): void
     {
-        $all = fn (int $n) => array_fill_keys(array_keys(InternshipEvaluationForm::COMPETENCIES), $n);
-
-        $this->assertSame(100.0, InternshipEvaluationForm::grade($all(5)));
-        $this->assertSame(80.0, InternshipEvaluationForm::grade($all(3)));
-        $this->assertSame(60.0, InternshipEvaluationForm::grade($all(1)));
-        $this->assertSame(50.0, InternshipEvaluationForm::totalPoints($all(5)));
-        $this->assertNull(InternshipEvaluationForm::grade(['conduct' => 5]), 'not all competencies rated');
-
-        // weights from the official form add up to 100 and E (quality and accuracy) is the heaviest at 20
+        // The Subject Instructor computes the final grade outside the system.
+        $this->assertFalse(method_exists(InternshipEvaluationForm::class, 'grade'));
+        $this->assertNull(\App\Models\DocumentFieldDefinition::where('field_key', 'ojt_grade')->first(), 'the HTE has no OJT Grade box');
         $this->assertSame(100, array_sum(array_column(InternshipEvaluationForm::COMPETENCIES, 'weight')));
-        $this->assertSame(20, InternshipEvaluationForm::COMPETENCIES['quality_accuracy_work']['weight']);
-
-        // uneven ratings: A5 B4 C3 D2 E1 F5 G4 H3 -> sum(r*w)/100 = 5*.10+4*.15+3*.10+2*.10+1*.20+5*.10+4*.15+3*.10 = 3.2 -> 32 points -> 82
-        $this->assertSame(82.0, InternshipEvaluationForm::grade([
-            'ability_to_learn' => 5, 'work_attitude' => 4, 'conduct' => 3, 'motivation_initiative' => 2,
-            'quality_accuracy_work' => 1, 'quantity_of_work' => 5, 'safety_practices' => 4, 'appearance_hygiene' => 3,
-        ]));
     }
 
-    public function test_form_13_printout_shows_control_number_descriptor_and_the_real_grade(): void
+    public function test_form_13_printout_shows_control_number_and_descriptor_but_no_grade(): void
     {
         $requirement = $this->req('EVALUATION_FORM');
         $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $this->payload($requirement, 3))
@@ -279,8 +266,8 @@ class PostDeploymentFormsByRoleTest extends TestCase
         $this->assertStringContainsString('FM-AA-INT-13', $html);
         $this->assertStringContainsString('01-Feb-2017', $html);
         $this->assertStringContainsString('Asks questions; has adequate degree of knowledge', $html); // D / 3, verbatim
-        $this->assertStringContainsString('80.00', $html);       // all 3s -> OJT grade 80
-        $this->assertStringContainsString('30.00 / 50', $html);  // total points
+        $this->assertStringNotContainsString('80.00', $html);    // no computed OJT grade
+        $this->assertStringNotContainsString('/ 50', $html);     // no computed total points
     }
 
     public function test_form_21_printout_uses_the_likert_scale(): void

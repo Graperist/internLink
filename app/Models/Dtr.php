@@ -23,7 +23,7 @@ class Dtr extends Model
         'deployment_id', 'verified_by', 'log_date',
         'time_in', 'time_out', 'original_time_in', 'original_time_out',
         'am_in', 'am_out', 'pm_in', 'pm_out', 'declined_by_user_id',
-        'hours_logged', 'notes', 'am_notes', 'status',
+        'hours_logged', 'notes', 'am_notes', 'status', 'photos',
         'flagged_by', 'flagged_at', 'flag_reason', 'flag_note', 'flag_target',
         'resolved_by', 'resolved_at',
         'clock_in_verified_by', 'clock_in_verified_at',
@@ -35,6 +35,7 @@ class Dtr extends Model
     ];
 
     protected $casts = [
+        'photos' => 'array',
         'log_date' => 'date',
         'flagged_at' => 'datetime',
         'resolved_at' => 'datetime',
@@ -67,6 +68,22 @@ class Dtr extends Model
     }
 
     /** "8:00 AM - 12:00 PM" for the morning or afternoon, or "" */
+    /** The four times a photo is taken for. */
+    public const PHOTO_STAMPS = ['am_in' => 'Morning time in', 'am_out' => 'Morning time out', 'pm_in' => 'Afternoon time in', 'pm_out' => 'Afternoon time out'];
+
+    /** ['path' => ..., 'at' => ...] of the photo taken for am_in / am_out / pm_in / pm_out, or null. */
+    public function photo(string $stamp): ?array
+    {
+        $photo = ($this->photos ?? [])[$stamp] ?? null;
+
+        return is_array($photo) && filled($photo['path'] ?? null) ? $photo : null;
+    }
+
+    public function photoUrl(string $stamp): ?string
+    {
+        return $this->photo($stamp) ? route('dtr.photo', [$this, $stamp]) : null;
+    }
+
     public function period(string $which): string
     {
         $in = $this->{$which.'_in'};

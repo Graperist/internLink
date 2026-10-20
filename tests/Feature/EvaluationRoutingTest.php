@@ -386,7 +386,6 @@ class EvaluationRoutingTest extends TestCase
         $payload['rating_a_ability_to_learn'] = 5;
         $payload['termination_company_rules'] = '1';
         $payload['future_employment'] = '1';
-        $payload['ojt_grade'] = 90;
         $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $payload)->assertSessionHasNoErrors();
         $document = Document::where('document_requirement_id', $requirement->id)->firstOrFail();
 
@@ -429,17 +428,12 @@ class EvaluationRoutingTest extends TestCase
 
     // ------------------------------------------------ regression
 
-    public function test_form_13_ojt_grade_is_validated_without_a_server_error(): void
+    public function test_the_hte_enters_no_ojt_grade_on_form_13(): void
     {
         $requirement = $this->req('EVALUATION_FORM');
-        $payload = $this->payload($requirement);
-
-        $payload['ojt_grade'] = 150;   // above the 100 maximum -> validation error, not a 500
-        $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $payload)
-            ->assertSessionHasErrors('ojt_grade');
-
-        $payload['ojt_grade'] = 90;
-        $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $payload)
+        $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$requirement, $this->deployment]))->assertOk()
+            ->assertDontSee('name="ojt_grade"', false)->assertDontSee('Calculated OJT grade');
+        $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))
             ->assertSessionHasNoErrors();
     }
 
