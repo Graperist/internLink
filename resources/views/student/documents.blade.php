@@ -46,7 +46,7 @@
     // only shows the approved hours and is not counted as a form to finish.
     $timeFrameCode = \App\Support\TimeFrameForm::CODE;
     $tfApprovedHours = $internship?->deployment
-        ? (float) \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->where('status', 'approved')->sum('hours_logged')
+        ? (float) \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->withApprovedTime()->get()->sum(fn ($d) => $d->countedHours())
         : 0.0;
     $tfRequiredHours = (float) ($internship?->requiredHours() ?? 0);
 
@@ -188,7 +188,7 @@
             $previewable = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($doc->original_filename ?: $doc->file_path));
             $next = match (true) {
                 $requirement->code === 'WEEKLY_REPORT' => 'Add a row for every training day. Each week is its own Form 19: submit it when the week is finished, your instructor checks it, then you print it, have it signed and upload the signed copy. Open the log to see your weeks, grouped by month.',
-                $requirement->code === $timeFrameCode => 'Filled in from your daily time in and out in Time Frame (DTR) once your HTE supervisor approves each day. There is nothing to submit; your instructor sees your approved days for monitoring. Download a copy whenever you need one.',
+                $requirement->code === $timeFrameCode => 'Filled in from your daily time in and out in Time Frame (DTR) as your HTE supervisor approves each morning and afternoon. There is nothing to submit; your instructor sees your approved days for monitoring. Download a copy whenever you need one.',
                 $rowInfo['sentToHte'] => 'Delivered to your HTE\'s Evaluations Received. Nothing else to do on this form.',
                 $doc?->status === 'approved' => 'Approved. Nothing else to do on this form.',
                 $doc?->status === 'returned' => 'Your instructor returned this form. Correct it and submit again.',
@@ -231,7 +231,7 @@
                     @elseif ($requirement->code === $timeFrameCode)
                         {{-- Form 17 is the daily time in/out the supervisor approves - nothing to submit --}}
                         <a href="{{ route('student.dtr') }}" class="btn btn-primary"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
-                        @if (\App\Models\Dtr::where('deployment_id', $internship?->deployment?->id)->where('status', 'approved')->exists())
+                        @if (\App\Models\Dtr::where('deployment_id', $internship?->deployment?->id)->withApprovedTime()->exists())
                             <a href="{{ route('student.dtr.form', ['download' => 1]) }}" target="_blank" class="btn btn-outline-primary"><i class="ti ti-download"></i> Download Form 17</a>
                         @endif
                     @elseif ($doc?->status === 'printed' || ($doc?->status === 'completed' && ! $hasFile))
@@ -293,7 +293,7 @@
                 $tfDays = $internship?->deployment
                     ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->orderBy('log_date')->get()
                     : collect();
-                $tfApproved = $tfDays->where('status', 'approved');
+                $tfApproved = $tfDays->filter(fn ($d) => $d->countedHours() > 0);
                 $tfOther = $tfDays->count() - $tfApproved->count();
             @endphp
             <div class="il-card mb-3">
@@ -302,7 +302,7 @@
                     <a href="{{ route('student.dtr') }}" class="small"><i class="ti ti-clock"></i> Open Time Frame (DTR)</a>
                 </div>
                 <div class="small text-secondary mb-2">
-                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} · {{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }} hours. These are the days printed on Form 17.
+                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} · {{ \App\Support\TimeFrame::format($tfApproved->sum(fn ($d) => $d->countedHours())) }} hours. These are the days printed on Form 17.
                     @if ($tfOther > 0)
                         <span class="text-warning">{{ $tfOther }} more {{ \Illuminate\Support\Str::plural('day', $tfOther) }} waiting or declined.</span>
                     @endif
@@ -319,16 +319,16 @@
                                 <tr>
                                     <td class="text-nowrap">{{ $day->log_date->format('M d, Y') }}</td>
                                     <td>{{ $day->log_date->format('l') }}</td>
-                                    <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
-                                    <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
-                                    <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->hours_logged) }}</td>
+                                    <td class="text-nowrap">{{ $day->approvedPeriod('am') ?: '—' }}</td>
+                                    <td class="text-nowrap">{{ $day->approvedPeriod('pm') ?: '—' }}</td>
+                                    <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->countedHours()) }}</td>
                                 </tr>
                             @empty
                                 <tr><td colspan="5" class="text-center text-secondary py-3">No approved days yet.</td></tr>
                             @endforelse
                         </tbody>
                         @if ($tfApproved->isNotEmpty())
-                            <tfoot><tr><td colspan="4" class="text-end fw-semibold">Total number of hours</td><td class="text-end fw-bold">{{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }}</td></tr></tfoot>
+                            <tfoot><tr><td colspan="4" class="text-end fw-semibold">Total number of hours</td><td class="text-end fw-bold">{{ \App\Support\TimeFrame::format($tfApproved->sum(fn ($d) => $d->countedHours())) }}</td></tr></tfoot>
                         @endif
                     </table>
                 </div>

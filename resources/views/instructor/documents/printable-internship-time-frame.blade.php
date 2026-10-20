@@ -95,7 +95,7 @@
     $requiredHours = $internship->requiredHours();
     // The days the HTE supervisor approved in the student's Time Frame (DTR).
     $entries = $deployment
-        ? \App\Models\Dtr::where('deployment_id', $deployment->id)->where('status', 'approved')->orderBy('log_date')->get()
+        ? \App\Models\Dtr::where('deployment_id', $deployment->id)->withApprovedTime()->orderBy('log_date')->get()
         : collect();
     // Download by week (?week=...): only that week's days.
     if ($onlyWeek = \App\Support\TrainingWeeks::requested($internship)) {
@@ -108,7 +108,7 @@
         $entries = $entries->filter(fn ($day) => $day->log_date->isSameMonth($onlyMonth))->values();
         $periodLabel = $onlyMonth->format('F Y');
     }
-    $total = $entries->sum(fn ($day) => (float) $day->hours_logged);
+    $total = $entries->sum(fn ($day) => $day->countedHours());
     $blankRows = max(0, 28 - $entries->count()); // the paper form has 28 rows
     $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 2, '.', ''), '0'), '.');
 
@@ -169,7 +169,7 @@
         <tr>
             <td class="center">{{ $entry->log_date->format('M d, Y') }}</td>
             <td class="center">{{ $entry->log_date->format('l') }}</td>
-            <td class="center">{{ $fmt($entry->hours_logged) }}</td>
+            <td class="center">{{ $fmt($entry->countedHours()) }}</td>
         </tr>
     @endforeach
     @for ($i = 0; $i < $blankRows; $i++)

@@ -80,6 +80,12 @@
                 <a href="{{ route('instructor.notifications') }}" class="il-nav-link {{ request()->routeIs('instructor.notifications') ? 'active' : '' }}">
                     <i class="ti ti-bell"></i> Notifications
                 </a>
+                @unless ($isCoordinator)
+                    {{-- The Subject Instructor sets the Form 19 deadline for their program. --}}
+                    <a href="{{ route('instructor.settings') }}" class="il-nav-link {{ request()->routeIs('instructor.settings*') ? 'active' : '' }}">
+                        <i class="ti ti-settings"></i> Settings
+                    </a>
+                @endunless
 
                 @if ($isCoordinator)
                     <p class="il-nav-label">Campus Administration</p>

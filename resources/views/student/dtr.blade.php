@@ -14,7 +14,7 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">Form 17 – Internship Time Frame</h1>
-        <p class="text-secondary small mb-0">Your daily time record. Enter your morning and afternoon time in and out; the system totals the hours. Your HTE supervisor approves each day.</p>
+        <p class="text-secondary small mb-0">Your daily time record. Enter your morning and afternoon time in and out; the system totals the hours. Your HTE supervisor approves the morning and the afternoon separately.</p>
     </div>
 </div>
 
@@ -54,7 +54,7 @@
         <div class="col-lg-4">
             <div style="position: sticky; top: 1rem;" id="dayForm">
                 @php
-                    $locked = $form?->status === 'approved';
+                    $dayLocked = $form?->status === 'approved';
                     $maxDate = min(today()->toDateString(), $deployment->end_date?->toDateString() ?? today()->toDateString());
                 @endphp
                 <div class="il-card mb-3">
@@ -73,13 +73,17 @@
                             <span class="badge rounded-pill text-bg-light text-secondary border">Not entered yet</span>
                         @endif
                     </div>
-                    @if ($form?->status === 'flagged')
+                    @if ($form && in_array('flagged', [$form->halfStatus('am'), $form->halfStatus('pm')], true))
                         <div class="alert alert-danger small py-2 mt-2 mb-0">
-                            <strong>Declined{{ $form->decliner ? ' by '.$form->decliner->name : '' }}:</strong> {{ $form->flag_reason }}
-                            @if ($form->flag_note)<div class="mt-1">{{ $form->flag_note }}</div>@endif
-                            <div class="mt-1">Correct the morning or afternoon below and save it again.</div>
+                            @foreach (\App\Models\Dtr::HALVES as $half => $halfName)
+                                @if ($form->halfStatus($half) === 'flagged')
+                                    <div><strong>{{ $halfName }} declined{{ $form->decliner ? ' by '.$form->decliner->name : '' }}:</strong> {{ $form->{$half.'_decline_reason'} ?: $form->flag_reason }}</div>
+                                    @if ($form->{$half.'_decline_note'})<div class="mb-1">{{ $form->{$half.'_decline_note'} }}</div>@endif
+                                @endif
+                            @endforeach
+                            <div class="mt-1">Correct it below and save it again.</div>
                         </div>
-                    @elseif ($locked)
+                    @elseif ($dayLocked)
                         <div class="small text-success mt-2"><i class="ti ti-lock"></i> Approved by your supervisor - this day can no longer be changed.</div>
                     @endif
                     <div class="d-flex justify-content-between align-items-center border rounded p-2 mt-3 bg-light">
@@ -96,6 +100,9 @@
                         @php
                             $saved = $form && filled($form->{$p.'_in'});
                             $failedHere = old('part') === $p;
+                            // The morning and the afternoon are approved separately: an approved half is locked.
+                            $halfStatus = $form?->halfStatus($p);
+                            $locked = $dayLocked || $halfStatus === 'approved';
                         @endphp
                         <div class="il-card mb-3">
                             <form method="POST" action="{{ route('student.dtr.store') }}" class="js-half" data-part="{{ $p }}" enctype="multipart/form-data">
@@ -103,7 +110,11 @@
                                 <input type="hidden" name="part" value="{{ $p }}">
                                 <input type="hidden" name="log_date" value="{{ $selectedDate }}">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h2 class="h6 fw-bold mb-0"><i class="ti {{ $icon }}"></i> {{ $label }}</h2>
+                                    <h2 class="h6 fw-bold mb-0"><i class="ti {{ $icon }}"></i> {{ $label }}
+                                        @if ($halfStatus)
+                                            <span class="badge rounded-pill ms-1 {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$halfStatus] ?? 'text-bg-warning' }}" style="font-size:.68rem;">{{ $form->halfStatusLabel($p) }}</span>
+                                        @endif
+                                    </h2>
                                     <span class="small fw-semibold" id="{{ $p }}Total"></span>
                                 </div>
                                 <div class="row g-2">
@@ -159,24 +170,34 @@
                         </thead>
                         <tbody>
                             @forelse ($days as $day)
-                                <tr class="{{ $day->status === 'flagged' ? 'table-danger' : '' }} {{ $form?->id === $day->id ? 'table-active' : '' }}">
+                                <tr class="{{ in_array('flagged', [$day->halfStatus('am'), $day->halfStatus('pm')], true) ? 'table-danger' : '' }} {{ $form?->id === $day->id ? 'table-active' : '' }}">
                                     <td class="text-nowrap"><div class="fw-semibold">{{ $day->log_date->format('M d, Y') }}</div><div class="text-secondary">{{ $day->log_date->format('l') }}</div></td>
                                     <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
                                     <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
                                     <td class="text-end fw-semibold">{{ $fmt($day->hours_logged) }}</td>
                                     <td>
-                                        <span class="badge rounded-pill {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$day->status] ?? 'text-bg-warning' }}">{{ $day->statusLabel() }}</span>
-                                        @if ($day->status === 'flagged' && $day->flag_reason)
-                                            <div class="text-danger mt-1" style="font-size:.75rem;">{{ $day->flag_reason }}</div>
-                                        @endif
+                                        @foreach (\App\Models\Dtr::HALVES as $half => $halfName)
+                                            @if ($day->halfStatus($half))
+                                                <div class="text-nowrap" style="font-size:.75rem;">
+                                                    <span class="text-secondary">{{ $half === 'am' ? 'AM' : 'PM' }}</span>
+                                                    <span class="badge rounded-pill {{ ['approved' => 'text-bg-success', 'flagged' => 'text-bg-danger'][$day->halfStatus($half)] ?? 'text-bg-warning' }}">{{ $day->halfStatusLabel($half) }}</span>
+                                                </div>
+                                                @if ($day->halfStatus($half) === 'flagged' && ($day->{$half.'_decline_reason'} ?: $day->flag_reason))
+                                                    <div class="text-danger" style="font-size:.72rem;">{{ $day->{$half.'_decline_reason'} ?: $day->flag_reason }}</div>
+                                                @endif
+                                            @endif
+                                        @endforeach
                                     </td>
                                     <td class="text-end text-nowrap">
+                                        @php $anyApproved = in_array('approved', [$day->halfStatus('am'), $day->halfStatus('pm')], true); @endphp
                                         @if ($day->status !== 'approved' && $deployment->status === 'active')
                                             <a href="{{ route('student.dtr', ['date' => $day->log_date->toDateString()]) }}#dayForm" class="btn btn-sm {{ $day->status === 'flagged' ? 'btn-danger' : 'btn-outline-secondary' }} px-2" title="{{ $day->status === 'flagged' ? 'Correct' : 'Edit' }}"><i class="ti ti-pencil"></i></a>
+                                            @unless ($anyApproved)
                                             <form method="POST" action="{{ route('student.dtr.destroy', $day) }}" class="d-inline" onsubmit="return confirm('Remove {{ $day->log_date->format('M d, Y') }}?')">
                                                 @csrf @method('DELETE')
                                                 <button type="submit" class="btn btn-sm btn-link text-danger p-1" title="Remove"><i class="ti ti-trash"></i></button>
                                             </form>
+                                            @endunless
                                         @endif
                                     </td>
                                 </tr>
@@ -194,7 +215,7 @@
             </div>
 
             {{-- Form 17 printout: made from the approved days, nothing to submit --}}
-            @php $approvedDays = $days->where('status', 'approved'); @endphp
+            @php $approvedDays = $days->filter(fn ($d) => $d->countedHours() > 0); @endphp
             <div class="il-card">
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                     <div>

@@ -24,6 +24,7 @@ class Dtr extends Model
         'time_in', 'time_out', 'original_time_in', 'original_time_out',
         'am_in', 'am_out', 'pm_in', 'pm_out', 'declined_by_user_id',
         'hours_logged', 'notes', 'am_notes', 'status', 'photos',
+        'am_status', 'pm_status', 'am_decline_reason', 'am_decline_note', 'pm_decline_reason', 'pm_decline_note', 'approved_hours',
         'flagged_by', 'flagged_at', 'flag_reason', 'flag_note', 'flag_target',
         'resolved_by', 'resolved_at',
         'clock_in_verified_by', 'clock_in_verified_at',
@@ -36,6 +37,7 @@ class Dtr extends Model
 
     protected $casts = [
         'photos' => 'array',
+        'approved_hours' => 'float',
         'log_date' => 'date',
         'flagged_at' => 'datetime',
         'resolved_at' => 'datetime',
@@ -67,7 +69,93 @@ class Dtr extends Model
         };
     }
 
-    /** "8:00 AM - 12:00 PM" for the morning or afternoon, or "" */
+    public const HALVES = ['am' => 'Morning', 'pm' => 'Afternoon'];
+
+    /** Days whose morning or afternoon is still waiting for the supervisor. */
+    public function scopeWaiting($query)
+    {
+        return $query->where(fn ($q) => $q->where('am_status', 'pending')->orWhere('pm_status', 'pending')
+            ->orWhere(fn ($old) => $old->whereNull('am_status')->whereNull('pm_status')->where('status', 'pending')));
+    }
+
+    /** Days with at least one approved half - what counts and what the instructor sees. */
+    public function scopeWithApprovedTime($query)
+    {
+        return $query->where(fn ($q) => $q->where('approved_hours', '>', 0)->orWhere('am_status', 'approved')->orWhere('pm_status', 'approved')
+            ->orWhere(fn ($old) => $old->whereNull('am_status')->whereNull('pm_status')->where('status', 'approved')));
+    }
+
+    /** Hours that count: the approved halves (older rows: the whole day once approved). */
+    public function countedHours(): float
+    {
+        if ($this->getAttribute('am_status') === null && $this->getAttribute('pm_status') === null) {
+            return $this->status === 'approved' ? (float) $this->hours_logged : 0.0;
+        }
+
+        return (float) $this->approved_hours;
+    }
+
+    /** Was the morning ('am') or afternoon ('pm') entered? */
+    public function hasHalf(string $part): bool
+    {
+        return $this->period($part) !== '';
+    }
+
+    /** 'pending' / 'approved' / 'flagged' (declined) for one half, or null if it wasn't entered. */
+    public function halfStatus(string $part): ?string
+    {
+        if (! $this->hasHalf($part)) {
+            return null;
+        }
+
+        return $this->getAttribute($part.'_status') ?: ($this->status ?: 'pending');
+    }
+
+    public function halfStatusLabel(string $part): string
+    {
+        return match ($this->halfStatus($part)) {
+            'approved' => 'Approved',
+            'flagged' => 'Declined',
+            null => '',
+            default => 'Waiting',
+        };
+    }
+
+    /** The hours of one half (the lunch break is never counted). */
+    public function halfHours(string $part): float
+    {
+        $in = $this->getAttribute($part.'_in');
+        $out = $this->getAttribute($part.'_out');
+        if (filled($in) && filled($out)) {
+            return round(max(0, \App\Support\TimeFrame::minutes($out) - \App\Support\TimeFrame::minutes($in)) / 60, 2);
+        }
+
+        // An old single time in/out sits in one half and carries the day's hours.
+        return $this->hasHalf($part) && blank($this->am_in) && blank($this->pm_in) ? (float) $this->hours_logged : 0.0;
+    }
+
+    /** The day's own status and approved hours, from its two halves. */
+    public function dayStatusFromHalves(): array
+    {
+        $statuses = collect(array_keys(self::HALVES))->map(fn ($p) => $this->halfStatus($p))->filter()->values();
+        $status = match (true) {
+            $statuses->isEmpty() => 'pending',
+            $statuses->contains('flagged') => 'flagged',
+            $statuses->every(fn ($s) => $s === 'approved') => 'approved',
+            default => 'pending',
+        };
+        $approved = collect(array_keys(self::HALVES))->filter(fn ($p) => $this->halfStatus($p) === 'approved')
+            ->sum(fn ($p) => $this->halfHours($p));
+
+        return ['status' => $status, 'approved_hours' => round($approved, 2)];
+    }
+
+    /** "8:00 AM - 12:00 PM" of a half, only once the supervisor approved it (Form 17, monitoring). */
+    public function approvedPeriod(string $part): string
+    {
+        return $this->halfStatus($part) === 'approved' ? $this->period($part) : '';
+    }
+
     /** The four times a photo is taken for. */
     public const PHOTO_STAMPS = ['am_in' => 'Morning time in', 'am_out' => 'Morning time out', 'pm_in' => 'Afternoon time in', 'pm_out' => 'Afternoon time out'];
 
@@ -84,6 +172,7 @@ class Dtr extends Model
         return $this->photo($stamp) ? route('dtr.photo', [$this, $stamp]) : null;
     }
 
+    /** "8:00 AM - 12:00 PM" for the morning or afternoon, or "" */
     public function period(string $which): string
     {
         $in = $this->{$which.'_in'};

@@ -26,7 +26,7 @@ class MonitoringController extends Controller
             ->get();
 
         $deploymentIds = $deployedStudents->map(fn ($s) => $s->currentInternship?->deployment?->id)->filter();
-        $allDays = Dtr::whereIn('deployment_id', $deploymentIds)->where('status', 'approved')->get()->groupBy('deployment_id');
+        $allDays = Dtr::whereIn('deployment_id', $deploymentIds)->withApprovedTime()->get()->groupBy('deployment_id');
         // Only counts of the days not approved yet - so an intern with an empty
         // Time Frame shows why (still with the supervisor, or returned).
         $otherDays = Dtr::whereIn('deployment_id', $deploymentIds)->where('status', '!=', 'approved')
@@ -41,7 +41,7 @@ class MonitoringController extends Controller
                 'student' => $student,
                 'deployment' => $internship?->deployment,
                 'required' => (float) ($internship?->requiredHours() ?? 0),
-                'approved' => (float) $days->sum('hours_logged'),
+                'approved' => (float) $days->sum(fn ($d) => $d->countedHours()),
                 'count' => $days->count(),
                 'last' => $days->max('log_date'),
                 'waiting' => (int) $other->where('status', '!=', 'flagged')->sum('n'),
@@ -51,7 +51,7 @@ class MonitoringController extends Controller
 
         $selected = $request->filled('student') ? $rows->firstWhere('student.id', (int) $request->query('student')) : null;
         $days = $selected
-            ? Dtr::where('deployment_id', $selected['deployment']->id)->where('status', 'approved')->orderByDesc('log_date')->get()
+            ? Dtr::where('deployment_id', $selected['deployment']->id)->withApprovedTime()->orderByDesc('log_date')->get()
             : collect();
 
         // Advisees who don't have a Time Frame yet because they aren't deployed.

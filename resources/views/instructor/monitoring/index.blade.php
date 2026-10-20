@@ -113,9 +113,9 @@
                         @forelse ($days as $day)
                             <tr>
                                 <td><div class="fw-semibold">{{ $day->log_date->format('M d, Y') }}</div><div class="text-secondary">{{ $day->log_date->format('l') }}</div></td>
-                                <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
-                                <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
-                                <td class="text-end fw-semibold">{{ $fmt($day->hours_logged) }}</td>
+                                <td class="text-nowrap">{{ $day->approvedPeriod('am') ?: '—' }}</td>
+                                <td class="text-nowrap">{{ $day->approvedPeriod('pm') ?: '—' }}</td>
+                                <td class="text-end fw-semibold">{{ $fmt($day->countedHours()) }}</td>
                             </tr>
                         @empty
                             <tr><td colspan="4" class="text-center text-secondary py-4">

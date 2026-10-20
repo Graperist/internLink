@@ -6,8 +6,15 @@
 @section('content')
 @php
     $fmt = fn ($h) => \App\Support\TimeFrame::format($h);
-    $waiting = $entries->where('status', 'pending');
-    $done = $entries->where('status', '!=', 'pending');
+    // A day waits while its morning or afternoon still waits for approval.
+    $isWaiting = fn ($d) => $d->halfStatus('am') === 'pending' || $d->halfStatus('pm') === 'pending';
+    $waiting = $entries->filter($isWaiting);
+    $done = $entries->reject($isWaiting);
+    $halfBadge = fn ($status) => match ($status) {
+        'approved' => ['Approved', 'text-bg-success'],
+        'flagged' => ['Declined', 'text-bg-danger'],
+        default => ['Waiting', 'text-bg-warning'],
+    };
 @endphp
 
     @if (session('status'))
@@ -59,9 +66,38 @@
                                 <div class="fw-semibold">{{ $dtr->log_date?->format('M d, Y') }}</div>
                                 <div class="text-secondary" style="font-size:.76rem;">{{ $dtr->log_date?->format('l') }}</div>
                             </td>
-                            <td>{{ $dtr->period('am') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'am'])</td>
-                            <td>{{ $dtr->period('pm') ?: '—' }}@include('partials.dtr-photos', ['dtr' => $dtr, 'part' => 'pm'])</td>
-                            <td class="fw-semibold">{{ $fmt($dtr->hours_logged) }}</td>
+                            @foreach (\App\Models\Dtr::HALVES as $half => $halfName)
+                                <td>
+                                    @if ($dtr->hasHalf($half))
+                                        @php [$halfLabel, $halfColor] = $halfBadge($dtr->halfStatus($half)); @endphp
+                                        <div class="text-nowrap">{{ $dtr->period($half) }}</div>
+                                        <div class="text-secondary" style="font-size:.72rem;">{{ $fmt($dtr->halfHours($half)) }} hours</div>
+                                        @include('partials.dtr-photos', ['dtr' => $dtr, 'part' => $half])
+                                        <div class="mt-1"><span class="badge {{ $halfColor }}">{{ $halfLabel }}</span></div>
+                                        @if ($dtr->halfStatus($half) === 'flagged' && $dtr->{$half.'_decline_reason'})
+                                            <div class="small mt-1">{{ $dtr->{$half.'_decline_reason'} }}</div>
+                                        @endif
+                                        @if ($dtr->halfStatus($half) === 'pending')
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                <form method="POST" action="{{ route('hte.dtr.verify', [$dtr, $half]) }}">
+                                                    @csrf
+                                                    <button class="hte-action-btn verify" type="submit" title="Approve the {{ strtolower($halfName) }}">Approve</button>
+                                                </form>
+                                                <button class="hte-action-btn flag" type="button" data-bs-toggle="modal" data-bs-target="#declineDtr{{ $dtr->id }}{{ $half }}">Decline</button>
+                                            </div>
+                                            @include('hte._decline-half', ['dtr' => $dtr, 'half' => $half, 'halfName' => $halfName, 'student' => $student])
+                                        @endif
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                            @endforeach
+                            <td class="fw-semibold">
+                                {{ $fmt($dtr->hours_logged) }}
+                                @if ((float) $dtr->approved_hours > 0 && (float) $dtr->approved_hours < (float) $dtr->hours_logged)
+                                    <div class="text-success" style="font-size:.72rem;">{{ $fmt($dtr->approved_hours) }} approved</div>
+                                @endif
+                            </td>
                             <td>
                                 @if ($dtr->am_notes)
                                     <div class="small text-secondary mb-1"><i class="ti ti-message"></i> <span class="fw-semibold">Morning:</span> {{ $dtr->am_notes }}</div>
@@ -71,57 +107,21 @@
                                 @endif
                                 @if ($dtr->status === 'approved')
                                     <span class="badge text-bg-success">Approved</span>
-                                @elseif ($dtr->status === 'flagged')
+                                @elseif ($dtr->status === 'flagged' && ! $isWaiting($dtr))
                                     <span class="badge text-bg-danger">Declined</span>
-                                    <div class="small mt-1">{{ $dtr->flag_reason }}</div>
-                                    <div class="small text-secondary">Waiting for the student to correct it.</div>
+                                    <div class="small text-secondary mt-1">Waiting for the student to correct it.</div>
                                 @else
                                     @if ($dtr->resolved_at)
                                         <div class="small text-secondary mb-1">Corrected by the student</div>
                                     @endif
-                                    <div class="d-flex flex-wrap gap-2">
+                                    @if ($dtr->halfStatus('am') === 'pending' && $dtr->halfStatus('pm') === 'pending')
                                         <form method="POST" action="{{ route('hte.dtr.verify', $dtr) }}">
                                             @csrf
-                                            <button class="hte-action-btn verify" type="submit">Approve</button>
+                                            <button class="hte-action-btn verify" type="submit">Approve both</button>
                                         </form>
-                                        <button class="hte-action-btn flag" type="button" data-bs-toggle="modal" data-bs-target="#declineDtr{{ $dtr->id }}">Decline</button>
-                                    </div>
-
-                                    <div class="modal fade" id="declineDtr{{ $dtr->id }}" tabindex="-1" aria-hidden="true">
-                                        <div class="modal-dialog modal-dialog-centered">
-                                            <div class="modal-content">
-                                                <div class="modal-header">
-                                                    <h5 class="modal-title">Decline time — {{ $student->user->name }}</h5>
-                                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                                </div>
-                                                <form method="POST" action="{{ route('hte.dtr.flag', $dtr) }}">
-                                                    @csrf
-                                                    <div class="modal-body">
-                                                        <div class="small text-secondary mb-3">
-                                                            {{ $dtr->log_date?->format('l, F d, Y') }}<br>
-                                                            Morning: {{ $dtr->period('am') ?: '—' }} · Afternoon: {{ $dtr->period('pm') ?: '—' }}<br>
-                                                            Total: {{ $fmt($dtr->hours_logged) }} hours
-                                                        </div>
-                                                        <label class="form-label small fw-semibold">Reason</label>
-                                                        <select name="flag_reason" class="form-select" required>
-                                                            <option value="">Select a reason</option>
-                                                            <option>Time in or time out is wrong</option>
-                                                            <option>The student was absent on this date</option>
-                                                            <option>The student was undertime</option>
-                                                            <option>Other</option>
-                                                        </select>
-                                                        <label class="form-label small fw-semibold mt-3">Note to the student <span class="text-secondary fw-normal">(optional)</span></label>
-                                                        <textarea name="flag_note" class="form-control" rows="3" maxlength="1000" placeholder="e.g. You left at 4:00 PM, not 5:00 PM."></textarea>
-                                                        <div class="alert alert-info small mt-3 mb-0">The day goes back to the student to be corrected, then comes back to you.</div>
-                                                    </div>
-                                                    <div class="modal-footer">
-                                                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                                                        <button type="submit" class="btn btn-danger">Decline</button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    @else
+                                        <span class="small text-secondary">Approve or decline the morning and the afternoon separately.</span>
+                                    @endif
                                 @endif
                             </td>
                         </tr>

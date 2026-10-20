@@ -153,6 +153,9 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/reports/directory', [InstructorReportController::class, 'directory'])->name('reports.directory');
         Route::get('/notifications', [InstructorNotificationController::class, 'index'])->name('notifications');
 
+        Route::get('/settings', [\App\Http\Controllers\Instructor\SettingsController::class, 'edit'])->name('settings');
+        Route::put('/settings', [\App\Http\Controllers\Instructor\SettingsController::class, 'update'])->name('settings.update');
+
         Route::get('/profile', [InstructorProfileController::class, 'index'])->name('profile');
         Route::put('/profile/account', [InstructorProfileController::class, 'updateAccount'])->name('profile.account');
         Route::put('/profile/photo', [InstructorProfileController::class, 'updatePhoto'])->name('profile.photo');
@@ -229,8 +232,9 @@ Route::middleware(['auth', EnsurePasswordIsChanged::class])->group(function () {
         Route::get('/students/{deployment}/dtr-history', [HtePortalController::class, 'studentDtrHistory'])->name('students.dtr-history');
 
         Route::get('/dtr', [HtePortalController::class, 'dtrVerification'])->name('dtr');
-        Route::post('/dtr/{dtr}/verify', [HtePortalController::class, 'verifyDtr'])->name('dtr.verify');
-        Route::post('/dtr/{dtr}/flag', [HtePortalController::class, 'flagDtr'])->name('dtr.flag');
+        // The morning ('am') and the afternoon ('pm') are approved separately.
+        Route::post('/dtr/{dtr}/verify/{part?}', [HtePortalController::class, 'verifyDtr'])->where('part', 'am|pm')->name('dtr.verify');
+        Route::post('/dtr/{dtr}/flag/{part?}', [HtePortalController::class, 'flagDtr'])->where('part', 'am|pm')->name('dtr.flag');
 
         Route::get('/evaluations', [HtePortalController::class, 'evaluations'])->name('evaluations');
 

@@ -416,14 +416,14 @@
                                         {{-- Form 17 is filled from the days the HTE supervisor approved in Time Frame (DTR) --}}
                                         @php
                                             $tfDays = $internship?->deployment
-                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->where('status', 'approved')->orderBy('log_date')->get()
+                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->withApprovedTime()->orderBy('log_date')->get()
                                                 : collect();
                                             $tfApproved = $tfDays; // only supervisor-approved days reach the instructor
                                         @endphp
                                         <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 320px; overflow-y: auto;">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <span class="text-secondary fw-semibold" style="font-size: 0.72rem; text-transform: uppercase;">
-                                                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} &middot; {{ \App\Support\TimeFrame::format($tfApproved->sum('hours_logged')) }} hours
+                                                    {{ $tfApproved->count() }} approved {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} &middot; {{ \App\Support\TimeFrame::format($tfApproved->sum(fn ($d) => $d->countedHours())) }} hours
                                                 </span>
                                                 <a href="{{ route('instructor.monitoring', ['student' => $student->id]) }}" class="small">Open in Time Frame</a>
                                             </div>
@@ -433,9 +433,9 @@
                                                     @forelse ($tfApproved as $day)
                                                         <tr>
                                                             <td class="text-nowrap">{{ $day->log_date->format('M d, Y') }} <span class="text-secondary">{{ $day->log_date->format('D') }}</span></td>
-                                                            <td class="text-nowrap">{{ $day->period('am') ?: '—' }}</td>
-                                                            <td class="text-nowrap">{{ $day->period('pm') ?: '—' }}</td>
-                                                            <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->hours_logged) }}</td>
+                                                            <td class="text-nowrap">{{ $day->approvedPeriod('am') ?: '—' }}</td>
+                                                            <td class="text-nowrap">{{ $day->approvedPeriod('pm') ?: '—' }}</td>
+                                                            <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->countedHours()) }}</td>
                                                         </tr>
                                                     @empty
                                                         <tr><td colspan="4" class="text-secondary">No approved days yet.</td></tr>

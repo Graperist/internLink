@@ -221,9 +221,18 @@ class Form19WeeklyReviewTest extends TestCase
         $this->assertTrue($week1->fresh()->first_submitted_at->equalTo($first));
     }
 
-    public function test_a_week_sent_on_time_is_not_late_and_the_deadline_is_a_campus_setting(): void
+    public function test_a_week_sent_on_time_is_not_late_and_the_instructor_sets_the_deadline(): void
     {
-        $this->internship->campus->forceFill(['weekly_report_due_days' => 0])->save();
+        // The Subject Instructor sets it under Settings (not the coordinator).
+        $this->actingAs($this->instructorUser)->get(route('instructor.settings'))->assertOk()->assertSee('Form 19 weekly report deadline');
+        $this->actingAs($this->instructorUser)->put(route('instructor.settings.update'), ['weekly_report_due_days' => 0])->assertSessionHasNoErrors();
+        $this->assertSame(0, (int) $this->internship->program->fresh()->weekly_report_due_days);
+        $this->internship->unsetRelation('program');
+        $coord = User::forceCreate(['campus_id' => $this->internship->campus_id, 'role_id' => Role::where('code', 'coordinator')->value('id'), 'id_number' => 'C-1', 'name' => 'Coord',
+            'email' => 'c1@t.local', 'password' => Hash::make('x'), 'status' => 'active', 'must_change_password' => false]);
+        Instructor::forceCreate(['user_id' => $coord->id, 'campus_id' => $this->internship->campus_id, 'program_id' => $this->internship->program_id]);
+        $this->actingAs($coord)->put(route('instructor.settings.update'), ['weekly_report_due_days' => 5])->assertForbidden();
+        $this->actingAs($coord)->get(route('coordinator.campus-settings.edit'))->assertOk()->assertDontSee('weekly report deadline');
         $this->travelTo(CarbonImmutable::parse('2026-10-07 18:00:00'));   // Week 1's last day = its due date
         $this->addDay('2026-10-01')->assertSessionHasNoErrors();
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee('Due Oct 07, 11:59 PM');

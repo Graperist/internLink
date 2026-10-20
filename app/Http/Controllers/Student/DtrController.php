@@ -54,11 +54,11 @@ class DtrController extends Controller
 
 
         $totals = [
-            'approved' => (float) $days->where('status', 'approved')->sum('hours_logged'),
-            'pending' => (float) $days->where('status', 'pending')->sum('hours_logged'),
+            'approved' => (float) $days->sum(fn ($d) => $d->countedHours()),
+            'pending' => (float) $days->sum(fn ($d) => collect(['am', 'pm'])->filter(fn ($p) => $d->halfStatus($p) === 'pending')->sum(fn ($p) => $d->halfHours($p))),
             'required' => (float) ($internship?->requiredHours() ?? 0),
-            'declined' => $days->where('status', 'flagged')->count(),
-            'waiting' => $days->where('status', 'pending')->count(),
+            'declined' => $days->filter(fn ($d) => in_array('flagged', [$d->halfStatus('am'), $d->halfStatus('pm')], true))->count(),
+            'waiting' => $days->filter(fn ($d) => in_array('pending', [$d->halfStatus('am'), $d->halfStatus('pm')], true))->count(),
         ];
 
         return view('student.dtr', compact('deployment', 'days', 'editing', 'selectedDate', 'totals', 'internship'));
@@ -103,8 +103,8 @@ class DtrController extends Controller
         $part = $data['part'] ?? null;
         if ($part) {
             $sameDay = Dtr::where('deployment_id', $deployment->id)->whereDate('log_date', $date)->first();
-            if ($sameDay?->status === 'approved') {
-                throw ValidationException::withMessages([$part.'_in' => 'This day is already approved by your supervisor and can no longer be changed.']);
+            if ($sameDay?->halfStatus($part) === 'approved') {
+                throw ValidationException::withMessages([$part.'_in' => 'Your supervisor already approved this '.strtolower(Dtr::HALVES[$part]).', so it can no longer be changed.']);
             }
             if (blank($data[$part.'_in'] ?? null) && blank($data[$part.'_out'] ?? null)) {
                 throw ValidationException::withMessages([$part.'_in' => 'Enter the time in and time out.']);
@@ -132,7 +132,7 @@ class DtrController extends Controller
         if ($existing && (int) ($data['dtr_id'] ?? 0) !== $existing->id) {
             throw ValidationException::withMessages(['log_date' => 'You already entered '.$date->format('M d, Y').'. Edit that day instead.']);
         }
-        if ($existing && $existing->status === 'approved') {
+        if ($existing && ! $part && ($existing->status === 'approved' || in_array('approved', [$existing->halfStatus('am'), $existing->halfStatus('pm')], true))) {
             throw ValidationException::withMessages(['log_date' => 'This day is already approved by your supervisor and can no longer be changed.']);
         }
         if (! $existing && filled($data['dtr_id'] ?? null)) {
@@ -166,7 +166,7 @@ class DtrController extends Controller
             }
         }
 
-        $wasDeclined = $existing?->status === 'flagged';
+        $wasDeclined = $part ? $existing?->halfStatus($part) === 'flagged' : $existing?->status === 'flagged';
         $values = [
             'log_date' => $date->toDateString(),
             'am_in' => $data['am_in'] ?? null, 'am_out' => $data['am_out'] ?? null,
@@ -178,9 +178,20 @@ class DtrController extends Controller
             'notes' => $data['notes'] ?? null,
             'am_notes' => $data['am_notes'] ?? null,
             'photos' => $photos ?: null,
-            'status' => 'pending',
-            'verified_by' => null,
         ];
+        // The half being saved goes back to the supervisor; an approved or
+        // declined other half keeps its status.
+        foreach ($part ? [$part] : array_keys(Dtr::HALVES) as $p) {
+            $hasTimes = filled($values[$p.'_in']) || filled($values[$p.'_out']);
+            $values[$p.'_status'] = $hasTimes ? 'pending' : null;
+            $values[$p.'_decline_reason'] = null;
+            $values[$p.'_decline_note'] = null;
+        }
+        if (! $part) {
+            $values['verified_by'] = null;
+        }
+        $preview = ($existing ? $existing->replicate() : new Dtr)->forceFill($values);
+        $values += $preview->dayStatusFromHalves();
         if ($wasDeclined) {
             $values += ['resolved_by' => auth()->id(), 'resolved_at' => now()];
         }
@@ -208,7 +219,8 @@ class DtrController extends Controller
     {
         $student = auth()->user()->student;
         abort_unless($dtr->deployment?->internship?->student_id === $student?->id, 403);
-        abort_if($dtr->status === 'approved', 422, 'An approved day can no longer be removed.');
+        abort_if($dtr->status === 'approved' || in_array('approved', [$dtr->halfStatus('am'), $dtr->halfStatus('pm')], true), 422,
+            'A day with an approved morning or afternoon can no longer be removed.');
 
         $date = $dtr->log_date->format('M d, Y');
         Notification::resolveDtr($dtr->id);

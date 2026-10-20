@@ -19,7 +19,7 @@
                 </div>
             </div>
             <div class="ms-auto text-end">
-                <div class="fw-semibold text-primary">{{ \App\Support\TimeFrame::format($entries->where('status','approved')->sum('hours_logged')) }} approved hours</div>
+                <div class="fw-semibold text-primary">{{ \App\Support\TimeFrame::format($entries->sum(fn ($d) => $d->countedHours())) }} approved hours</div>
                 <div class="text-secondary small">{{ $entries->count() }} {{ \Illuminate\Support\Str::plural('day', $entries->count()) }}</div>
             </div>
         </div>

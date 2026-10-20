@@ -147,10 +147,10 @@ class TrainingWeeks
             || $internship->hasCompletedDeployment();
     }
 
-    /** Days after a week ends that its Form 19 is still on time (Campus Settings). */
+    /** Days after a week ends that its Form 19 is still on time - set by the Subject Instructor for the program. */
     public static function dueDays(Internship $internship): int
     {
-        $days = $internship->campus?->weekly_report_due_days;
+        $days = $internship->program?->weekly_report_due_days ?? $internship->student?->program?->weekly_report_due_days;
 
         return $days === null ? 2 : max(0, (int) $days);
     }

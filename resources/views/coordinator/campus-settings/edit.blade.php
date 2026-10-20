@@ -40,15 +40,6 @@
         <input type="text" id="registrar_name" name="registrar_name" class="form-control mb-3"
                value="{{ old('registrar_name', $campus->registrar_name) }}" maxlength="255">
 
-        <hr class="my-4">
-        <label class="form-label small fw-semibold" for="weekly_report_due_days">Form 19 weekly report deadline</label>
-        <div class="input-group mb-1" style="max-width: 360px;">
-            <input type="number" min="0" max="14" id="weekly_report_due_days" name="weekly_report_due_days" class="form-control"
-                   value="{{ old('weekly_report_due_days', $campus->weekly_report_due_days ?? 2) }}" required>
-            <span class="input-group-text">days after the week ends</span>
-        </div>
-        <p class="small text-muted mb-3">Each week is due at 11:59 PM this many days after its last day (0 = on its last day). A week first submitted after that is marked <strong>Late</strong> and the Subject Instructor is notified.</p>
-
         <button type="submit" class="btn btn-primary">Save settings</button>
     </form>
 </div>

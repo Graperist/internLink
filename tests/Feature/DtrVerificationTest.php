@@ -124,7 +124,7 @@ class DtrVerificationTest extends TestCase
         $this->assertTrue(Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.':%')->exists());
 
         $this->actingAs($this->studentUser)->get('/student/dtr')->assertOk()
-            ->assertSee('Form 17 – Internship Time Frame')->assertSee('Waiting for supervisor')->assertDontSee('GPS');
+            ->assertSee('Form 17 – Internship Time Frame')->assertSee('Waiting')->assertDontSee('GPS');
     }
 
     public function test_a_half_day_counts_only_the_morning(): void
@@ -173,7 +173,7 @@ class DtrVerificationTest extends TestCase
             ->assertSee('Save morning and resend')->assertSee('Save afternoon and resend')->assertSee('value="08:00"', false);
 
         // Once approved, neither half can be changed, and the supervisor's notices clear.
-        $dtr->update(['status' => 'approved']);
+        $dtr->update(['status' => 'approved', 'am_status' => 'approved', 'pm_status' => 'approved']);
         $this->assertSame(0, Notification::where('user_id', $this->repUser->id)->where('resolve_key', 'like', 'dtr:'.$dtr->id.'%')->count());
         $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '17:00']))->assertSessionHasErrors('pm_in');
         $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()->assertSee('can no longer be changed')->assertDontSee('Save afternoon');
@@ -395,5 +395,69 @@ class DtrVerificationTest extends TestCase
         $path = $dtr->fresh()->photo('am_in')['path'];
         $this->actingAs($this->studentUser)->delete("/student/dtr/{$dtr->id}");
         Storage::assertMissing($path);
+    }
+
+    public function test_the_supervisor_approves_the_morning_and_the_afternoon_separately(): void
+    {
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day()))->assertSessionHasNoErrors();   // 4 + 3 hours
+        $dtr = Dtr::sole();
+        $this->assertSame(['pending', 'pending'], [$dtr->halfStatus('am'), $dtr->halfStatus('pm')]);
+
+        $page = $this->actingAs($this->repUser)->get('/hte/dtr')->assertOk();
+        $page->assertSee(route('hte.dtr.verify', [$dtr, 'am']))->assertSee(route('hte.dtr.verify', [$dtr, 'pm']))
+            ->assertSee(route('hte.dtr.flag', [$dtr, 'pm']))->assertSee('Approve both');
+
+        // Approve the morning only: its 4 hours count, the afternoon still waits.
+        $this->actingAs($this->repUser)->post(route('hte.dtr.verify', [$dtr, 'am']))->assertRedirect('/hte/dtr');
+        $dtr->refresh();
+        $this->assertSame('approved', $dtr->halfStatus('am'));
+        $this->assertSame('pending', $dtr->halfStatus('pm'));
+        $this->assertSame('pending', $dtr->status);
+        $this->assertEquals(4, $dtr->approved_hours);
+        $this->assertEquals(4, (float) $this->student->fresh()->hours_rendered);
+        $this->actingAs($this->repUser)->post(route('hte.dtr.verify', [$dtr, 'am']))->assertStatus(422);   // not twice
+
+        // The instructor and Form 17 see only the approved morning.
+        $this->actingAs($this->instructorUser)->get('/instructor/monitoring?student='.$this->student->id)->assertOk()
+            ->assertSee('8:00 AM - 12:00 PM')->assertDontSee('1:00 PM - 4:00 PM');
+        $this->actingAs($this->instructorUser)->get(route('instructor.monitoring.form', $this->student))->assertOk()->assertSee('Oct 02, 2026');
+
+        // The student can no longer change the morning, but can still change the afternoon.
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos(['part' => 'am', 'log_date' => '2026-10-02', 'am_in' => '07:00', 'am_out' => '12:00']))
+            ->assertSessionHasErrors('am_in');
+
+        // Decline the afternoon: only the afternoon goes back, with its reason.
+        $this->actingAs($this->repUser)->post(route('hte.dtr.flag', [$dtr, 'pm']), ['flag_reason' => 'The student was undertime', 'flag_note' => 'You left at 3:00 PM.'])
+            ->assertRedirect('/hte/dtr');
+        $dtr->refresh();
+        $this->assertSame('approved', $dtr->halfStatus('am'));
+        $this->assertSame('flagged', $dtr->halfStatus('pm'));
+        $this->assertSame('The student was undertime', $dtr->pm_decline_reason);
+        $this->assertEquals(4, (float) $this->student->fresh()->hours_rendered, 'the approved morning still counts');
+        $this->assertTrue(Notification::where('user_id', $this->studentUser->id)->where('title', 'like', '%(Afternoon)%')->exists());
+        $this->actingAs($this->studentUser)->get('/student/dtr?date=2026-10-02')->assertOk()
+            ->assertSee('Afternoon declined')->assertSee('You left at 3:00 PM.')->assertDontSee('Save morning')->assertSee('Save afternoon');
+
+        // Corrected afternoon: waits again; approving it completes the day.
+        $this->actingAs($this->studentUser)->post('/student/dtr', ['part' => 'pm', 'log_date' => '2026-10-02', 'pm_in' => '13:00', 'pm_out' => '15:00'])->assertSessionHasNoErrors();
+        $dtr->refresh();
+        $this->assertSame('pending', $dtr->halfStatus('pm'));
+        $this->assertSame('approved', $dtr->halfStatus('am'));
+        $this->actingAs($this->repUser)->post(route('hte.dtr.verify', [$dtr, 'pm']))->assertRedirect('/hte/dtr');
+        $dtr->refresh();
+        $this->assertSame('approved', $dtr->status);
+        $this->assertEquals(6, $dtr->approved_hours);
+        $this->assertEquals(6, (float) $this->student->fresh()->hours_rendered);
+    }
+
+    public function test_approve_both_approves_every_waiting_half(): void
+    {
+        $this->actingAs($this->studentUser)->post('/student/dtr', $this->withPhotos($this->day()))->assertSessionHasNoErrors();
+        $dtr = Dtr::sole();
+        $this->actingAs($this->repUser)->post(route('hte.dtr.verify', $dtr))->assertRedirect('/hte/dtr');
+        $dtr->refresh();
+        $this->assertSame('approved', $dtr->status);
+        $this->assertEquals(7, $dtr->approved_hours);
+        $this->assertEquals(7, (float) $this->student->fresh()->hours_rendered);
     }
 }

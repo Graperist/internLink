@@ -32,7 +32,7 @@ class PortalController extends Controller
         $representative = $this->representative();
         $hteId = $representative->hte_id;
         $assignedDeployments = Deployment::where('hte_id', $hteId)->whereIn('status', ['pending','active','completed'])->with(['internship.student.user','internship.student.program','internship','hte'])->get();
-        $pendingDtrCount = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->where('status','pending')->count();
+        $pendingDtrCount = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->waiting()->count();
 
         // Evaluations to do: Forms 13 and 21 for every intern who finished,
         // plus the agency's own Form 23b once.
@@ -50,7 +50,7 @@ class PortalController extends Controller
             $evaluationsSubmitted += $selfDone ? 1 : 0;
             $evaluationsPending += $selfDone ? 0 : 1;
         }
-        $todayAttendance = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->where('status','pending')->with(['deployment.internship.student.user','deployment.internship.student.program','deployment.hte'])->orderBy('log_date')->limit(10)->get();
+        $todayAttendance = Dtr::whereHas('deployment', fn($q) => $q->where('hte_id',$hteId))->waiting()->with(['deployment.internship.student.user','deployment.internship.student.program','deployment.hte'])->orderBy('log_date')->limit(10)->get();
         return view('hte.dashboard', compact('representative','assignedDeployments','pendingDtrCount','evaluationsSubmitted','evaluationsPending','todayAttendance'));
     }
 
@@ -95,77 +95,122 @@ class PortalController extends Controller
     }
 
     /**
-     * Approve a day of the student's Internship Time Frame (Form 17). The
-     * hours count right away and the day shows on the instructor's side.
+     * Approve the morning or the afternoon of a day ($part 'am' / 'pm'), or
+     * every half still waiting when no part is given. The approved half's
+     * hours count right away and show on the instructor's side.
      */
-    public function verifyDtr(Request $request, Dtr $dtr): RedirectResponse
+    public function verifyDtr(Request $request, Dtr $dtr, ?string $part = null): RedirectResponse
     {
         $representative = $this->representative();
 
-        $message = DB::transaction(function () use ($dtr, $representative) {
+        $message = DB::transaction(function () use ($dtr, $representative, $part) {
             // Lock the row so two quick clicks can't credit the hours twice.
             $dtr = Dtr::whereKey($dtr->id)->lockForUpdate()->firstOrFail();
             $dtr->load('deployment.internship.student.user');
 
             abort_unless($dtr->deployment && $dtr->deployment->hte_id === $representative->hte_id, 403);
-            abort_if($dtr->status === 'approved', 422, 'This day is already approved.');
-            abort_if($dtr->status === 'flagged', 422, 'This day was declined. The student has to correct it first.');
+            $parts = $this->halvesToAct($dtr, $part);
+            abort_if($parts === [] && $dtr->status === 'approved', 422, 'This day is already approved.');
+            abort_if($parts === [], 422, $part
+                ? 'The '.strtolower(Dtr::HALVES[$part]).' is not waiting for approval.'
+                : 'This day was declined. The student has to correct it first.');
 
-            $dtr->update([
-                'status' => 'approved',
-                'verified_by' => $representative->id,
-                'clock_in_verified_by' => $representative->id, 'clock_in_verified_at' => now(),
-                'clock_out_verified_by' => $representative->id, 'clock_out_verified_at' => now(),
-            ]);
-            $dtr->deployment->internship->student->increment('hours_rendered', (float) $dtr->hours_logged);
+            $values = ['verified_by' => $representative->id];
+            foreach ($parts as $p) {
+                $values[$p.'_status'] = 'approved';
+                $values[$p.'_decline_reason'] = null;
+                $values[$p.'_decline_note'] = null;
+            }
+            if (in_array('am', $parts, true)) {
+                $values += ['clock_in_verified_by' => $representative->id, 'clock_in_verified_at' => now()];
+            }
+            if (in_array('pm', $parts, true)) {
+                $values += ['clock_out_verified_by' => $representative->id, 'clock_out_verified_at' => now()];
+            }
+            $dtr->forceFill($values);
+            $before = (float) $dtr->getOriginal('approved_hours');
+            $dtr->forceFill($dtr->dayStatusFromHalves())->save();
 
-            return 'Approved '.$dtr->deployment->internship->student->user->name.' · '.$dtr->log_date->format('M d, Y')
-                .' ('.\App\Support\TimeFrame::format($dtr->hours_logged).' hours).';
+            $gained = round((float) $dtr->approved_hours - $before, 2);
+            if ($gained > 0) {
+                $dtr->deployment->internship->student->increment('hours_rendered', $gained);
+            }
+            if ($dtr->status !== 'pending') {
+                Notification::resolveDtr($dtr->id);
+            }
+
+            $what = count($parts) === 2 ? 'the day' : 'the '.strtolower(Dtr::HALVES[$parts[0]]);
+
+            return 'Approved '.$what.' of '.$dtr->deployment->internship->student->user->name.' · '.$dtr->log_date->format('M d, Y')
+                .' ('.\App\Support\TimeFrame::format($gained).' hours).';
         });
 
         return redirect()->route('hte.dtr')->with('status', $message);
     }
 
-    /** Decline a day: it goes back to the student to be corrected. */
-    public function flagDtr(Request $request, Dtr $dtr): RedirectResponse
+    /** Decline the morning or the afternoon (or the whole day): it goes back to the student to be corrected. */
+    public function flagDtr(Request $request, Dtr $dtr, ?string $part = null): RedirectResponse
     {
         $representative = $this->representative();
         $dtr->load(['deployment.internship.student.user', 'deployment.internship.instructor.user', 'deployment.internship.student.instructor.user', 'deployment.hte']);
         abort_unless($dtr->deployment && $dtr->deployment->hte_id === $representative->hte_id, 403);
-        abort_if($dtr->status === 'approved', 422, 'An approved day can no longer be declined.');
+        $parts = $this->halvesToAct($dtr, $part);
+        abort_if($parts === [], 422, $part
+            ? 'The '.strtolower(Dtr::HALVES[$part]).' is not waiting for approval.'
+            : 'An approved day can no longer be declined.');
 
         $validated = $request->validate([
             'flag_reason' => ['required', 'string', 'max:255'],
             'flag_note' => ['nullable', 'string', 'max:1000'],
         ], ['flag_reason.required' => 'Tell the student why the time is declined.']);
 
-        DB::transaction(function () use ($dtr, $representative, $validated) {
-            $dtr->update([
-                'status' => 'flagged',
-                'verified_by' => null,
+        DB::transaction(function () use ($dtr, $representative, $validated, $parts) {
+            $values = [
                 'flagged_by' => $representative->id,
                 'flagged_at' => now(),
                 'flag_reason' => $validated['flag_reason'],
                 'flag_note' => $validated['flag_note'] ?? null,
-                'flag_target' => 'both',
+                'flag_target' => count($parts) === 2 ? 'both' : $parts[0],
                 'declined_by_user_id' => auth()->id(),
                 'resolved_by' => null,
                 'resolved_at' => null,
-            ]);
+            ];
+            foreach ($parts as $p) {
+                $values[$p.'_status'] = 'flagged';
+                $values[$p.'_decline_reason'] = $validated['flag_reason'];
+                $values[$p.'_decline_note'] = $validated['flag_note'] ?? null;
+            }
+            $dtr->forceFill($values);
+            $dtr->forceFill($dtr->dayStatusFromHalves())->save();
 
             $student = $dtr->deployment->internship->student;
             $date = $dtr->log_date->format('M d, Y');
+            $what = count($parts) === 2 ? 'this day' : 'the '.strtolower(Dtr::HALVES[$parts[0]]);
             Notification::create([
                 'user_id' => $student->user_id,
                 'type' => 'dtr',
                 'resolve_key' => 'dtr:'.$dtr->id,
-                'title' => "Time declined: {$date}",
-                'message' => 'Your supervisor declined this day: '.$validated['flag_reason'].'. Correct the time and send it again.',
+                'title' => 'Time declined: '.$date.(count($parts) === 2 ? '' : ' ('.Dtr::HALVES[$parts[0]].')'),
+                'message' => "Your supervisor declined {$what}: ".$validated['flag_reason'].'. Correct the time and send it again.',
                 'url' => route('student.dtr', ['edit' => $dtr->id], false),
             ]);
         });
 
-        return redirect()->route('hte.dtr')->with('status', 'Declined. The day went back to the student to be corrected.');
+        $what = count($parts) === 2 ? 'The day' : 'The '.strtolower(Dtr::HALVES[$parts[0]]);
+
+        return redirect()->route('hte.dtr')->with('status', "Declined. {$what} went back to the student to be corrected.");
+    }
+
+    /** The halves to approve/decline: the one asked for, or every half still waiting. */
+    private function halvesToAct(Dtr $dtr, ?string $part): array
+    {
+        if ($part !== null) {
+            abort_unless(array_key_exists($part, Dtr::HALVES), 404);
+
+            return $dtr->halfStatus($part) === 'pending' ? [$part] : [];
+        }
+
+        return array_values(array_filter(array_keys(Dtr::HALVES), fn ($p) => $dtr->halfStatus($p) === 'pending'));
     }
 
     /**
