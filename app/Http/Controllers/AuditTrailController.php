@@ -64,6 +64,65 @@ class AuditTrailController extends Controller
     }
 
     /**
+     * The Audit Trail page (sidebar): Time | User | Action, newest first,
+     * with the same visibility as the feed (ActivityLog::visibleTo()).
+     *   ?kind=click|page|action|security  ?q=search  ?date=Y-m-d
+     */
+    public function index(Request $request): \Illuminate\View\View
+    {
+        $viewer = $request->user();
+        $kind = in_array($request->query('kind'), ['click', 'page', 'action', 'security'], true) ? $request->query('kind') : 'all';
+        $search = trim((string) $request->query('q', ''));
+        $date = $request->query('date');
+        try {
+            $date = $date ? \Carbon\Carbon::parse($date)->toDateString() : null;
+        } catch (\Throwable) {
+            $date = null;
+        }
+
+        // The Super Admin sees every campus and can narrow it to one
+        // (or to their own university-level actions, which have no campus).
+        $isAdmin = $viewer->isSuperAdmin();
+        $campusFilter = $isAdmin ? $request->query('campus_id') : null;
+
+        $logs = ActivityLog::query()
+            ->visibleTo($viewer)
+            ->with('user:id,name,id_number')
+            ->when($campusFilter === 'none', fn ($q) => $q->whereNull('campus_id'))
+            ->when($campusFilter && $campusFilter !== 'none', fn ($q) => $q->where('campus_id', (int) $campusFilter))
+            ->when($kind === 'click', fn ($q) => $q->where('action', 'ui.click'))
+            ->when($kind === 'page', fn ($q) => $q->where('action', 'like', 'page.%'))
+            ->when($kind === 'security', fn ($q) => $q->where(fn ($w) => $w->where('action', 'like', 'auth.%')->orWhere('action', 'like', 'security.%')))
+            ->when($kind === 'action', fn ($q) => $q->where('action', '!=', 'ui.click')
+                ->where('action', 'not like', 'page.%')->where('action', 'not like', 'auth.%')->where('action', 'not like', 'security.%'))
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('description', 'like', '%'.$search.'%')
+                ->orWhereHas('user', fn ($u) => $u->where('name', 'like', '%'.$search.'%')->orWhere('id_number', 'like', '%'.$search.'%'))))
+            ->when($date, fn ($q) => $q->whereDate('created_at', $date))
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+
+        return view('instructor.audit-trail', [
+            'logs' => $logs,
+            'kind' => $kind,
+            'search' => $search,
+            'date' => $date,
+            'roleLabels' => config('audit.role_labels', []),
+            'scope' => match (true) {
+                $isAdmin => 'Every campus',
+                $viewer->isCoordinator() => 'Everyone on your campus',
+                default => 'You and your students',
+            },
+            'isAdmin' => $isAdmin,
+            'campusFilter' => $campusFilter,
+            'campuses' => $isAdmin ? \App\Models\Campus::orderBy('name')->get(['id', 'code', 'name']) : collect(),
+            'campusCodes' => $isAdmin ? \App\Models\Campus::pluck('code', 'id') : collect(),
+            'layout' => $isAdmin ? 'layouts.admin' : 'layouts.instructor',
+            'routeName' => $isAdmin ? 'admin.audit-trail' : 'instructor.audit-trail',
+        ]);
+    }
+
+    /**
      * Beacon endpoint for the click tracker (public/js/audit-tracker.js).
      *
      * The client can only ever add rows for ITSELF (the user comes from the

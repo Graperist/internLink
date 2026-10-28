@@ -3,167 +3,184 @@
 namespace App\Http\Controllers\Instructor;
 
 use App\Http\Controllers\Controller;
-use App\Models\Deployment;
 use App\Models\Document;
+use App\Models\DocumentRequirement;
+use App\Support\AgencyEvaluations;
 use App\Support\EvaluationRouting;
-use Illuminate\Http\Request;
+use App\Support\EvaluationView;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
+/**
+ * Evaluations, the way PSU students evaluate their instructors: a list of
+ * names, click one, rate it, and it reads EVALUATED.
+ *
+ *  - The instructor evaluates each partner agency their students finished an
+ *    internship at (Form 23a, once per agency). It stays with the instructor.
+ *  - Every other evaluation arrives here, and only here: the HTE's about each
+ *    intern (Forms 13, 21) and about itself (Form 23b), and each intern's
+ *    about the agency (Forms 23c, 20). Whoever is rated never sees it.
+ */
 class EvaluationController extends Controller
 {
-    /**
-     * Student Evaluations - where each advisee's evaluation of their partner
-     * agency stands. The system does not record grades: the Subject
-     * Instructor's evaluation is the official Form 23a (Evaluation Instrument
-     * of PSU Partner Agencies), filled in once the internship is completed.
-     */
-    public function index(): View
+    public function index(\Illuminate\Http\Request $request): View
     {
-        $instructor = auth()->user()->instructor;
+        $instructor = $this->subjectInstructor();
+        $isCoordinator = $instructor->isCoordinator();
 
-        $advisees = $instructor->advisees()
-            ->with([
-                'user',
-                'program',
-                'currentInternship.deployment.hte',
-                'currentInternship.documents',
-            ])
-            ->whereHas('currentInternship.deployment')
-            ->latest('id')
-            ->get();
+        // The coordinator sees every program's evaluations and can narrow them to one program.
+        $programs = $isCoordinator
+            ? \App\Models\Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
+            : collect();
+        $programId = $isCoordinator && $programs->contains('id', (int) $request->query('program_id')) ? (int) $request->query('program_id') : null;
 
-        $partnerAgencyFormRequirement = \App\Models\DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('code', 'PARTNER_AGENCY_EVAL_INSTRUCTOR')
+        $agencies = AgencyEvaluations::agenciesFor($instructor, $programId);
+
+        $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
             ->where('is_active', true)
-            ->first();
+            ->whereIn('code', array_keys(EvaluationRouting::FORMS))
+            ->get()->keyBy('code');
 
-        // The six official evaluation forms and who fills each one:
-        //   HTE         -> Form 13, Form 21, Form 23b
-        //   Student     -> Form 20, Form 23c
-        //   Instructor  -> Form 23a
-        $formIds = \App\Models\DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->whereIn('code', [
-                'EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF',
-                'STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION',
-                'PARTNER_AGENCY_EVAL_INSTRUCTOR',
-            ])
-            ->pluck('id', 'code');
+        $form23a = $requirements->get('PARTNER_AGENCY_EVAL_INSTRUCTOR');
+        $form23b = $requirements->get('PARTNER_AGENCY_EVAL_SELF');
 
-        $progress = $advisees->mapWithKeys(fn ($student) => [
-            $student->id => $this->evaluationProgress($student, $formIds),
-        ]);
+        $agencyRows = $agencies->map(fn ($row) => (object) [
+            'hte' => $row['hte'],
+            'deployments' => $row['deployments'],
+            'mine' => $form23a ? $this->submitted(AgencyEvaluations::find($form23a, $row['hte']->id, $instructor->user_id)) : null,
+            'self' => $form23b ? $this->submitted(AgencyEvaluations::find($form23b, $row['hte']->id)) : null,
+            // Form 23a: only for an agency where students of the program you handle trained.
+            'canEvaluate' => $instructor->program_id !== null
+                && $row['deployments']->contains(fn ($d) => (int) $d->internship->program_id === (int) $instructor->program_id),
+        ])->values();
 
-        // Form 13 (Internship Evaluation Form) arrives here from the HTE.
-        $form13Requirement = \App\Models\DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('code', 'EVALUATION_FORM')
-            ->where('is_active', true)
-            ->first();
+        // Per intern: what the HTE sent about them and what they sent about the agency.
+        $internCodes = array_merge(EvaluationRouting::HTE_INTERN_CODES, EvaluationRouting::STUDENT_CODES);
+        // (Eloquent's only() picks by primary key, so filter by code.)
+        $internRequirementIds = $requirements->filter(fn ($r) => in_array($r->code, $internCodes, true))->pluck('id', 'code');
+        $deployments = $agencies->flatMap(fn ($row) => $row['deployments']);
+        $docs = Document::whereIn('internship_id', $deployments->pluck('internship_id'))
+            ->whereIn('document_requirement_id', $internRequirementIds)
+            ->whereIn('status', EvaluationRouting::SUBMITTED)
+            ->get()
+            ->groupBy('internship_id');
+        $internRows = $deployments->map(fn ($deployment) => (object) [
+            'deployment' => $deployment,
+            'student' => $deployment->internship->student,
+            'forms' => collect($internCodes)->mapWithKeys(fn ($code) => [
+                $code => ($docs->get($deployment->internship_id) ?? collect())->firstWhere('document_requirement_id', $internRequirementIds[$code] ?? 0),
+            ]),
+        ])->sortBy(fn ($row) => $row->student->user->name)->values();
 
-        return view('instructor.evaluations.index', compact('advisees', 'partnerAgencyFormRequirement', 'form13Requirement', 'progress'));
+        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor'));
+    }
+
+    /** Read or (?download=1) download a received evaluation, or your own Form 23a. */
+    public function show(Document $document): Response
+    {
+        $this->authorizeView($document, $this->subjectInstructor());
+
+        return EvaluationView::response($document, route('instructor.evaluations'));
     }
 
     /**
-     * Open a Form 13 the host training establishment sent for one of this
-     * instructor's advisees. View / print only - the instructor cannot edit it.
+     * Lock a received evaluation (Forms 13, 21, 23b, 23c, 20) so the student
+     * or the HTE can no longer edit it - e.g. once it has been graded.
+     * Only the instructor of the program it belongs to (the coordinator for
+     * their own program).
      */
-    public function show(Request $request, Document $document): View
+    public function lock(Document $document): RedirectResponse
+    {
+        $instructor = $this->subjectInstructor();
+        $this->authorizeLock($document, $instructor);
+        $document->update(['locked_at' => now(), 'locked_by_user_id' => auth()->id()]);
+        \App\Support\AuditLogger::record('evaluation.locked', 'Locked '.$document->requirement->name.' from editing.', auth()->user(), request());
+
+        return back()->with('status', $document->requirement->name.' is locked. It can no longer be edited.');
+    }
+
+    /** Unlock it again for a correction: a new editing window starts today. */
+    public function unlock(Document $document): RedirectResponse
+    {
+        $instructor = $this->subjectInstructor();
+        $this->authorizeLock($document, $instructor);
+        $document->update(['locked_at' => null, 'locked_by_user_id' => null, 'unlocked_at' => now()]);
+        \App\Support\AuditLogger::record('evaluation.unlocked', 'Unlocked '.$document->requirement->name.' for editing.', auth()->user(), request());
+        $until = \App\Support\EvaluationEditWindow::editableUntil($document->fresh(['internship.campus', 'internship.deployment']));
+
+        return back()->with('status', $document->requirement->name.' is unlocked. It can be edited until '.$until?->format('M j, Y').'.');
+    }
+
+    /**
+     * The editing deadline for the program you handle: students and HTEs can
+     * edit their evaluations for this many days after the internship ends
+     * (until 11:59 PM), unless you lock one sooner.
+     */
+    public function editDays(\Illuminate\Http\Request $request): RedirectResponse
+    {
+        $instructor = $this->subjectInstructor()->load('program');
+        // Setting the deadline is the Subject Instructor's work, not the coordinator's.
+        abort_if($instructor->isCoordinator(), 403, 'The editing deadline is set by the Subject Instructor of the program.');
+        abort_unless($instructor->program, 422, 'Your account has no program yet - ask your coordinator.');
+        $days = (int) $request->validate([
+            'evaluation_edit_days' => ['required', 'integer', 'min:0', 'max:90'],
+        ], ['evaluation_edit_days.*' => 'Enter a number of days from 0 to 90.'])['evaluation_edit_days'];
+        $instructor->program->forceFill(['evaluation_edit_days' => $days])->save();
+
+        $text = $days === 0 ? 'until the day the internship ends' : "for {$days} ".\Illuminate\Support\Str::plural('day', $days).' after the internship ends';
+
+        return back()->with('status', "{$instructor->program->code}: students and HTEs can edit their evaluations {$text}, unless you lock one sooner.");
+    }
+
+    private function authorizeView(Document $document, $instructor): void
+    {
+        $document->load('requirement', 'internship');
+        $code = $document->requirement?->code;
+        abort_unless(isset(EvaluationRouting::FORMS[$code]), 404);
+        abort_unless($document->requirement->campus_id === $instructor->campus_id, 403);
+        abort_unless(EvaluationRouting::isSubmitted($document), 404);
+
+        if (EvaluationRouting::isPerAgency($code)) {
+            // An agency where this instructor's students trained; Form 23a only the instructor's own.
+            abort_unless($document->hte_id && AgencyEvaluations::agenciesFor($instructor)->has($document->hte_id), 403);
+            abort_if($code === 'PARTNER_AGENCY_EVAL_INSTRUCTOR' && $document->uploaded_by_user_id !== $instructor->user_id, 403);
+        } else {
+            // The coordinator reads every program's; an instructor their own program's.
+            abort_unless($instructor->isCoordinator()
+                ? (int) $document->internship?->campus_id === (int) $instructor->campus_id
+                : $instructor->ownsProgram($document->internship), 403);
+        }
+    }
+
+    private function authorizeLock(Document $document, $instructor): void
+    {
+        $this->authorizeView($document, $instructor);
+        $code = $document->requirement->code;
+        // Form 23a is the instructor's own; nothing to lock.
+        abort_if($code === 'PARTNER_AGENCY_EVAL_INSTRUCTOR', 404);
+        if (EvaluationRouting::isPerAgency($code)) {
+            // Form 23b: an agency where students of the program you handle trained.
+            abort_unless($instructor->program_id && AgencyEvaluations::agenciesFor($instructor, $instructor->program_id)->has($document->hte_id), 403);
+        } else {
+            abort_unless($instructor->ownsProgram($document->internship), 403);
+        }
+    }
+
+    /**
+     * Evaluations belong to the instructor of the student's program. The OJT
+     * Coordinator sees the evaluations of every program on the campus.
+     */
+    private function subjectInstructor()
     {
         $instructor = auth()->user()->instructor;
         abort_unless($instructor, 403);
 
-        $document->load('requirement', 'internship');
-        abort_unless($document->requirement?->code === 'EVALUATION_FORM', 404);
-        abort_unless($document->requirement->campus_id === $instructor->campus_id, 403);
-        abort_unless(
-            $document->internship->campus_id === $instructor->campus_id
-                && $document->internship->program_id === $instructor->program_id,
-            403
-        );
-        abort_unless(EvaluationRouting::isSubmitted($document), 404);
-
-        $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user', 'uploader');
-
-        return view(EvaluationRouting::view('EVALUATION_FORM'), [
-            'document' => $document,
-            'autoPrint' => $request->boolean('download'),
-            'backUrl' => route('instructor.evaluations'),
-        ]);
+        return $instructor;
     }
 
-    /**
-     * Where this student's evaluation stands. Evaluation is complete when all
-     * six official forms are in: HTE (Forms 13, 21, 23b), student (Forms 20,
-     * 23c) and Subject Instructor (Form 23a). Status is derived from official
-     * document records; legacy numeric ratings are not treated as form submissions.
-     *
-     * With no form in yet, the deployment decides the label, so a student who
-     * is still training reads "Ongoing Internship", not "Not Started".
-     *
-     * @return array{key:string,label:string,color:string,detail:?string,done:int,total:int,parties:array}
-     */
-    private function evaluationProgress($student, $formIds): array
+    private function submitted(?Document $document): ?Document
     {
-        $internship = $student->currentInternship;
-        $deployment = $internship?->deployment;
-        $docs = $internship?->documents?->keyBy('document_requirement_id') ?? collect();
-
-        $submittedStatuses = ['submitted', 'for_review', 'approved', 'printed', 'completed'];
-        $formDone = fn (string $code) => isset($formIds[$code])
-            && in_array($docs->get($formIds[$code])?->status, $submittedStatuses, true);
-
-        $parties = [
-            'HTE' => [
-                'EVALUATION_FORM' => false,
-                'TRAINING_SUPERVISOR_FEEDBACK' => false,
-                'PARTNER_AGENCY_EVAL_SELF' => false,
-            ],
-            'Student' => [
-                'STUDENT_FEEDBACK_FORM' => false,
-                'STUDENT_HTE_EVALUATION' => false,
-            ],
-            'Instructor' => [
-                'PARTNER_AGENCY_EVAL_INSTRUCTOR' => false,
-            ],
-        ];
-
-        $done = 0;
-        $total = 0;
-        $detailParts = [];
-        $partyCounts = [];
-        foreach ($parties as $party => $codes) {
-            $partyDone = 0;
-            foreach ($codes as $code => $legacyDone) {
-                $total++;
-                if ($legacyDone || $formDone($code)) {
-                    $partyDone++;
-                    $done++;
-                }
-            }
-            $detailParts[] = $party.' '.$partyDone.'/'.count($codes);
-            $partyCounts[$party] = ['done' => $partyDone, 'total' => count($codes)];
-        }
-
-        $detail = implode(' · ', $detailParts);
-
-        $state = match (true) {
-            $done === $total => ['completed', 'Completed', 'text-bg-primary'],
-            $done > 0 => ['in_progress', 'In Progress', 'text-bg-warning'],
-            $deployment?->status === 'terminated' => ['terminated', 'Terminated', 'text-bg-danger'],
-            $deployment?->status === 'pending' => ['pending', 'Awaiting Deployment', 'text-bg-secondary'],
-            $deployment?->status === 'active' => ['ongoing', 'Ongoing Internship', 'text-bg-info'],
-            default => ['not_started', 'Not Started', 'text-bg-light'],
-        };
-
-        return [
-            'key' => $state[0],
-            'label' => $state[1],
-            'color' => $state[2],
-            'detail' => in_array($state[0], ['in_progress', 'completed', 'not_started'], true)
-                ? $done.' of '.$total.' forms submitted — '.$detail
-                : null,
-            'done' => $done,
-            'total' => $total,
-            'parties' => $partyCounts,
-        ];
+        return EvaluationRouting::isSubmitted($document) ? $document : null;
     }
 }

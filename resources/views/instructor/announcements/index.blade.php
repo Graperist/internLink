@@ -18,13 +18,27 @@
 <div class="row g-3">
     <div class="col-lg-5">
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-1">New announcement</h2>
+            <h2 class="h6 fw-bold mb-1 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-pencil-plus"></i></span> New announcement</h2>
             <p class="small text-muted mb-3">
-                Sent to your {{ $adviseeCount }} advisee(s). They will see it under Notifications.
+                @if ($isCoordinator)
+                    Send it to one program's interns or to every program. They see it under Notifications.
+                @else
+                    Sent to the {{ $adviseeCount }} {{ \Illuminate\Support\Str::plural('intern', $adviseeCount) }} of your program{{ $program ? ' ('.$program->code.')' : '' }}. Interns of other programs don't receive it. They see it under Notifications.
+                @endif
             </p>
 
             <form method="POST" action="{{ route('instructor.announcements.store') }}">
                 @csrf
+
+                @if ($isCoordinator)
+                    <label class="form-label small fw-semibold" for="audience">Send to</label>
+                    <select id="audience" name="audience" class="form-select mb-3 @error('audience') is-invalid @enderror" required>
+                        <option value="all" @selected(old('audience', 'all') === 'all')>All programs ({{ $campusCount }} {{ \Illuminate\Support\Str::plural('intern', $campusCount) }})</option>
+                        @foreach ($programs as $p)
+                            <option value="{{ $p->id }}" @selected((string) old('audience') === (string) $p->id)>{{ $p->code }} only ({{ $p->students_count }} {{ \Illuminate\Support\Str::plural('intern', $p->students_count) }}){{ $p->id === $program?->id ? ' - mine' : '' }}</option>
+                        @endforeach
+                    </select>
+                @endif
 
                 <label class="form-label small fw-semibold" for="category">Type</label>
                 <select id="category" name="category" class="form-select mb-3">
@@ -63,29 +77,33 @@
 
     <div class="col-lg-7">
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-3">Sent announcements</h2>
+            <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-history"></i></span> Sent announcements</h2>
 
             @forelse ($announcements as $announcement)
-                <div class="py-3 border-bottom">
+                <div class="il-announce">
                     <div class="d-flex justify-content-between gap-2">
-                        <div class="fw-semibold">{{ $announcement->title }}</div>
-                        <span class="badge text-bg-secondary align-self-start">{{ $announcement->categoryLabel() }}</span>
+                        <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                            <span class="il-tile-icon sm"><i class="ti ti-speakerphone"></i></span>
+                            <div class="fw-semibold text-truncate">{{ $announcement->title }}</div>
+                        </div>
+                        <span class="badge text-bg-primary align-self-start">{{ $announcement->categoryLabel() }}</span>
                     </div>
                     @if ($announcement->event_at)
-                        <div class="small mt-1"><strong>When:</strong> {{ $announcement->event_at->format('l, F j, Y') }}@if ($announcement->event_at->format('H:i') !== '00:00') at {{ $announcement->event_at->format('g:i A') }}@endif</div>
+                        <div class="small mt-2"><i class="ti ti-calendar-event text-secondary"></i> <strong>When:</strong> {{ $announcement->event_at->format('l, F j, Y') }}@if ($announcement->event_at->format('H:i') !== '00:00') at {{ $announcement->event_at->format('g:i A') }}@endif</div>
                     @endif
                     @if ($announcement->venue)
-                        <div class="small"><strong>Where:</strong> {{ $announcement->venue }}</div>
+                        <div class="small"><i class="ti ti-map-pin text-secondary"></i> <strong>Where:</strong> {{ $announcement->venue }}</div>
                     @endif
                     @if ($announcement->message)
                         <div class="small text-secondary mt-1" style="white-space: pre-line;">{{ $announcement->message }}</div>
                     @endif
-                    <div class="text-secondary mt-1" style="font-size:.72rem;">
-                        Sent {{ $announcement->created_at->format('M d, Y g:i A') }} &middot; {{ $announcement->recipients_count }} student(s)
+                    <div class="text-secondary mt-2 pt-2 border-top" style="font-size:.72rem;">
+                        <i class="ti ti-send"></i> Sent {{ $announcement->created_at->format('M d, Y g:i A') }} &middot; {{ $announcement->recipients_count }} student(s)
+                        &middot; {{ $announcement->program ? $announcement->program->code : 'All programs' }}
                     </div>
                 </div>
             @empty
-                <p class="text-secondary small mb-0">No announcements sent yet.</p>
+                <div class="text-center text-secondary py-4"><i class="ti ti-speakerphone fs-2 d-block mb-1"></i><span class="small">No announcements sent yet.</span></div>
             @endforelse
 
             <div class="mt-3">{{ $announcements->links() }}</div>

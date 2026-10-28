@@ -64,6 +64,30 @@ class User extends Authenticatable
      * Public URL for the profile picture, or null if the user hasn't
      * uploaded one - views fall back to the initials avatar in that case.
      */
+    /**
+     * Two-letter initials for the avatar circle: first and last name
+     * ("Mark Harley V. Bristol" -> "MB"). Words without letters (like "-")
+     * and middle initials are skipped.
+     */
+    public static function initialsOf(?string $name): string
+    {
+        $words = collect(preg_split('/\s+/', trim((string) $name)))
+            ->map(fn ($w) => preg_replace('/[^\pL]/u', '', $w))
+            ->filter(fn ($w) => mb_strlen($w) > 1 || $w === '')->filter()->values();
+        if ($words->isEmpty()) {
+            return '?';
+        }
+        $first = mb_substr($words->first(), 0, 1);
+        $last = $words->count() > 1 ? mb_substr($words->last(), 0, 1) : '';
+
+        return mb_strtoupper($first.$last);
+    }
+
+    public function getInitialsAttribute(): string
+    {
+        return self::initialsOf($this->name);
+    }
+
     public function getAvatarUrlAttribute(): ?string
     {
         return $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null;
@@ -74,6 +98,12 @@ class User extends Authenticatable
     public function hasRole(string $code): bool
     {
         return $this->role && $this->role->code === $code;
+    }
+
+    /** University-wide: adds campuses and their coordinators, manages the login photos. */
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole('super_admin');
     }
 
     public function isCoordinator(): bool
@@ -91,9 +121,11 @@ class User extends Authenticatable
     public function dashboardRouteName(): string
     {
         return match ($this->role?->code) {
-            'coordinator' => 'coordinator.dashboard',
-            'instructor' => 'instructor.dashboard',
-            'hte_representative' => 'hte.dashboard',
+            // The coordinator is also a program instructor and uses the
+            // same shared portal (with campus-wide view + admin pages).
+            'coordinator', 'instructor' => 'instructor.dashboard',
+            'hte_representative' => 'hte.evaluations',   // HTE accounts are for evaluations only
+            'super_admin' => 'admin.dashboard',
             'student' => 'student.dashboard',
             default => 'login',
         };

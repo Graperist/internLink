@@ -31,6 +31,12 @@ class AuditLogger
         try {
             $request ??= request();
 
+            // A Super Admin working in a campus as its coordinator: say so.
+            $manager = CampusManager::superAdmin();
+            if ($manager && $user && $user->id !== $manager->id) {
+                $description .= " (by Super Admin {$manager->name})";
+            }
+
             return ActivityLog::create([
                 'user_id' => $user?->id,
                 'campus_id' => $user?->campus_id ?? $campusId,

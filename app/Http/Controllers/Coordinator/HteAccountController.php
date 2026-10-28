@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
+use App\Mail\HteAccountMail;
 use App\Models\Hte;
 use App\Models\HteRepresentative;
 use App\Models\Role;
@@ -11,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -39,6 +41,16 @@ class HteAccountController extends Controller
         }
 
         $accounts = $query->latest('id')->paginate(20)->withQueryString();
+
+        // Catch up accounts whose agency email was changed before emails
+        // were kept in step, so Reset password shows (and uses) the new one.
+        foreach ($accounts as $account) {
+            if ($account->hte && filled($account->hte->contact_email)
+                && strcasecmp((string) $account->user?->email, $account->hte->contact_email) !== 0) {
+                $account->hte->syncRepresentativeEmails();
+                $account->load('user');
+            }
+        }
 
         return view('coordinator.hte-accounts.index', compact('accounts'));
     }
@@ -80,11 +92,12 @@ class HteAccountController extends Controller
                 'required',
                 'string',
                 'max:100',
-                \Illuminate\Validation\Rule::unique('users', 'id_number')
-                    ->where(fn ($q) => $q->where('campus_id', $campusId)),
+                // Unique across ALL campuses - sign-in is by ID alone.
+                \Illuminate\Validation\Rule::unique('users', 'id_number'),
             ],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'send_email' => ['nullable', 'boolean'],
         ]);
 
         $alreadyHasAccount = HteRepresentative::where('hte_id', $validated['hte_id'])->exists();
@@ -107,7 +120,7 @@ class HteAccountController extends Controller
                 'email' => $validated['email'],
                 'password' => Hash::make($temporaryPassword),
                 'status' => 'active',
-                'must_change_password' => true,
+                'must_change_password' => false,   // HTE accounts keep this password (evaluations only)
             ]);
 
             return HteRepresentative::create([
@@ -118,6 +131,9 @@ class HteAccountController extends Controller
 
         $representative->load(['user', 'hte']);
 
+        // Email the sign-in details to the HTE (ticked by default).
+        $emailed = $request->boolean('send_email') ? $this->emailDetails($representative, $temporaryPassword, false) : null;
+
         return redirect()
             ->route('coordinator.hte-accounts.index')
             ->with('provisioned_account', [
@@ -125,7 +141,38 @@ class HteAccountController extends Controller
                 'id_number' => $representative->user->id_number,
                 'temporary_password' => $temporaryPassword,
                 'hte_name' => $representative->hte->name,
+                'email' => $representative->user->email,
+                'emailed' => $emailed,
+                'reset' => false,
             ]);
+    }
+
+    /**
+     * Sends the sign-in details to the representative's email. Returns
+     * false when it couldn't be sent (mail not set up, bad address), so
+     * the page can say to share them by hand; the error goes to the log.
+     */
+    private function emailDetails(HteRepresentative $representative, string $password, bool $isReset): bool
+    {
+        if (blank($representative->user->email)) {
+            return false;
+        }
+
+        try {
+            Mail::to($representative->user->email)->send(new HteAccountMail(
+                $representative->user,
+                $password,
+                $representative->hte->name,
+                $representative->user->campus?->name ?? 'Pangasinan State University',
+                $isReset,
+            ));
+
+            return true;
+        } catch (\Throwable $e) {
+            report($e); // storage/logs/laravel.log
+
+            return false;
+        }
     }
 
     /**
@@ -141,12 +188,20 @@ class HteAccountController extends Controller
             403
         );
 
+        // Send to the agency's current contact email (it may have been
+        // changed on Partner Agencies after the account was made).
+        $representative->hte->syncRepresentativeEmails();
+        $representative->load('user');
+
         $temporaryPassword = Str::password(10, symbols: false);
 
         $representative->user->update([
             'password' => Hash::make($temporaryPassword),
-            'must_change_password' => true,
+            'must_change_password' => false,   // HTE accounts keep this password (evaluations only)
         ]);
+
+        // The new password goes to the HTE's email too.
+        $emailed = $this->emailDetails($representative, $temporaryPassword, true);
 
         return redirect()
             ->route('coordinator.hte-accounts.index')
@@ -155,6 +210,9 @@ class HteAccountController extends Controller
                 'id_number' => $representative->user->id_number,
                 'temporary_password' => $temporaryPassword,
                 'hte_name' => $representative->hte->name,
+                'email' => $representative->user->email,
+                'emailed' => $emailed,
+                'reset' => true,
             ]);
     }
 

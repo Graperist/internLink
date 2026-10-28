@@ -103,13 +103,17 @@
             padding:20px 0 14px;
         }
         .cert-label { font-weight:700; margin-bottom:15px; }
-        .registrar-line { width:150px; border-top:1px solid #000; margin:0 auto 3px; }
-        .registrar-name { font-weight:700; }
+        .registrar-sign { display:inline-block; min-width:190px; }
+        .registrar-name { font-weight:700; padding:0 10px 1px; }
+        .registrar-line { border-top:1px solid #000; margin:0 0 3px; }
         .registrar-title { font-size:8.5px; }
 
         .wrap { white-space:normal; overflow-wrap:anywhere; }
         @media print { .no-print{display:none;} }
+            /* Signatory names are printed in capital letters on every form. */
+        .registrar-name { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 
@@ -258,9 +262,12 @@
 
     <div class="certification">
         <div class="cert-label">CERTIFIED TRUE AND CORRECT</div>
-        <div class="registrar-line"></div>
-        <div class="registrar-name">Rosel L. Dela Criz, MIT</div>
-        <div class="registrar-title">Registrar</div>
+        {{-- Name printed on top of the signature line, title below it. --}}
+        <div class="registrar-sign">
+            <div class="registrar-name">{!! ($registrarName = \App\Support\Signatories::for($document->internship)['registrar']) !== '' ? e($registrarName) : '&nbsp;' !!}</div>
+            <div class="registrar-line"></div>
+            <div class="registrar-title">Registrar</div>
+        </div>
     </div>
 </div>
 

@@ -73,7 +73,12 @@
             .no-print { display: none; }
             body { max-width: none; }
         }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig .name { text-transform: uppercase; }
+        /* Each 28-day sheet is its own printed page. */
+        .tf-page + .tf-page { break-before: page; page-break-before: always; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 @php
@@ -89,10 +94,30 @@
         $campusLabel .= ' Campus';
     }
 
-    $requiredHours = $internship->required_hours ?? $student->program?->required_hours;
-    $entries = $document->entries->sortBy('entry_date')->values();
-    $total = $entries->sum(fn ($entry) => (float) $entry->value('hours'));
-    $blankRows = max(0, 28 - $entries->count()); // the paper form has 28 rows
+    $requiredHours = $internship->requiredHours();
+    // The days the student entered in their Time Frame (DTR).
+    $entries = $deployment
+        ? \App\Models\Dtr::where('deployment_id', $deployment->id)->withApprovedTime()->orderBy('log_date')->get()
+        : collect();
+    // Download by week (?week=...): only that week's days.
+    if ($onlyWeek = \App\Support\TrainingWeeks::requested($internship)) {
+        $weekEnd = $onlyWeek->copy()->addDays(6)->endOfDay();
+        $entries = $entries->filter(fn ($day) => $day->log_date->between($onlyWeek, $weekEnd))->values();
+        $periodLabel = 'Week '.\App\Support\TrainingWeeks::number($onlyWeek, \App\Support\TrainingWeeks::anchorForInternship($internship))
+            .' ('.$onlyWeek->format('M d').' – '.$onlyWeek->copy()->addDays(6)->format('M d, Y').')';
+    } elseif ($onlyMonth = \App\Support\TrainingWeeks::requestedMonth()) {
+        // By month (?month=Y-m): only that month's days.
+        $entries = $entries->filter(fn ($day) => $day->log_date->isSameMonth($onlyMonth))->values();
+        $periodLabel = $onlyMonth->format('F Y');
+    }
+    // The paper form has 28 rows: more days continue on another full sheet
+    // (its own header, total and signatures). ?sheet=N prints only that one.
+    $sheets = \App\Support\TimeFrameForm::sheets($entries);
+    $sheetCount = $sheets->count();
+    if (empty($periodLabel) && ($onlySheet = \App\Support\TimeFrameForm::requestedSheet())) {
+        abort_unless($sheets->has($onlySheet) && $sheets[$onlySheet]->isNotEmpty(), 404);
+        $sheets = $sheets->only([$onlySheet]);
+    }
     $fmt = fn ($n) => rtrim(rtrim(number_format((float) $n, 2, '.', ''), '0'), '.');
 
     // Subject Instructor: the one handling this student's program on this campus
@@ -113,6 +138,8 @@
 
 <button class="no-print" onclick="window.print()">Print</button>
 
+@foreach ($sheets as $sheetNo => $sheetEntries)
+<div class="tf-page">
 <div class="form-control-no">
     FM-AA-INT-14<br>
     Rev. 1<br>
@@ -129,6 +156,12 @@
             <h1>INTERNSHIP TIME FRAME</h1>
             <div class="sub">PANGASINAN STATE UNIVERSITY</div>
             <div class="sub">{{ $campusLabel }}</div>
+            @if (! empty($periodLabel))
+                <div class="sub" style="margin-top:3px;font-weight:bold;">{{ $periodLabel }}</div>
+            @endif
+            @if ($sheetCount > 1)
+                <div class="sub" style="margin-top:3px;font-weight:bold;">Sheet {{ $sheetNo }} of {{ $sheetCount }}</div>
+            @endif
         </td>
     </tr>
 </table>
@@ -145,19 +178,19 @@
 <table class="hours">
     <colgroup><col style="width:37%"><col style="width:31%"><col style="width:32%"></colgroup>
     <tr><th>DATE</th><th>DAY</th><th>NUMBER OF HOURS</th></tr>
-    @foreach ($entries as $entry)
+    @foreach ($sheetEntries as $entry)
         <tr>
-            <td class="center">{{ $entry->entry_date->format('M d, Y') }}</td>
-            <td class="center">{{ $entry->entry_date->format('l') }}</td>
-            <td class="center">{{ $fmt($entry->value('hours')) }}</td>
+            <td class="center">{{ $entry->log_date->format('M d, Y') }}</td>
+            <td class="center">{{ $entry->log_date->format('l') }}</td>
+            <td class="center">{{ $fmt($entry->countedHours()) }}</td>
         </tr>
     @endforeach
-    @for ($i = 0; $i < $blankRows; $i++)
+    @for ($i = 0; $i < max(0, \App\Support\TimeFrameForm::ROWS - $sheetEntries->count()); $i++)
         <tr><td>&nbsp;</td><td></td><td></td></tr>
     @endfor
     <tr class="total">
         <td colspan="2" class="r">TOTAL NUMBER OF HOURS</td>
-        <td class="center">{{ $entries->isNotEmpty() ? $fmt($total) : '' }}</td>
+        <td class="center">{{ $sheetEntries->isNotEmpty() ? $fmt($sheetEntries->sum(fn ($day) => $day->countedHours())) : '' }}</td>
     </tr>
 </table>
 
@@ -197,6 +230,8 @@
 </table>
 
 </div>
+</div>
+@endforeach
 
 </body>
 </html>

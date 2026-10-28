@@ -3,9 +3,42 @@
 @section('title', 'Document Review - PSU Intern-Link')
 
 @section('content')
+@php
+    // Opened from Document Tracking: the student's forms stay in that module.
+    $tracking = $fromTracking ?? false;
+    if ($tracking) { view()->share('inTracking', true); }
+    $formUrl = fn ($params) => $tracking
+        ? route('coordinator.documents.student', $params)
+        : route('instructor.documents', $params);
+@endphp
 <div class="il-page-header">
-    <h1 class="il-page-title">Document review</h1>
+    <div>
+        @if ($fromTracking ?? false)
+            <a href="{{ route('coordinator.documents') }}" class="small text-decoration-none"><i class="ti ti-arrow-left"></i> Repository</a>
+        @else
+            <a href="{{ route('instructor.documents') }}" class="small text-decoration-none"><i class="ti ti-arrow-left"></i> All students</a>
+        @endif
+        <h1 class="il-page-title mt-1">Document review</h1>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        @include('instructor.documents._form19-deadline')
+        @unless ($fromTracking ?? false)
+        @if ($prevStudent)
+            <a href="{{ route('instructor.documents', ['student' => $prevStudent->id]) }}" class="btn btn-sm btn-outline-secondary" title="Previous: {{ $prevStudent->user->name }}"><i class="ti ti-chevron-left"></i></a>
+        @else
+            <span class="btn btn-sm btn-outline-secondary disabled"><i class="ti ti-chevron-left"></i></span>
+        @endif
+        <span class="small text-secondary">Student {{ $studentPosition['index'] }} of {{ $studentPosition['total'] }}</span>
+        @if ($nextStudent)
+            <a href="{{ route('instructor.documents', ['student' => $nextStudent->id]) }}" class="btn btn-sm btn-outline-secondary" title="Next: {{ $nextStudent->user->name }}"><i class="ti ti-chevron-right"></i></a>
+        @else
+            <span class="btn btn-sm btn-outline-secondary disabled"><i class="ti ti-chevron-right"></i></span>
+        @endif
+        @endunless
+    </div>
 </div>
+
+@include('instructor.documents._form19-deadline-form')
 
 @if (session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
@@ -21,18 +54,22 @@
     </div>
 @endif
 
-@if ($advisees->isEmpty())
+@if ($advisees->isEmpty() && ! $student)
     <div class="il-card text-center text-secondary py-4">
-        No students are in your program yet.
+        {{ auth()->user()->isCoordinator() ? 'No students are on your campus yet.' : 'No students are in your program yet.' }}
     </div>
 @else
     <div class="il-card mb-3">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-                <h2 class="h6 fw-bold mb-1">
-                    Pre-Deployment Requirements — {{ $student->user->name }}
-                    <span class="text-secondary fw-normal">{{ $student->user->id_number }}</span>
+                <h2 class="h5 fw-bold mb-1">
+                    {{ $student->user->name }}
+                    <span class="text-secondary fw-normal small">{{ $student->user->id_number }}</span>
+                    <span class="badge rounded-pill text-bg-light text-secondary fw-semibold">{{ $student->program->code ?? '' }}</span>
                 </h2>
+                @unless ($canAct)
+                    <div class="small text-secondary mt-1"><i class="ti ti-eye"></i> View only &mdash; this student is in another program. Their subject instructor approves or returns these forms.</div>
+                @endunless
 
                 {{-- Static/informational only - no per-signatory approval state exists anywhere in the schema. --}}
                 <div class="d-flex flex-wrap gap-1 mt-2">
@@ -51,13 +88,14 @@
                 $adviseeSearchData = $advisees->map(fn ($advisee) => [
                     'id' => $advisee->id,
                     'name' => $advisee->user->name,
-                    'id_number' => $advisee->user->id_number,
+                    'id_number' => $advisee->user->id_number.($advisee->program ? ' · '.$advisee->program->code : ''),
                     'pending' => $advisee->pending_documents_count,
                 ])->values();
             @endphp
 
+            @unless ($tracking)
             <form method="GET" class="d-flex align-items-center gap-2 position-relative" id="adviseeSearchForm">
-                <label class="small text-secondary mb-0" for="adviseeSearchInput">Search</label>
+                <label class="small text-secondary mb-0" for="adviseeSearchInput">Jump to</label>
                 <input type="hidden" name="student" id="adviseeSearchValue" value="{{ $student->id }}">
                 <input
                     type="text"
@@ -74,6 +112,7 @@
                     style="position: absolute; top: 100%; right: 0; z-index: 1050; width: 320px; max-height: 320px; overflow-y: auto;"
                 ></div>
             </form>
+            @endunless
         </div>
     </div>
 
@@ -84,6 +123,7 @@
         const hiddenValue = document.getElementById('adviseeSearchValue');
         const results = document.getElementById('adviseeSearchResults');
         const form = document.getElementById('adviseeSearchForm');
+        if (!input) return;   // no Jump to box (opened from Document Tracking)
 
         function label(advisee) {
             let text = advisee.name + ' (' + advisee.id_number + ')';
@@ -176,344 +216,302 @@
             $statusLabelStructured = fn ($status) => match ($status) {
                 'submitted', 'for_review' => 'Filled Online - For Review',
                 'returned' => 'Returned',
-                'printed' => 'Printed - Out for Signing',
-                'completed' => 'Signed Copy Upload Unlocked',
+                'printed' => 'Approved for Printing - With Student',
+                'completed' => 'Signed Copy Uploaded - For Approval',
                 'approved' => 'Approved',
                 default => 'Not Yet Filled',
             };
 
+            // Form labels ("Form 1", "Form 2", ...) computed once so the list
+            // and the open form agree.
+            $formLabels = [];
             $formNumber = 1;
+            foreach ($stageLabels as $stageKey => $stageLabel) {
+                foreach ($requirementsByStage->get($stageKey, collect()) as $req) {
+                    $formLabels[$req->id] = 'Form '.($req->form_number ?: $formNumber++);
+                }
+            }
+
+            // Which form is open: ?form=, else the first one waiting on the
+            // reviewer, else the first form.
+            $allRequirements = $requirementsByStage->flatten(1);
+            $selectedRequirementId = (int) request('form');
+            if (! $allRequirements->contains('id', $selectedRequirementId)) {
+                $waiting = $allRequirements->first(fn ($r) => in_array($documentsByRequirement->get($r->id)?->status, ['submitted', 'for_review', 'completed'], true));
+                $selectedRequirementId = ($waiting ?? $allRequirements->first())?->id;
+            }
+
+            $statusIcon = fn ($status) => match ($status) {
+                'approved' => ['ti-circle-check-filled', 'text-success'],
+                'submitted', 'for_review' => ['ti-alert-circle-filled', 'text-warning'],
+                'printed' => ['ti-printer', 'text-primary'],
+                'completed' => ['ti-alert-circle-filled', 'text-warning'],
+                'returned' => ['ti-arrow-back-up', 'text-danger'],
+                default => ['ti-circle', 'text-secondary'],
+            };
+            $approvedCount = $allRequirements->filter(fn ($r) => $documentsByRequirement->get($r->id)?->status === 'approved')->count();
         @endphp
 
+        <div class="row g-3">
+            {{-- Left: this student's forms, like the Teams assignment list --}}
+            <div class="col-lg-4">
+                <div class="il-card p-0 overflow-hidden" style="position: sticky; top: 1rem;">
+                    <div class="px-3 pt-3 pb-2 d-flex justify-content-between align-items-center">
+                        <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Forms</span>
+                        <span class="small text-secondary">{{ $approvedCount }} / {{ $allRequirements->count() }} approved</span>
+                    </div>
+                    <div class="list-group list-group-flush il-form-list">
+                        @foreach ($stageLabels as $stageKey => $stageLabel)
+                            @continue ($requirementsByStage->get($stageKey, collect())->isEmpty())
+                            <div class="list-group-item bg-light small fw-semibold text-secondary py-1">{{ $stageLabel }}</div>
+                            @foreach ($requirementsByStage->get($stageKey) as $req)
+                                @php
+                                    $reqDoc = $documentsByRequirement->get($req->id);
+                                    // Form 19: one per week - show what needs the instructor first.
+                                    $reqStatus = $req->code === 'WEEKLY_REPORT'
+                                        ? match (true) {
+                                            $form19Packets->contains(fn ($p) => in_array($p->status, ['submitted', 'for_review'], true)) => 'submitted',
+                                            $form19Packets->contains(fn ($p) => $p->status === 'completed' && $p->file_path) => 'completed',
+                                            $form19Packets->isNotEmpty() && $form19Packets->every(fn ($p) => $p->status === 'approved') => 'approved',
+                                            default => $form19Packets->last()?->status,
+                                        }
+                                        : $reqDoc?->status;
+                                    [$icon, $iconColor] = $statusIcon($reqStatus);
+                                    $isOpen = $req->id === $selectedRequirementId;
+                                @endphp
+                                <a href="{{ $formUrl(['student' => $student->id, 'form' => $req->id]) }}"
+                                   class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}"
+                                   @if ($isOpen) aria-current="true" @endif>
+                                    <i class="ti {{ $icon }} {{ $iconColor }} fs-5 flex-shrink-0"></i>
+                                    <span class="flex-grow-1" style="min-width: 0;">
+                                        <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">@unless (\Illuminate\Support\Str::startsWith($req->name, 'Form ')){{ $formLabels[$req->id] }} &middot; @endunless{{ $req->name }}</span>
+                                        <span class="d-block text-secondary" style="font-size: 0.72rem;">
+                                            {{ $req->hasStructuredFields() ? $statusLabelStructured($reqStatus) : $label($reqStatus) }}
+                                        </span>
+                                    </span>
+                                    <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
+                                </a>
+                            @endforeach
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
+            {{-- Right: only the open form --}}
+            <div class="col-lg-8">
         @foreach ($stageLabels as $stageKey => $stageLabel)
             @continue ($requirementsByStage->get($stageKey, collect())->isEmpty())
+            @continue (! $requirementsByStage->get($stageKey)->contains('id', $selectedRequirementId))
 
             <div class="il-card mb-3">
                 <p class="small fw-bold text-uppercase text-secondary mb-3" style="letter-spacing: 0.03em;">
-                    {{ $stageLabel }} ({{ $requirementsByStage->get($stageKey)->count() }} required)
+                    {{ $stageLabel }}
                 </p>
 
                 <div class="row g-3">
                     @foreach ($requirementsByStage->get($stageKey) as $requirement)
+                        @continue ($requirement->id !== $selectedRequirementId)
                         @php
                             $document = $documentsByRequirement->get($requirement->id);
                             $status = $document?->status;
-                            $structured = $requirement->hasStructuredFields();
+                            $structured = $requirement->hasStructuredFields() || $requirement->code === 'INTERNSHIP_TIME_FRAME'; // Form 17 is built from the Time Frame days
                         @endphp
-                        <div class="col-md-6">
-                            <div class="border rounded p-3 h-100">
+                        <div class="col-12">
+                            <div class="p-1">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <div class="fw-semibold small">
-                                        @if ($requirement->form_number)Form {{ $requirement->form_number }} · @else Form {{ $formNumber++ }} · @endif{{ $requirement->name }}
+                                    <div class="fw-bold">
+                                        @unless (\Illuminate\Support\Str::startsWith($requirement->name, 'Form ')){{ $formLabels[$requirement->id] }} · @endunless{{ $requirement->name }}
                                     </div>
+                                    @unless ($requirement->code === 'WEEKLY_REPORT') {{-- each week has its own status below --}}
                                     <span class="badge rounded-pill {{ $badgeColor($status) }}">
                                         {{ $structured ? ($statusLabelStructured($status)) : $label($status) }}
                                     </span>
+                                    @endunless
                                 </div>
 
-                                @if ($structured && $requirement->code === 'WEEKLY_REPORT')
-                            <div class="small text-secondary mb-2">Each four-week packet has its own review and signing state.</div>
-                            @forelse ($form19Packets as $packet)
+                                @if ($requirement->code === 'WEEKLY_REPORT')
+                            @php
+                                // Each week is its own Form 19, checked as soon as it is finished.
+                                // Weeks are grouped by month to keep a 486-hour internship readable.
+                                // An empty draft is not a week yet (nothing logged in it).
+                                $form19Packets = $form19Packets->reject(fn ($p) => $p->status === 'draft' && $p->entries->isEmpty())->values();
+                                $f19Anchor = $internship ? \App\Support\TrainingWeeks::anchorForInternship($internship) : null;
+                                $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => $f19Anchor
+                                    ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7)->format('Y-m') : 'all');
+                                $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path) || ($p->status === 'printed' && ! $p->signatures_confirmed_at);
+                            @endphp
+                            <div class="small text-secondary mb-2">
+                                Each week is checked on its own as soon as the student submits it.
+                                {{ $form19Packets->where('status', 'approved')->count() }} of {{ $form19Packets->count() }} {{ \Illuminate\Support\Str::plural('week', $form19Packets->count()) }} approved
+                                @if ($n = $form19Packets->filter(fn ($p) => in_array($p->status, ['submitted', 'for_review'], true))->count())
+                                    &middot; <span class="text-warning fw-semibold">{{ $n }} waiting for your review</span>
+                                @endif
                                 @php
-                                    $packetStatus = $packet->status;
-                                    $packetWeeks = \App\Support\TrainingWeeks::group($packet->entries, \App\Support\TrainingWeeks::anchorFor($packet));
+                                    $f19Late = $f19Anchor && $internship ? $form19Packets->countBy(fn ($p) => \App\Support\TrainingWeeks::lateness($p, \App\Support\TrainingWeeks::dueDate($f19Anchor->copy()->addDays(7 * ((int) $p->packet_number - 1)), $internship))) : collect();
                                 @endphp
-                                <div class="border rounded p-2 mb-2">
-                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                @if ($f19Late->get('late'))
+                                    &middot; <span class="text-warning fw-semibold">{{ $f19Late->get('late') }} late</span>
+                                @endif
+                                @if ($f19Late->get('missing'))
+                                    &middot; <span class="text-danger fw-semibold">{{ $f19Late->get('missing') }} missing</span>
+                                @endif
+                            </div>
+                            @if ($f19Anchor && $internship)
+                                @php
+                                    // Weeks so far plus the next one, for setting a due date like an MS Teams assignment.
+                                    $f19Today = now()->startOfDay()->gte($f19Anchor) ? \App\Support\TrainingWeeks::number(\App\Support\TrainingWeeks::weekStart(now(), $f19Anchor), $f19Anchor) : 0;
+                                    $f19LastWeek = max($f19Today + 1, (int) $form19Packets->max('packet_number'), 1);
+                                    $f19Set = \App\Support\TrainingWeeks::setDueDates($internship);
+                                    $f19Pick = (int) old('week_number', $f19Today ?: 1);
+                                @endphp
+                                @if ($canAct)
+                                    <form method="POST" action="{{ route('instructor.documents.week-due', $student) }}" class="border rounded p-2 mb-2 d-flex flex-wrap align-items-end gap-2" style="background:#fafbfc;">
+                                        @csrf
+                                        @method('PUT')
                                         <div>
-                                            <div class="fw-semibold small">Packet {{ $packet->packet_number ?? 1 }}</div>
-                                            <div class="text-secondary" style="font-size:.75rem;">{{ $packet->entries->count() }} training days · {{ $statusLabelStructured($packetStatus) }}</div>
+                                            <label class="form-label small fw-semibold mb-1" for="f19Week"><i class="ti ti-calendar-due"></i> Due date for</label>
+                                            <select name="week_number" id="f19Week" class="form-select form-select-sm" style="min-width: 220px;">
+                                                @for ($w = 1; $w <= $f19LastWeek; $w++)
+                                                    @php $ws = $f19Anchor->copy()->addDays(7 * ($w - 1)); $wd = \App\Support\TrainingWeeks::dueDate($ws, $internship); @endphp
+                                                    <option value="{{ $w }}" data-due="{{ $wd->format('Y-m-d\TH:i') }}" @selected($w === $f19Pick)>
+                                                        Week {{ $w }} ({{ $ws->format('M d') }} – {{ $ws->copy()->addDays(6)->format('M d') }}){{ isset($f19Set[$w]) ? ' · set' : '' }}
+                                                    </option>
+                                                @endfor
+                                            </select>
                                         </div>
-                                        @if ($packetStatus === 'approved')
-                                            <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary">Signed copy</a>
-                                        @endif
-                                    </div>
-                                    <div class="d-flex gap-2 flex-wrap mt-2">
-                                        @if (in_array($packetStatus, ['submitted', 'for_review']))
-                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            <form method="POST" action="{{ route('instructor.documents.print', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Print for signing</button></form>
-                                        @elseif ($packetStatus === 'printed')
-                                            <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">View printable</a>
-                                            <form method="POST" action="{{ route('instructor.documents.complete', $packet) }}">@csrf<button class="btn btn-sm btn-primary" type="submit">Confirm signed paper returned</button></form>
-                                        @elseif ($packetStatus === 'completed')
-                                            <span class="text-secondary small">Awaiting student's one-time signed-copy upload.</span>
-                                        @elseif ($packetStatus === 'approved')
-                                            <span class="text-success small">Signed copy received.</span>
-                                        @elseif ($packetStatus === 'returned')
-                                            <span class="text-secondary small">Returned for correction.</span>
-                                        @endif
+                                        <div>
+                                            <label class="form-label small fw-semibold mb-1" for="f19DueAt">Date and time</label>
+                                            <input type="datetime-local" name="due_at" id="f19DueAt" class="form-control form-control-sm @error('due_at') is-invalid @enderror"
+                                                   value="{{ old('due_at', \App\Support\TrainingWeeks::dueDate($f19Anchor->copy()->addDays(7 * ($f19Pick - 1)), $internship)->format('Y-m-d\TH:i')) }}">
+                                        </div>
+                                        <button type="submit" class="btn btn-sm btn-primary">Save due date</button>
+                                        <button type="submit" name="clear" value="1" class="btn btn-sm btn-link text-secondary px-1" formnovalidate title="Use the default due date for this week">Use default</button>
+                                        @error('due_at')<div class="w-100 text-danger small">{{ $message }}</div>@enderror
+                                        <div class="w-100 text-secondary" style="font-size:.72rem;">The intern is notified. Weeks without their own due date use the default in the "Form 19 due" button above.</div>
+                                    </form>
+                                    <script>
+                                        document.getElementById('f19Week')?.addEventListener('change', function () {
+                                            var due = this.selectedOptions[0]?.dataset.due;
+                                            if (due) document.getElementById('f19DueAt').value = due;
+                                        });
+                                    </script>
+                                @endif
+                            @endif
+                            @forelse ($f19Months as $month => $monthWeeks)
+                                @php $open = $loop->last || $monthWeeks->contains($toCheck); $mid = 'f19-'.$month; @endphp
+                                <div class="border rounded mb-2 overflow-hidden f19-month">
+                                    <button type="button" class="w-100 btn btn-link text-reset text-decoration-none px-2 py-1 d-flex align-items-center gap-2 text-start f19-toggle {{ $open ? '' : 'collapsed' }}"
+                                            style="background:#eef2f7;" data-bs-toggle="collapse" data-bs-target="#{{ $mid }}" aria-expanded="{{ $open ? 'true' : 'false' }}">
+                                        <i class="ti ti-chevron-right f19-chevron text-secondary"></i>
+                                        <span class="fw-semibold small flex-grow-1">{{ $month === 'all' ? 'Weeks' : \Carbon\Carbon::parse($month.'-01')->format('F Y') }}</span>
+                                        <span class="text-secondary" style="font-size:.72rem;">{{ $monthWeeks->count() }} {{ \Illuminate\Support\Str::plural('week', $monthWeeks->count()) }} &middot; {{ $monthWeeks->where('status', 'approved')->count() }} approved</span>
+                                    </button>
+                                    <div class="collapse {{ $open ? 'show' : '' }}" id="{{ $mid }}">
+                                        @foreach ($monthWeeks as $packet)
+                                            @php
+                                                $packetStatus = $packet->status;
+                                                $weekStart = $f19Anchor?->copy()->addDays(((int) $packet->packet_number - 1) * 7);
+                                                $weekName = 'Week '.($packet->packet_number ?? 1);
+                                                $due = $weekStart && $internship ? \App\Support\TrainingWeeks::dueDate($weekStart, $internship) : null;
+                                                $late = $due ? \App\Support\TrainingWeeks::lateness($packet, $due) : null;
+                                            @endphp
+                                            <div class="border-top px-2 py-2">
+                                                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                                    <div>
+                                                        <span class="fw-semibold small">{{ $weekName }}</span>
+                                                        <span class="text-secondary" style="font-size:.75rem;">
+                                                            @if ($weekStart) {{ $weekStart->format('M d') }} – {{ $weekStart->copy()->addDays(6)->format('M d') }} &middot; @endif
+                                                            {{ $packet->entries->count() }} {{ \Illuminate\Support\Str::plural('day', $packet->entries->count()) }}
+                                                            @if ($due) &middot; due {{ $due->format('M d, g:i A') }}@if (\App\Support\TrainingWeeks::dueDateIsSet($weekStart, $internship)) <i class="ti ti-calendar-check text-primary" title="Due date set by the instructor"></i>@endif @endif
+                                                        </span>
+                                                    </div>
+                                                    <span class="d-flex gap-1 align-items-center">
+                                                    @if ($late === 'late')
+                                                        <span class="badge rounded-pill text-bg-warning" title="First submitted {{ ($packet->first_submitted_at ?? $packet->submitted_at)?->format('M d, Y g:i A') }}">Late</span>
+                                                    @elseif ($late === 'missing')
+                                                        <span class="badge rounded-pill text-bg-danger" title="Past the due date and not submitted yet">Missing</span>
+                                                    @endif
+                                                    <span class="badge rounded-pill {{ $badgeColor($packetStatus) }}">{{ $packetStatus === 'draft' ? 'Not submitted yet' : $statusLabelStructured($packetStatus) }}</span>
+                                                    </span>
+                                                </div>
+                                                @if ($packetStatus !== 'draft')
+                                                <div class="d-flex gap-2 flex-wrap mt-1 align-items-center">
+                                                    <a href="{{ route('instructor.documents.show', $packet) }}" class="btn btn-sm btn-outline-primary py-0">Open</a>
+                                                    <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">View</a>
+                                                    <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Download"><i class="ti ti-download"></i></a>
+                                                    @if (in_array($packetStatus, ['submitted', 'for_review']))
+                                                        @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                    @elseif ($packetStatus === 'printed')
+                                                        @if ($packet->signatures_confirmed_at)
+                                                            <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the upload.</span>
+                                                        @else
+                                                            @if ($canAct)@include('partials.approve-button', ['step' => 'signatures', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                        @endif
+                                                    @elseif ($packetStatus === 'completed')
+                                                        @if ($packet->file_path)
+                                                            <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">Signed copy</a>
+                                                            @if ($canAct)@include('partials.approve-button', ['step' => 'signed', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
+                                                        @else
+                                                            <span class="text-secondary small">Waiting for the signed-copy upload.</span>
+                                                        @endif
+                                                    @elseif ($packetStatus === 'approved')
+                                                        <a href="{{ route('instructor.documents.download', $packet) }}" class="btn btn-sm btn-outline-secondary py-0">Signed copy</a>
+                                                    @elseif ($packetStatus === 'returned')
+                                                        <span class="text-secondary small">Returned for correction.</span>
+                                                    @endif
+                                                </div>
+                                                @endif
+                                            </div>
+                                        @endforeach
                                     </div>
                                 </div>
                             @empty
-                                <div class="text-secondary small">No Form 19 packets submitted yet.</div>
+                                <div class="text-secondary small">No weekly reports yet.</div>
                             @endforelse
+                            <style>
+                                .f19-chevron { transition: transform .15s ease; }
+                                .f19-toggle[aria-expanded="true"] > .f19-chevron { transform: rotate(90deg); }
+                            </style>
                         @elseif ($structured)
                                     {{-- Structured fill-in-system workflow --}}
                                     @if ($document)
-                                        @if ($requirement->is_repeating)
-                                            <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 220px; overflow-y: auto;">
-                                                <div class="text-secondary fw-semibold mb-1" style="font-size: 0.72rem; text-transform: uppercase;">
-                                                    {{ $document->entries->count() }} {{ $requirement->entry_cadence === 'weekly' ? 'week(s)' : 'day(s)' }} logged (view only)
-                                                </div>
-                                                @forelse ($document->entries as $entry)
-                                                    <div class="border-bottom py-1" style="font-size: 0.75rem;">
-                                                        <div class="fw-semibold">
-                                                            {{ $entry->entry_date->format('M d, Y') }}
-                                                            @if ($entry->entry_end_date) &ndash; {{ $entry->entry_end_date->format('M d, Y') }} @endif
-                                                        </div>
-                                                        @foreach ($requirement->fieldDefinitions as $field)
-                                                            <div class="text-secondary">{{ $field->label }}: {{ \Illuminate\Support\Str::limit($entry->value($field->field_key), 60) }}</div>
-                                                        @endforeach
-                                                    </div>
-                                                @empty
-                                                    <div class="text-secondary">No entries logged yet.</div>
-                                                @endforelse
+                                        @if ($requirement->code === 'INTERNSHIP_TIME_FRAME')
+                                        {{-- Form 17 is filled from the days the HTE supervisor approved in Time Frame (DTR) --}}
+                                        @php
+                                            $tfDays = $internship?->deployment
+                                                ? \App\Models\Dtr::where('deployment_id', $internship->deployment->id)->withApprovedTime()->orderBy('log_date')->get()
+                                                : collect();
+                                            $tfApproved = $tfDays; // only supervisor-approved days reach the instructor
+                                        @endphp
+                                        <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 320px; overflow-y: auto;">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="text-secondary fw-semibold" style="font-size: 0.72rem; text-transform: uppercase;">
+                                                    {{ $tfApproved->count() }} {{ \Illuminate\Support\Str::plural('day', $tfApproved->count()) }} &middot; {{ \App\Support\TimeFrame::format($tfApproved->sum(fn ($d) => $d->countedHours())) }} hours
+                                                </span>
+                                                <a href="{{ route('instructor.monitoring', ['student' => $student->id]) }}" class="small">Open in Time Frame</a>
                                             </div>
+                                            <table class="table table-sm mb-0" style="font-size: 0.75rem;">
+                                                <thead><tr class="text-secondary"><th>Date</th><th>Note</th><th class="text-end">Hours</th></tr></thead>
+                                                <tbody>
+                                                    @forelse ($tfApproved as $day)
+                                                        <tr>
+                                                            <td class="text-nowrap">{{ $day->log_date->format('M d, Y') }} <span class="text-secondary">{{ $day->log_date->format('D') }}</span></td>
+                                                            <td class="text-secondary">{{ $day->notes ?: '—' }}</td>
+                                                            <td class="text-end fw-semibold">{{ \App\Support\TimeFrame::format($day->countedHours()) }}</td>
+                                                        </tr>
+                                                    @empty
+                                                        <tr><td colspan="3" class="text-secondary">No days yet.</td></tr>
+                                                    @endforelse
+                                                </tbody>
+                                            </table>
+                                            @include('partials.week-downloads', [
+                                                'weeks' => \App\Support\TrainingWeeks::list($tfApproved->pluck('log_date'), \App\Support\TrainingWeeks::anchorForInternship($internship)),
+                                                'route' => 'instructor.documents.printable', 'document' => $document,
+                                            ])
+                                        </div>
                                         @else
-                                            @if ($requirement->code === 'OJT_RESUME')
-                                                @php
-                                                    $rv = fn (string $key) => $document->fieldValue($key);
-
-                                                    $workExperienceRows = [];
-                                                    for ($i = 1; $i <= 5; $i++) {
-                                                        $date = $rv("work_experience_{$i}_date");
-                                                        $employer = $rv("work_experience_{$i}_employer");
-                                                        $position = $rv("work_experience_{$i}_position");
-
-                                                        if ($date || $employer || $position) {
-                                                            $workExperienceRows[] = [
-                                                                'date' => $date,
-                                                                'employer' => $employer,
-                                                                'position' => $position,
-                                                            ];
-                                                        }
-                                                    }
-
-                                                    $trainingRows = [];
-                                                    for ($i = 1; $i <= 6; $i++) {
-                                                        $title = $rv("training_{$i}_title");
-                                                        $date = $rv("training_{$i}_date");
-
-                                                        if ($title || $date) {
-                                                            $trainingRows[] = [
-                                                                'title' => $title,
-                                                                'date' => $date,
-                                                            ];
-                                                        }
-                                                    }
-
-                                                    $referenceRows = [];
-                                                    for ($i = 1; $i <= 3; $i++) {
-                                                        $name = $rv("reference_{$i}_name");
-                                                        $position = $rv("reference_{$i}_position");
-                                                        $company = $rv("reference_{$i}_company");
-                                                        $contact = $rv("reference_{$i}_contact");
-
-                                                        if ($name || $position || $company || $contact) {
-                                                            $referenceRows[] = [
-                                                                'name' => $name,
-                                                                'position' => $position,
-                                                                'company' => $company,
-                                                                'contact' => $contact,
-                                                            ];
-                                                        }
-                                                    }
-                                                @endphp
-
-                                                <div class="border rounded p-2 mb-2" style="background:#fafbfc; font-size:0.78rem;">
-                                                    <div class="text-secondary fw-semibold mb-2" style="font-size:0.72rem; text-transform:uppercase;">
-                                                        Entered data (view only)
-                                                    </div>
-
-                                                    <div class="mb-1">
-                                                        <span class="text-secondary">Address:</span>
-                                                        <span class="fw-semibold">{{ $rv('address') ?: '—' }}</span>
-                                                    </div>
-                                                    <div class="mb-1">
-                                                        <span class="text-secondary">Telephone/Mobile Number:</span>
-                                                        <span class="fw-semibold">{{ $rv('contact_number') ?: '—' }}</span>
-                                                    </div>
-                                                    <div class="mb-1">
-                                                        <span class="text-secondary">Email Address:</span>
-                                                        <span class="fw-semibold">{{ $rv('email') ?: '—' }}</span>
-                                                    </div>
-                                                    <div class="mb-2">
-                                                        <span class="text-secondary">Career Objective:</span>
-                                                        <span class="fw-semibold">{{ $rv('career_objective') ?: '—' }}</span>
-                                                    </div>
-
-                                                    <div class="text-secondary fw-semibold">Work Experience:</div>
-                                                    @forelse ($workExperienceRows as $row)
-                                                        <div class="ms-2">
-                                                            {{ $row['date'] ?: '—' }}
-                                                            @if ($row['employer'] || $row['position'])
-                                                                — {{ $row['employer'] ?: '—' }}
-                                                                @if ($row['position']) — {{ $row['position'] }} @endif
-                                                            @endif
-                                                        </div>
-                                                    @empty
-                                                        <div class="ms-2">—</div>
-                                                    @endforelse
-
-                                                    <div class="text-secondary fw-semibold mt-2">Trainings and Seminars Attended:</div>
-                                                    @forelse ($trainingRows as $row)
-                                                        <div class="ms-2">
-                                                            {{ $row['title'] ?: '—' }}
-                                                            @if ($row['date']) — {{ $row['date'] }} @endif
-                                                        </div>
-                                                    @empty
-                                                        <div class="ms-2">—</div>
-                                                    @endforelse
-
-                                                    <div class="text-secondary fw-semibold mt-2">Educational Background:</div>
-                                                    <div class="ms-2">Elementary: {{ $rv('education_elementary_school') ?: '—' }} @if ($rv('education_elementary_date')) — {{ $rv('education_elementary_date') }} @endif</div>
-                                                    <div class="ms-2">High School: {{ $rv('education_high_school_school') ?: '—' }} @if ($rv('education_high_school_date')) — {{ $rv('education_high_school_date') }} @endif</div>
-                                                    <div class="ms-2">College: {{ $rv('education_college_school') ?: '—' }} @if ($rv('education_college_date')) — {{ $rv('education_college_date') }} @endif</div>
-
-                                                    <div class="mt-2">
-                                                        <span class="text-secondary">Extracurricular Activities and Awards Received:</span>
-                                                        <span class="fw-semibold">{{ $rv('extracurricular_activities') ?: '—' }}</span>
-                                                    </div>
-
-                                                    <div class="text-secondary fw-semibold mt-2">Personal Background:</div>
-                                                    <div class="ms-2">Nickname: {{ $rv('nickname') ?: '—' }}</div>
-                                                    <div class="ms-2">Height: {{ $rv('height') ?: '—' }} &nbsp; Age: {{ $rv('age') ?: '—' }} &nbsp; Weight: {{ $rv('weight') ?: '—' }}</div>
-                                                    <div class="ms-2">Gender: {{ $rv('gender') ?: '—' }} &nbsp; Civil Status: {{ $rv('civil_status') ?: '—' }} &nbsp; Religion: {{ $rv('religion') ?: '—' }}</div>
-                                                    <div class="ms-2">Skills: {{ $rv('skills') ?: '—' }}</div>
-
-                                                    <div class="text-secondary fw-semibold mt-2">References:</div>
-                                                    @forelse ($referenceRows as $row)
-                                                        <div class="ms-2">
-                                                            {{ $row['name'] ?: '—' }}
-                                                            @if ($row['position']) — {{ $row['position'] }} @endif
-                                                            @if ($row['company']) — {{ $row['company'] }} @endif
-                                                            @if ($row['contact']) — {{ $row['contact'] }} @endif
-                                                        </div>
-                                                    @empty
-                                                        <div class="ms-2">—</div>
-                                                    @endforelse
-                                                </div>
-                                            @elseif ($requirement->code === 'CERTIFICATE_OF_UNITS_EARNED')
-                                                @php
-                                                    $cv = fn (string $key) => $document->fieldValue($key);
-
-                                                    $decodeYearRows = function (?string $raw, int $count) {
-                                                        $decoded = json_decode($raw ?: '', true);
-                                                        if (! is_array($decoded)) {
-                                                            $decoded = [];
-                                                        }
-
-                                                        $defaults = [
-                                                            'semester1' => '', 'units1' => '',
-                                                            'semester2' => '', 'units2' => '',
-                                                            'summer' => '', 'summer_units' => '',
-                                                            'total' => '',
-                                                        ];
-
-                                                        $rows = [];
-                                                        for ($i = 0; $i < $count; $i++) {
-                                                            $row = array_merge($defaults, is_array($decoded[$i] ?? null) ? $decoded[$i] : []);
-                                                            // Skip fully-blank rows - only show what the student actually entered.
-                                                            if (array_filter($row, fn ($v) => trim((string) $v) !== '')) {
-                                                                $rows[] = $row;
-                                                            }
-                                                        }
-
-                                                        return $rows;
-                                                    };
-
-                                                    $unitsYears = [
-                                                        'First Year' => $decodeYearRows($cv('first_year_courses'), 7),
-                                                        'Second Year' => $decodeYearRows($cv('second_year_courses'), 7),
-                                                        'Third Year' => $decodeYearRows($cv('third_year_courses'), 7),
-                                                        'Fourth Year' => $decodeYearRows($cv('fourth_year_courses'), 7),
-                                                    ];
-
-                                                    $failedRows = json_decode($cv('failed_courses') ?: '', true);
-                                                    $failedRows = is_array($failedRows) ? array_filter($failedRows, fn ($r) => is_array($r) && array_filter($r, fn ($v) => trim((string) $v) !== '')) : [];
-                                                @endphp
-
-                                                <div class="border rounded p-2 mb-2" style="background:#fafbfc; max-height: 260px; overflow-y: auto; font-size: 0.75rem;">
-                                                    <div class="text-secondary fw-semibold mb-2" style="font-size: 0.72rem; text-transform: uppercase;">
-                                                        Entered data (view only)
-                                                    </div>
-
-                                                    <div class="mb-1"><span class="text-secondary">Name:</span> <span class="fw-semibold">{{ trim($cv('given_name').' '.$cv('middle_name').' '.$cv('surname')) ?: '—' }}</span></div>
-                                                    <div class="mb-1"><span class="text-secondary">Course:</span> <span class="fw-semibold">{{ $cv('course') ?: '—' }}</span></div>
-                                                    <div class="mb-2"><span class="text-secondary">Major:</span> <span class="fw-semibold">{{ $cv('major') ?: '—' }}</span></div>
-
-                                                    @foreach ($unitsYears as $yearLabel => $rows)
-                                                        @if (count($rows))
-                                                            <div class="text-secondary fw-semibold mt-2 mb-1">{{ $yearLabel }}</div>
-                                                            <div class="table-responsive">
-                                                                <table class="table table-sm table-bordered mb-1" style="font-size: 0.68rem;">
-                                                                    <thead class="table-light">
-                                                                        <tr>
-                                                                            <th colspan="2">1st Sem</th>
-                                                                            <th colspan="2">2nd Sem</th>
-                                                                            <th colspan="2">Summer</th>
-                                                                            <th>Total</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        @foreach ($rows as $row)
-                                                                            <tr>
-                                                                                <td>{{ $row['semester1'] }}</td>
-                                                                                <td>{{ $row['units1'] }}</td>
-                                                                                <td>{{ $row['semester2'] }}</td>
-                                                                                <td>{{ $row['units2'] }}</td>
-                                                                                <td>{{ $row['summer'] }}</td>
-                                                                                <td>{{ $row['summer_units'] }}</td>
-                                                                                <td>{{ $row['total'] }}</td>
-                                                                            </tr>
-                                                                        @endforeach
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        @endif
-                                                    @endforeach
-
-                                                    <div class="mb-1 mt-2"><span class="text-secondary">Total:</span> <span class="fw-semibold">{{ $cv('record_total') ?: '—' }}</span></div>
-
-                                                    @if (count($failedRows))
-                                                        <div class="text-secondary fw-semibold mt-2 mb-1">Courses Failed to Take</div>
-                                                        <div class="table-responsive">
-                                                            <table class="table table-sm table-bordered mb-0" style="font-size: 0.68rem;">
-                                                                <thead class="table-light">
-                                                                    <tr><th>Code</th><th>Title</th><th>Units</th></tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    @foreach ($failedRows as $row)
-                                                                        <tr>
-                                                                            <td>{{ $row['code'] ?? '' }}</td>
-                                                                            <td>{{ $row['title'] ?? '' }}</td>
-                                                                            <td>{{ $row['units'] ?? '' }}</td>
-                                                                        </tr>
-                                                                    @endforeach
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    @endif
-                                                </div>
-                                            @else
-                                                <div class="border rounded p-2 mb-2" style="background:#fafbfc;">
-                                                    <div class="text-secondary fw-semibold" style="font-size: 0.72rem; text-transform: uppercase;">
-                                                        Entered data (view only)
-                                                    </div>
-                                                    @foreach ($requirement->fieldDefinitions as $field)
-                                                        @php $warning = $fieldWarnings[$document->id][$field->field_key] ?? null; @endphp
-                                                        <div class="d-flex" style="font-size: 0.78rem;">
-                                                            <div class="text-secondary" style="width: 55%;">{{ $field->label }}:</div>
-                                                            <div class="fw-semibold">{{ $document->fieldValue($field->field_key) ?: '—' }}</div>
-                                                        </div>
-                                                        @if ($warning)
-                                                            <div class="text-warning" style="font-size: 0.7rem; margin-top: -2px; margin-bottom: 4px;">
-                                                                <i class="ti ti-alert-triangle"></i> {{ $warning }}
-                                                            </div>
-                                                        @endif
-                                                    @endforeach
-                                                </div>
-                                            @endif
+                                            {{-- The form as it prints, with what the student filled in --}}
+                                            @include('instructor.documents._printable-preview', ['document' => $document])
                                         @endif
 
                                         @if ($status === 'returned' && $document->latestReview?->remarks)
@@ -531,39 +529,16 @@
                                                 >
                                                     View Printable
                                                 </a>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 @if ($requirement->workflow_mode === 'print_sign')
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-primary"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#printModal"
-                                                        data-document-id="{{ $document->id }}"
-                                                    >
-                                                        Print for Signing
-                                                    </button>
+                                                    @if ($canAct)
+                                                    @include('partials.approve-button', ['step' => 'print', 'document' => $document, 'name' => $requirement->name])
+                                                    @endif
                                                 @else
-                                                    <button
-                                                        type="button"
-                                                        class="btn btn-sm btn-primary"
-                                                        data-bs-toggle="modal"
-                                                        data-bs-target="#reviewModal"
-                                                        data-document-id="{{ $document->id }}"
-                                                        data-student-name="{{ $student->user->name }}"
-                                                        data-document-name="{{ $requirement->name }}"
-                                                    >
-                                                        Approve / Return
-                                                    </button>
+                                                    @if ($canAct)
+                                                    @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name])
+                                                    @endif
                                                 @endif
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#returnModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Return to Student
-                                                </button>
                                             @elseif ($status === 'returned')
                                                 <a
                                                     href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}"
@@ -572,38 +547,52 @@
                                                 >
                                                     View Printable
                                                 </a>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
                                                 <span class="text-secondary small align-self-center">Awaiting student's corrected resubmission.</span>
                                             @elseif ($status === 'printed')
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                     View Printable
                                                 </a>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#completeModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                >
-                                                    Approve
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-outline-danger"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#returnModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Return
-                                                </button>
+                                                <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
+                                                @if ($document->signatures_confirmed_at)
+                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d') }} &middot; waiting for the student's upload.</span>
+                                                @else
+                                                    @if ($canAct)
+                                                        @include('partials.approve-button', ['step' => 'signatures', 'document' => $document, 'name' => $requirement->name])
+                                                    @endif
+                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures. When they bring the signed form back, confirm the signatures to open their upload.</span>
+                                                @endif
                                             @elseif ($status === 'completed')
-                                                <span class="text-secondary" style="font-size: 0.78rem;">Awaiting student's signed-copy upload.</span>
+                                                @if ($document->file_path)
+                                                    <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                                        <i class="ti ti-file-check"></i> View signed copy
+                                                    </a>
+                                                    @if ($canAct)
+                                                    @include('partials.approve-button', ['step' => 'signed', 'document' => $document, 'name' => $requirement->name])
+                                                    @endif
+                                                @else
+                                                    <span class="text-secondary" style="font-size: 0.78rem;">Waiting for the student's signed-copy upload.</span>
+                                                @endif
                                             @elseif ($status === 'approved')
                                                 <a href="{{ route('instructor.documents.download', $document) }}" class="btn btn-sm btn-outline-secondary">
                                                     <i class="ti ti-download"></i> Signed copy
                                                 </a>
                                             @endif
                                         </div>
+                                        @if ($kinds = \App\Models\DocumentAttachment::kindsFor($requirement->code))
+                                            <div class="mt-2 d-flex flex-wrap gap-2" style="font-size: 0.78rem;">
+                                                @foreach ($kinds as $kind => $kindLabel)
+                                                    @php $attachment = $document->attachment($kind); @endphp
+                                                    @if ($attachment)
+                                                        <a href="{{ route('instructor.documents.attachment', $attachment) }}" target="_blank" class="badge rounded-pill text-bg-light border text-decoration-none fw-normal py-2 px-3" style="font-size: 0.78rem;">
+                                                            <i class="ti ti-paperclip"></i> {{ $kindLabel }}
+                                                        </a>
+                                                    @else
+                                                        <span class="badge rounded-pill text-bg-light border text-danger fw-normal py-2 px-3" style="font-size: 0.78rem;"><i class="ti ti-paperclip-off"></i> No {{ $kindLabel }}</span>
+                                                    @endif
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     @else
                                         <div class="text-secondary" style="font-size: 0.78rem;">Not yet filled out by student.</div>
                                     @endif
@@ -623,23 +612,27 @@
                                             </div>
                                         @endif
 
+                                        @if ($document->attachments->isNotEmpty())
+                                            <div class="mt-2 d-flex flex-wrap gap-2">
+                                                @foreach ($document->attachments->sortBy(fn ($a) => (int) preg_replace('/\D/', '', $a->kind)) as $attachment)
+                                                    <a href="{{ route('instructor.documents.attachment', $attachment) }}" target="_blank" class="badge rounded-pill text-bg-light border text-decoration-none fw-normal py-2 px-3" style="font-size: 0.78rem;" title="{{ $attachment->original_filename }}">
+                                                        <i class="ti ti-paperclip"></i> {{ $attachment->label() }}
+                                                    </a>
+                                                @endforeach
+                                            </div>
+                                        @endif
+
                                         <div class="mt-2 d-flex gap-2">
+                                            @if ($document->file_path)
                                             <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                                 <i class="ti ti-eye"></i> View
                                             </a>
+                                            @endif
 
                                             @if (in_array($status, ['submitted', 'for_review']))
-                                                <button
-                                                    type="button"
-                                                    class="btn btn-sm btn-primary"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#reviewModal"
-                                                    data-document-id="{{ $document->id }}"
-                                                    data-student-name="{{ $student->user->name }}"
-                                                    data-document-name="{{ $requirement->name }}"
-                                                >
-                                                    Approve / Return
-                                                </button>
+                                                @if ($canAct)
+                                                @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name])
+                                                @endif
                                             @elseif ($status === 'returned')
                                                 <span class="text-secondary small align-self-center">{{ $requirement->audience === 'coordinator' ? "Awaiting the coordinator's corrected upload." : "Awaiting student's corrected resubmission." }}</span>
                                             @endif
@@ -654,39 +647,43 @@
                 </div>
             </div>
         @endforeach
+
+        {{-- Return right here, or open the full Classroom-style view --}}
+        @php
+            $openRequirement = $allRequirements->firstWhere('id', $selectedRequirementId);
+            $openDocument = $openRequirement && $openRequirement->code !== 'WEEKLY_REPORT'
+                ? $documentsByRequirement->get($selectedRequirementId) : null;
+            $openReturnable = $openDocument && in_array($openDocument->status, ['submitted', 'for_review', 'printed', 'completed'], true);
+        @endphp
+        @if ($openDocument)
+            <div class="il-card">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 {{ $canAct && $openReturnable ? 'mb-3' : '' }}">
+                    <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Review</span>
+                    <a href="{{ route('instructor.documents.show', $openDocument) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="ti ti-arrows-maximize"></i> Open full view
+                    </a>
+                </div>
+                @if ($canAct && $openReturnable)
+                    <form method="POST" action="{{ route('instructor.documents.review', $openDocument) }}">
+                        @csrf
+                        <input type="hidden" name="decision" value="returned">
+                        <label class="form-label small fw-semibold" for="inline_remarks">Return to student with remarks</label>
+                        <textarea name="remarks" id="inline_remarks" class="form-control mb-2" rows="3" maxlength="2000"
+                                  placeholder="What needs to be corrected?" required></textarea>
+                        <button type="submit" class="btn btn-sm btn-danger"><i class="ti ti-arrow-back-up"></i> Return to student</button>
+                    </form>
+                @endif
+            </div>
+        @endif
+            </div>
+        </div>
     @endif
 @endif
 
-{{-- Shared review modal - populated per-card via the data-* attributes above --}}
-<div class="modal fade" id="reviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="reviewForm" action="">
-                @csrf
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold" id="reviewModalLabel">Review document</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-3" id="reviewModalContext"></p>
-
-                    <label class="form-label small fw-semibold">Decision</label>
-                    <select name="decision" id="decision" class="form-select mb-3" required>
-                        <option value="approved">Approve</option>
-                        <option value="returned">Return for revision</option>
-                    </select>
-
-                    <label class="form-label small fw-semibold">Remarks</label>
-                    <textarea name="remarks" id="remarks" class="form-control" rows="3" placeholder="Required if returning the document"></textarea>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Submit decision</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<style>
+    .il-form-list .list-group-item { border-left: 3px solid transparent; }
+    .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
+</style>
 
 {{-- Return to Student modal (structured forms) --}}
 <div class="modal fade" id="returnModal" tabindex="-1" aria-hidden="true">
@@ -713,68 +710,8 @@
     </div>
 </div>
 
-{{-- Print for Signing modal (structured forms) --}}
-<div class="modal fade" id="printModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="printForm" action="">
-                @csrf
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Print for signing</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-0">
-                        This confirms the entered data looks correct and marks the form as printed and out for
-                        physical signature routing. The student can no longer edit it after this point.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Confirm and print</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-{{-- Approve modal (structured forms) - unlocks the student's signed-copy upload --}}
-<div class="modal fade" id="completeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form method="POST" id="completeForm" action="">
-                @csrf
-                <div class="modal-header">
-                    <h2 class="modal-title h6 fw-bold">Approve document</h2>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="small text-secondary mb-0">
-                        Confirm the signed physical copies have been returned to you and everything checks out.
-                        This unlocks the student's one-time upload of the scanned, signed document.
-                    </p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Approve</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <script>
-    document.getElementById('reviewModal').addEventListener('show.bs.modal', function (event) {
-        const button = event.relatedTarget;
-        const documentId = button.getAttribute('data-document-id');
-        const studentName = button.getAttribute('data-student-name');
-        const documentName = button.getAttribute('data-document-name');
 
-        document.getElementById('reviewModalContext').textContent = documentName + ' — ' + studentName;
-        document.getElementById('reviewForm').action = '/instructor/documents/' + documentId + '/review';
-        document.getElementById('decision').value = 'approved';
-        document.getElementById('remarks').value = '';
-    });
 
     document.getElementById('returnModal').addEventListener('show.bs.modal', function (event) {
         const button = event.relatedTarget;
@@ -784,14 +721,10 @@
         document.getElementById('returnForm').action = '/instructor/documents/' + documentId + '/review';
     });
 
-    document.getElementById('printModal').addEventListener('show.bs.modal', function (event) {
-        const documentId = event.relatedTarget.getAttribute('data-document-id');
-        document.getElementById('printForm').action = '/instructor/documents/' + documentId + '/print';
-    });
 
-    document.getElementById('completeModal').addEventListener('show.bs.modal', function (event) {
-        const documentId = event.relatedTarget.getAttribute('data-document-id');
-        document.getElementById('completeForm').action = '/instructor/documents/' + documentId + '/complete';
-    });
+
+
 </script>
+
+@include('partials.approve-modal')
 @endsection

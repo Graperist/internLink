@@ -99,7 +99,6 @@ class AuditTrailTest extends TestCase
         $user = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'correct-password',
         ])->assertRedirect();
 
@@ -115,7 +114,6 @@ class AuditTrailTest extends TestCase
         $user = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'hunter2-not-the-password',
         ])->assertSessionHasErrors('id_number');
 
@@ -123,16 +121,16 @@ class AuditTrailTest extends TestCase
         $this->assertSame($user->id, $log->user_id);
         $this->assertStringContainsString('wrong password', $log->description);
 
-        // Unknown ID: no user to attach to, but the campus's coordinator still gets to see it.
+        // Unknown ID: no user to attach to, but the campus named inside the
+        // ID ("AAA") still gets it, so that campus's coordinator can see it.
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'student',
-            'id_number' => 'NOPE-999', 'password' => 'whatever',
+            'id_number' => '23-AAA-9999', 'password' => 'whatever',
         ]);
 
         $unknown = ActivityLog::where('action', 'auth.login_failed')->latest('id')->first();
         $this->assertNull($unknown->user_id);
         $this->assertSame($this->campusA->id, $unknown->campus_id);
-        $this->assertStringContainsString('NOPE-999', $unknown->description);
+        $this->assertStringContainsString('23-AAA-9999', $unknown->description);
     }
 
     public function test_passwords_and_request_bodies_are_never_stored(): void
@@ -140,7 +138,6 @@ class AuditTrailTest extends TestCase
         $this->makeUser('coordinator', $this->campusA, 'C-001');
 
         $this->post('/login', [
-            'campus_id' => $this->campusA->id, 'role' => 'coordinator',
             'id_number' => 'C-001', 'password' => 'hunter2-not-the-password',
         ]);
 
@@ -155,13 +152,13 @@ class AuditTrailTest extends TestCase
     {
         $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
 
-        $this->actingAs($coordinator)->get(route('coordinator.dashboard'))->assertOk();
+        $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk();
 
         $this->assertDatabaseHas('activity_logs', [
             'user_id' => $coordinator->id,
             'action' => 'page.view',
             'description' => 'Opened the dashboard',
-            'route_name' => 'coordinator.dashboard',
+            'route_name' => 'instructor.dashboard',
             'method' => 'GET',
         ]);
     }
@@ -180,13 +177,14 @@ class AuditTrailTest extends TestCase
 
     public function test_a_form_rejected_by_validation_is_labelled_as_such(): void
     {
-        $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
+        // Adding interns is done by the program's instructor now.
+        $instructor = $this->makeInstructor($this->campusA, $this->programA, 'I-001');
 
-        $this->actingAs($coordinator)->post(route('coordinator.students.store'), [])
+        $this->actingAs($instructor)->post(route('instructor.interns.store'), [])
             ->assertSessionHasErrors();
 
         $log = ActivityLog::where('action', 'action.post')->firstOrFail();
-        $this->assertSame('Added an intern - rejected (validation failed)', $log->description);
+        $this->assertSame('Enrolled a student - rejected (validation failed)', $log->description);
     }
 
     public function test_the_audit_endpoints_do_not_log_themselves(): void
@@ -219,9 +217,15 @@ class AuditTrailTest extends TestCase
         $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-001');
         $student = $this->makeStudent($this->campusA, $this->programA, 'S-001');
 
-        $this->actingAs($coordinator)->get(route('coordinator.dashboard'))
-            ->assertSee('id="ilAudit"', false)
-            ->assertSee('audit-trail.js', false);
+        // No floating pop-up any more: Audit Trail is a page inside Settings.
+        $this->actingAs($coordinator)->get(route('instructor.dashboard'))
+            ->assertDontSee('id="ilAudit"', false)
+            ->assertSee(route('coordinator.settings'), false);
+        $this->actingAs($coordinator)->get(route('coordinator.settings'))->assertOk()
+            ->assertSee(route('instructor.audit-trail'), false);
+        $this->actingAs($coordinator)->get(route('instructor.audit-trail'))->assertOk()
+            ->assertSee('Audit Trail')->assertSee('Everyone on your campus');
+        $this->actingAs($student)->get(route('instructor.audit-trail'))->assertForbidden();
 
         $this->actingAs($student)->get(route('student.notifications'))
             ->assertOk()
@@ -231,6 +235,24 @@ class AuditTrailTest extends TestCase
     }
 
     // ---------- who sees what ----------
+
+    public function test_the_audit_trail_page_lists_time_user_and_action_with_filters(): void
+    {
+        $coordA = $this->makeUser('coordinator', $this->campusA, 'CA-1');
+        $studentA = $this->makeStudent($this->campusA, $this->programA, 'SA-1');
+        $coordB = $this->makeUser('coordinator', $this->campusB, 'CB-1');
+        $this->seedLog($studentA, 'Submitted Form 1 for review');
+        $this->seedLog($coordB, 'Other campus did a thing');
+
+        $this->actingAs($coordA)->get(route('instructor.audit-trail'))->assertOk()
+            ->assertSeeInOrder(['Time', 'User', 'Action'])
+            ->assertSee('Submitted Form 1 for review')->assertSee($studentA->name)
+            ->assertDontSee('Other campus did a thing');
+        $this->actingAs($coordA)->get(route('instructor.audit-trail', ['q' => 'nothing matches this']))->assertOk()
+            ->assertDontSee('Submitted Form 1 for review')->assertSee('for this filter');
+        $this->actingAs($coordA)->get(route('instructor.audit-trail', ['kind' => 'security']))->assertOk()
+            ->assertDontSee('Submitted Form 1 for review');
+    }
 
     public function test_coordinator_sees_their_whole_campus_and_nothing_from_other_campuses(): void
     {
@@ -247,21 +269,22 @@ class AuditTrailTest extends TestCase
         $this->assertNotContains('Other campus did a thing', $seen);
     }
 
-    public function test_instructor_sees_themselves_and_their_advisees_only(): void
+    public function test_the_audit_trail_is_for_the_coordinator_only(): void
     {
         $instructor = $this->makeInstructor($this->campusA, $this->programA, 'I-1');
-        $advisee = $this->makeStudent($this->campusA, $this->programA, 'S-adv');
-        $otherProgramStudent = $this->makeStudent($this->campusA, $this->programB, 'S-other');
-        $otherInstructor = $this->makeInstructor($this->campusA, $this->programB, 'I-2');
-
+        $coordinator = $this->makeUser('coordinator', $this->campusA, 'C-1');
         $this->seedLog($instructor, 'mine');
-        $this->seedLog($advisee, 'advisee');
-        $this->seedLog($otherProgramStudent, 'not my student');
-        $this->seedLog($otherInstructor, 'another instructor');
 
-        $seen = $this->feedDescriptions($this->actingAs($instructor)->getJson(route('audit.feed')));
+        // Instructors: no sidebar item, page and feed refused.
+        $this->actingAs($instructor)->get(route('instructor.dashboard'))->assertOk()->assertDontSee(route('instructor.audit-trail'), false);
+        $this->actingAs($instructor)->get(route('instructor.audit-trail'))->assertForbidden();
+        $this->actingAs($instructor)->getJson(route('audit.feed'))->assertForbidden();
 
-        $this->assertEqualsCanonicalizing(['mine', 'advisee'], $seen);
+        // The coordinator: Settings is the last sidebar item (after My Profile), and the Audit Trail is in it.
+        $html = $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk()->getContent();
+        $this->assertGreaterThan(strpos($html, 'My Profile'), strpos($html, route('coordinator.settings')));
+        $this->actingAs($coordinator)->get(route('instructor.audit-trail'))->assertOk()->assertSee(route('coordinator.settings'), false);
+        $this->actingAs($coordinator)->get(route('instructor.audit-trail'))->assertOk()->assertSee('mine');
     }
 
     public function test_hte_representatives_cannot_read_the_feed_and_get_no_popup(): void
@@ -273,7 +296,7 @@ class AuditTrailTest extends TestCase
 
         $this->actingAs($repUser)->getJson(route('audit.feed'))->assertForbidden();
 
-        $this->actingAs($repUser)->get(route('hte.dashboard'))
+        $this->actingAs($repUser)->get(route('hte.evaluations'))
             ->assertOk()
             ->assertDontSee('ilAudit', false)
             ->assertDontSee('audit-trail.js', false)

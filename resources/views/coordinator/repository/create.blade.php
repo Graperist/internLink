@@ -10,7 +10,7 @@
 <div class="il-card" style="max-width: 560px;">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">Add to Digital Repository</h2>
-        <a href="{{ route('coordinator.repository') }}" class="btn btn-sm btn-outline-secondary">
+        <a href="{{ route('coordinator.documents') }}" class="btn btn-sm btn-outline-secondary">
             &larr; Back
         </a>
     </div>

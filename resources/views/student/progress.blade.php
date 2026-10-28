@@ -8,7 +8,7 @@
 </div>
 
 <div class="il-card mb-3">
-    <h2 class="h6 fw-bold mb-3">My Internship Progress</h2>
+    <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-chart-bar"></i></span> My Internship Progress</h2>
 
     <div class="mb-3">
         <div class="d-flex justify-content-between small mb-1">
@@ -52,7 +52,7 @@
 </div>
 
 <div class="il-card">
-    <h2 class="h6 fw-bold mb-3">Internship Timeline</h2>
+    <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-timeline"></i></span> Internship Timeline</h2>
 
     @foreach ($timeline as $step)
         @php

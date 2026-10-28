@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Campus extends Model
 {
-    protected $fillable = ['code', 'name', 'ced_name', 'college_dean_name', 'address', 'status'];
+    protected $fillable = ['code', 'name', 'ced_name', 'college_dean_name', 'registrar_name', 'address', 'status', 'weekly_report_due_days'];
 
     public function users()
     {

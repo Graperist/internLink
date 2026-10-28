@@ -4,102 +4,53 @@
     <meta charset="UTF-8">
     <title>Consent Form — {{ $document->internship?->student?->user?->name ?? 'Student' }}</title>
     <style>
+        /* Sized to the official FM-AA-INT-03 (Rev. 02, 14-Oct-2024): A4, Arial 11pt. */
         * { box-sizing: border-box; }
-        @page { size: A4 portrait; margin: 0; }
+        @page { size: A4 portrait; margin: 14mm 20mm 14mm; }
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 11px;
+            font-size: 11pt;
             color: #000;
             margin: 0 auto;
-            padding: 18mm 17mm 12mm;
+            padding: 14mm 20mm;
             max-width: 210mm;
-            line-height: 1.28;
+            line-height: 1.2;
         }
         .no-print { margin-bottom: 10px; }
-        .page { width: 100%; }
-        .top-meta {
-            text-align: right;
-            font-size: 8px;
-            line-height: 1.2;
-            margin-bottom: 3px;
-        }
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 13px;
-        }
-        .header .title { text-align: center; }
-        .header h1 {
-            margin: 0 0 4px;
-            font-size: 18px;
-            font-weight: 700;
-            letter-spacing: .2px;
-        }
-        .header .school { font-size: 10px; font-weight: 700; }
-        .header .campus { font-size: 10px; }
-        .header img { width: 58px; height: 58px; object-fit: contain; }
-        p { margin: 0 0 10px; text-align: justify; }
-        .intro { margin-top: 2px; }
-        .line {
-            display: inline-block;
-            border-bottom: 1px solid #000;
-            min-width: 105px;
-            padding: 0 2px;
-            line-height: 1.05;
-            vertical-align: baseline;
-        }
-        .line.short { min-width: 58px; }
-        .line.medium { min-width: 95px; }
-        .line.long { min-width: 155px; }
-        ol {
-            margin: 0 0 10px;
-            padding-left: 21px;
-        }
-        ol li {
-            padding-left: 3px;
-            margin-bottom: 8px;
-            text-align: justify;
-        }
-        .signed {
-            margin-top: 8px;
-            margin-bottom: 0;
-            text-align: left;
-        }
-        .signature-area {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            column-gap: 45px;
-            margin-top: 57px;
-        }
-        .sig-col { min-width: 0; }
-        .section-label { font-weight: 700; margin-bottom: 28px; }
-        .sig-line {
-            border-top: 1px solid #000;
-            width: 88%;
-            margin-bottom: 3px;
-        }
-        .sig-caption {
-            font-size: 9px;
-            font-style: italic;
-            text-align: center;
-            width: 88%;
-        }
-        .noted { margin-top: 37px; font-weight: 700; }
-        .noted-line { margin-top: 27px; }
-        .noted-caption { font-size: 9px; font-style: italic; width: 88%; text-align: center; }
-        .psu-campus { font-size: 9px; font-style: italic; width: 88%; text-align: center; }
-        .conforme { margin-bottom: 28px; }
-        .cert-row { margin-top: 8px; font-size: 10px; }
-        .cert-line { display: inline-block; border-bottom: 1px solid #000; min-width: 112px; height: 12px; vertical-align: bottom; }
-        .parent-line { margin-top: 29px; }
-        .parent-caption { font-size: 9px; font-style: italic; width: 88%; text-align: center; }
+        .top-meta { text-align: right; font-size: 7.5pt; font-style: italic; line-height: 1.2; }
+        .header { position: relative; text-align: center; margin: 6pt 0 16pt; min-height: 62pt; }
+        .header h1 { margin: 10pt 0 3pt; font-size: 17pt; font-weight: 700; }
+        .header .school, .header .campus { font-size: 7.5pt; }
+        .header img { position: absolute; right: 9%; top: 0; width: 62pt; height: 62pt; object-fit: contain; }
+        p { margin: 0 0 9pt; text-align: justify; }
+        .line { display: inline-block; border-bottom: 1px solid #000; min-width: 90pt; padding: 0 3pt; line-height: 1.05; text-align: center; }
+        .line.short { min-width: 34pt; }
+        .line.medium { min-width: 62pt; }
+        .line.long { min-width: 125pt; }
+        ol { margin: 0 0 12pt; padding-left: 15pt; }
+        ol li { padding-left: 4pt; margin-bottom: 12pt; text-align: justify; }
+        .signed { margin-top: 4pt; text-align: left; }
+
+        /* Signatures: names are printed on top of the lines automatically. */
+        .signature-area { display: grid; grid-template-columns: 1fr 1fr; column-gap: 30pt; margin-top: 70pt; font-size: 9pt; }
+        .label { font-weight: 700; font-size: 9pt; }
+        .sign { width: 180pt; text-align: center; }
+        .sign .name { font-weight: 700; font-size: 9pt; min-height: 11pt; padding: 0 2pt 1pt; text-transform: uppercase; }
+        .sign .rule { border-top: 1px solid #000; }
+        .sign .caption { font-size: 7.5pt; font-style: italic; }
+        .left .witness { margin: 20pt 0 0 6pt; }
+        .left .noted-label { margin-top: 20pt; }
+        .left .ced { margin: 20pt 0 0 12pt; }
+        .right .student { margin-top: 18pt; }
+        .cert { margin-top: 14pt; font-size: 9pt; line-height: 1.5; }
+        .cert .blank { display: inline-block; border-bottom: 1px solid #000; min-width: 85pt; height: 10pt; vertical-align: bottom; }
+        .right .parent { margin-top: 12pt; }
         @media print {
             .no-print { display: none !important; }
-            body { padding: 15mm 16mm 10mm; }
+            body { padding: 0; }
         }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 @php
@@ -115,12 +66,11 @@
     $campusShortName = trim($campusShortName) ?: 'Alaminos City';
 
     $studentName = $student?->user?->name ?: $v('full_name', '');
-    $studentAddress = $v('address', $student?->current_address ?? $student?->home_address ?? '');
-    $course = $student?->program?->name ?: $v('course', '');
+    $studentAddress = \App\Support\TextCase::fixCaps($v('address', $student?->current_address ?? $student?->home_address ?? ''));
+    $course = $v('course', '') ?: ($student?->program?->courseTitle() ?? $student?->program?->name ?? '');
     $major = $student?->major?->name ?: $v('major', '');
 
-    $requiredHours = $student?->program?->required_hours
-        ?? $document->internship?->required_hours
+    $requiredHours = $document->internship?->requiredHours()
         ?? $v('required_hours', '');
 
     $companyName = $v('company_name', '');
@@ -143,14 +93,24 @@
             $date = \Carbon\Carbon::parse($signedDate);
             $signedDay = $date->format('j');
             $signedMonth = $date->format('F');
-            $signedYear = $date->format('Y');
+            $signedYear = $date->format('y'); // printed after the form's "20" 
         } catch (\Throwable $e) {
             // Keep the official blanks if the stored value cannot be parsed.
         }
     }
 
-    $coordinatorName = $v('coordinator_name', '');
-    $executiveDirectorName = $v('executive_director_name', '');
+    // "Signed at ____, Pangasinan." - the form already ends with
+    // "Pangasinan", so only the city/town is printed in the blank.
+    $signedAt = trim(preg_replace('/,?\s*Pangasinan\s*$/i', '', $signedAt)) ?: $signedAt;
+
+    // Signatories, filled in automatically from the records.
+    $sig = \App\Support\Signatories::for($document->internship);
+    $coordinatorName = $sig['coordinator'];
+    $executiveDirectorName = $sig['ced'];
+    // Parent/Guardian: as the student entered it on their Form 1.
+    $parentName = $document->internship?->documents()
+        ->whereHas('requirement', fn ($q) => $q->where('code', 'APPLICATION_FOR_OJT'))
+        ->first()?->fieldValue('parent_guardian_name') ?? '';
 @endphp
 
 <button class="no-print" onclick="window.print()">Print</button>
@@ -163,11 +123,9 @@
     </div>
 
     <div class="header">
-        <div class="title">
-            <h1>CONSENT FORM</h1>
-            <div class="school">PANGASINAN STATE UNIVERSITY</div>
-            <div class="campus">{{ $campusName }}</div>
-        </div>
+        <h1>CONSENT FORM</h1>
+        <div class="school">PANGASINAN STATE UNIVERSITY</div>
+        <div class="campus">{{ $campusName }}</div>
         <img src="{{ asset('images/psu-logo.png') }}" alt="PSU Logo">
     </div>
 
@@ -220,32 +178,46 @@
         Signed at <span class="line medium">{{ $signedAt }}</span>, Pangasinan.
         This <span class="line short">{{ $signedDay }}</span> day of
         <span class="line medium">{{ $signedMonth }}</span>,
-        <span class="line short">{{ $signedYear }}</span>.
+20<span class="line short">{{ $signedYear }}</span>.
     </p>
 
     <div class="signature-area">
-        <div class="sig-col">
-            <div class="section-label">WITNESSES:</div>
-            <div class="sig-line"></div>
-            <div class="sig-caption">Campus Internship Coordinator</div>
+        <div class="left">
+            <div class="label">WITNESSES:</div>
+            <div class="sign witness">
+                <div class="name">{!! $coordinatorName !== '' ? e($coordinatorName) : '&nbsp;' !!}</div>
+                <div class="rule"></div>
+                <div class="caption">Campus Internship Coordinator</div>
+            </div>
 
-            <div class="noted">NOTED:</div>
-            <div class="sig-line noted-line"></div>
-            <div class="sig-caption">Campus Executive Director</div>
-            <div class="psu-campus">PSU {{ $campusName }}</div>
+            <div class="label noted-label">NOTED:</div>
+            <div class="sign ced">
+                <div class="name">{!! $executiveDirectorName !== '' ? e($executiveDirectorName) : '&nbsp;' !!}</div>
+                <div class="rule"></div>
+                <div class="caption">Campus Executive Director</div>
+                <div class="caption">PSU {{ $campusName }}</div>
+            </div>
         </div>
 
-        <div class="sig-col">
-            <div class="section-label">CONFORME:</div>
-            <div class="sig-line"></div>
-            <div class="sig-caption">Signature over Printed Name of Student</div>
+        <div class="right">
+            <div class="label">CONFORME:</div>
+            <div class="sign student">
+                <div class="name">{!! $studentName !== '' ? e($studentName) : '&nbsp;' !!}</div>
+                <div class="rule"></div>
+                <div class="caption">Signature over Printed Name of Student</div>
+            </div>
 
-            <div class="cert-row">Residence Cert. No.: <span class="cert-line"></span></div>
-            <div class="cert-row">Issued at: <span class="cert-line"></span></div>
-            <div class="cert-row">Issued on: <span class="cert-line"></span></div>
+            <div class="cert">
+                Residence Cert. No.: <span class="blank"></span><br>
+                Issued at: <span class="blank" style="min-width: 115pt;"></span><br>
+                Issued on: <span class="blank" style="min-width: 112pt;"></span>
+            </div>
 
-            <div class="sig-line parent-line"></div>
-            <div class="parent-caption">Signature over Printed Name of Parent/Guardian</div>
+            <div class="sign parent">
+                <div class="name">{!! $parentName !== '' ? e($parentName) : '&nbsp;' !!}</div>
+                <div class="rule"></div>
+                <div class="caption">Signature over Printed Name of Parent/Guardian</div>
+            </div>
         </div>
     </div>
 </div>

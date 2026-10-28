@@ -35,7 +35,10 @@ class OfficialOjtFormConfigurationTest extends TestCase
         $this->assertSame('daily', $form19->entry_cadence);
 
         $moa = DocumentRequirement::where('campus_id', $campus->id)->where('code', 'MOA')->firstOrFail();
-        $this->assertFalse($moa->is_active);
-        $this->assertFalse($moa->is_required);
+        // The student uploads scans of the signed MOA (processed outside InternLink).
+        $this->assertTrue($moa->is_active);
+        $this->assertTrue($moa->is_required);
+        $this->assertSame('student', $moa->audience);
+        $this->assertSame('upload', $moa->workflow_mode);
     }
 }

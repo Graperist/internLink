@@ -3,14 +3,25 @@
 @section('title', $requirement->name.' - PSU Intern-Link')
 
 @section('content')
+@php
+    // The evaluations of the agency (Forms 20, 23c) are filled from Evaluate Agency.
+    $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
+    $backUrl = $isEvaluation ? route('student.hte').'#evaluate' : route('student.documents');
+@endphp
 <div class="il-page-header">
     <h1 class="il-page-title">{{ $requirement->name }}</h1>
-    <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">
-        <i class="ti ti-arrow-left"></i> Back to My Documents
+    <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">
+        <i class="ti ti-arrow-left"></i> Back to {{ $isEvaluation ? 'My HTE' : 'My Documents' }}
     </a>
 </div>
+@if ($isEvaluation)
+    <div class="alert alert-info small"><i class="ti ti-lock"></i> Your evaluation goes to your Subject Instructor only. Your agency does not see it. You can edit it after submitting, until a few days after your internship ends or until your instructor locks it.</div>
+    @if (\App\Support\EvaluationRouting::isSubmitted($document ?? null))
+        <div class="alert alert-warning small"><i class="ti ti-pencil"></i> <strong>Editing your submitted evaluation.</strong> Change any answer and click Save changes. {{ \App\Support\EvaluationEditWindow::note($document ?? null) }}.</div>
+    @endif
+@endif
 
-<div class="il-card" style="max-width: 640px;">
+<div class="il-card" style="max-width: {{ $requirement->code === 'APPLICATION_FOR_OJT' ? '920px' : '640px' }};">
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
@@ -85,16 +96,12 @@
         };
     @endphp
 
-    @if ($requirement->fieldDefinitions->contains('field_type', 'rating_scale'))
-        <div class="alert alert-secondary small mb-3">
-            <strong>Rating scale:</strong>
-            @foreach ($ratingScaleLegend as $value => $text)
-                {{ $value }} &ndash; {{ $text }}@if (! $loop->last), @endif
-            @endforeach
-        </div>
+    @php $ratingCount = $requirement->fieldDefinitions->where('field_type', 'rating_scale')->count(); $ratingNo = 0; @endphp
+    @if ($ratingCount)
+        @include('partials.rating.head', ['legend' => $ratingScaleLegend, 'count' => $ratingCount])
     @endif
 
-    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}">
+    <form method="POST" action="{{ route('student.documents.fill.store', $requirement) }}" enctype="multipart/form-data">
         @csrf
 
         @if ($requirement->code === 'OJT_RESUME')
@@ -253,7 +260,7 @@
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Choose the partner HTE registered by your Coordinator.</div>
+                        <div class="form-text">Choose from your program's partner agencies for this term.</div>
                     @else
                         <input type="text" class="form-control" id="company_name" name="company_name"
                                value="{{ $endorsementCompany }}" placeholder="Enter company / agency name" required>
@@ -402,7 +409,7 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Select the partner Host Training Establishment registered by your Coordinator.
+                Select the partner Host Training Establishment from your program's partner agencies for this term.
                 The HTE address, representative name, representative position, and required internship
                 hours are filled automatically from the official HTE and program records.
             </div>
@@ -526,8 +533,7 @@
                 $consentStudentName = $student?->user?->name ?? auth()->user()->name ?? '';
                 $consentAddress = $consentValue('address', $agreementStudentAddress ?? $student?->address ?? '');
                 $consentCourse = $consentValue('course', $courseMajorDefaults['course'] ?? '');
-                $consentRequiredHours = (int) ($student?->program?->required_hours
-                    ?? $internship?->required_hours
+                $consentRequiredHours = (int) ($internship?->requiredHours()
                     ?? 0);
 
                 $storedCompanyName = $consentValue('company_name');
@@ -583,7 +589,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('company_name')
@@ -648,7 +654,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
@@ -715,8 +721,7 @@
                 $releaseCompanyName = $releaseValue('company_name');
                 $selectedReleaseHte = $htes->firstWhere('name', $releaseCompanyName)
                     ?? $internship?->deployment?->hte;
-                $releaseRequiredHours = (int) ($student->program?->required_hours
-                    ?? $internship->required_hours
+                $releaseRequiredHours = (int) ($internship->requiredHours()
                     ?? 0);
                 $releaseStartDate = $releaseValue('start_date', $internship?->deployment?->start_date?->format('Y-m-d') ?? '');
                 $releaseEndDate = $releaseValue('end_date', $internship?->deployment?->end_date?->format('Y-m-d') ?? '');
@@ -755,7 +760,7 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
@@ -851,8 +856,7 @@
                 $storedCompanyName = $practicumValue('company_name');
                 $selectedPracticumHte = $htes->firstWhere('name', $storedCompanyName)
                     ?? $internship?->deployment?->hte;
-                $practicumRequiredHours = (int) ($student->program?->required_hours
-                    ?? $internship?->required_hours
+                $practicumRequiredHours = (int) ($internship?->requiredHours()
                     ?? 0);
                 $practicumCourse = $courseMajorDefaults['course'];
                 $practicumMajor = $courseMajorDefaults['major'];
@@ -860,7 +864,7 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Select your registered partner HTE. The company address and required internship hours are filled automatically from your Coordinator's records.
+                Select your registered partner HTE. The company address and required internship hours are filled automatically from the partner agency records.
                 Enter your assigned company supervisor manually.
             </div>
 
@@ -892,13 +896,13 @@
                             {{ $hte->name }}
                         </option>
                     @empty
-                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                     @endforelse
                 </select>
                 @error('hte_id')
                     <div class="text-danger small mt-1">{{ $message }}</div>
                 @enderror
-                <div class="form-text">Only HTEs registered by your Coordinator for this campus are available.</div>
+                <div class="form-text">Only your program's partner agencies for this term are available.</div>
             </div>
 
             <div class="mb-3">
@@ -956,22 +960,23 @@
 
         @else
             @foreach ($requirement->groupedFieldDefinitions() as $groupLabel => $fields)
+                @if ($requirement->code === 'APPLICATION_FOR_OJT' && $groupLabel === 'Academic Credentials/Qualifications')
+                    @include('student.documents._form1-academic-table', ['document' => $document])
+                    @continue
+                @endif
                 @if ($groupLabel)
-                    <h2 class="h6 fw-bold mt-4 mb-2">{{ $groupLabel }}</h2>
+                    @if ($fields->contains('field_type', 'rating_scale'))
+                        <div class="rate-group"><h2>{{ $groupLabel }}</h2><span class="rate-group-line"></span></div>
+                    @else
+                        <h2 class="h6 fw-bold mt-4 mb-2">{{ $groupLabel }}</h2>
+                    @endif
                 @endif
 
                 @foreach ($fields as $field)
                     <div class="mb-3">
                         @if ($field->field_type === 'rating_scale')
-                            <label class="il-form-label">{{ $field->label }}</label>
-                            <div class="d-flex gap-3">
-                                @foreach (['5', '4', '3', '2', '1'] as $value)
-                                    <label class="d-flex flex-column align-items-center small text-secondary" style="gap: 2px;">
-                                        <input type="radio" name="{{ $field->field_key }}" value="{{ $value }}" {{ old($field->field_key, $document?->fieldValue($field->field_key)) == $value ? 'checked' : '' }} {{ $field->is_required ? 'required' : '' }}>
-                                        {{ $value }}
-                                    </label>
-                                @endforeach
-                            </div>
+                            @php $ratingNo++; @endphp
+                            @include('partials.rating.question', ['field' => $field, 'value' => old($field->field_key, $document?->fieldValue($field->field_key)), 'number' => $ratingNo, 'legend' => $ratingScaleLegend, 'required' => (bool) $field->is_required])
                         @elseif ($requirement->code === 'STUDENT_HTE_EVALUATION' && in_array($field->field_key, ['rater_name', 'agency_name', 'rater_type']))
                             @php
                                 // Known from the student's own records - shown locked so the
@@ -993,9 +998,15 @@
                                 <select class="form-select" id="{{ $field->field_key }}" name="{{ $field->field_key }}" {{ $field->is_required ? 'required' : '' }}>
                                     <option value="" disabled {{ ! $selectedHte ? 'selected' : '' }}>Select a partner agency&hellip;</option>
                                     @forelse ($htes as $hte)
-                                        <option value="{{ $hte->name }}" {{ $selectedHte === $hte->name ? 'selected' : '' }}>{{ $hte->name }}</option>
+                                        @php
+                                            $slotInfo = ($hteAvailability ?? [])[$hte->id] ?? null;
+                                            $isFull = $slotInfo && $slotInfo['full'] && $selectedHte !== $hte->name;
+                                        @endphp
+                                        <option value="{{ $hte->name }}" {{ $selectedHte === $hte->name ? 'selected' : '' }} @disabled($isFull)>
+                                            {{ $hte->name }}{{ $slotInfo && $slotInfo['slots'] ? ' — '.($isFull ? 'full' : max($slotInfo['slots'] - $slotInfo['taken'], 0).' of '.$slotInfo['slots'].' slots open') : '' }}
+                                        </option>
                                     @empty
-                                        <option value="" disabled>No partner agencies have been added yet - contact your coordinator.</option>
+                                        <option value="" disabled>Your subject instructor hasn't listed partner agencies for this term yet.</option>
                                     @endforelse
                                 </select>
                             @elseif (in_array($field->field_key, ['civil_status', 'sex', 'sex_gender', 'course', 'major']))
@@ -1012,12 +1023,7 @@
                                         'civil_status' => ['Single', 'Married', 'Widowed', 'Separated', 'Divorced', 'Annulled'],
                                         'sex' => ['Male', 'Female'],
                                         'sex_gender' => ['Male', 'Female'],
-                                        'course' => [
-                                            'Bachelor of Science in Information Technology',
-                                            'Bachelor of Science in Business Administration',
-                                            'Bachelor of Science in Hospitality Management',
-                                            'Bachelor of Science in Tourism Management',
-                                        ],
+                                        'course' => $courseOptions ?? [$courseMajorDefaults['course']],
                                         'major' => $selectedValue && $selectedValue !== 'N/A' ? [$selectedValue] : ['N/A'],
                                         default => [],
                                     };
@@ -1048,9 +1054,38 @@
             @endforeach
         @endif
 
+        @if ($attachmentKinds = \App\Models\DocumentAttachment::kindsFor($requirement->code))
+            <h2 class="h6 fw-bold mt-4 mb-1">Attachments</h2>
+            <p class="text-secondary small mb-3">
+                {{ \App\Models\DocumentAttachment::INSTRUCTIONS[$requirement->code] ?? '' }}
+                {{ count($attachmentKinds) > 1 ? 'They are' : 'It is' }} submitted and reviewed together with this form.
+                PDF, JPG or PNG, up to 10 MB each.
+            </p>
+            <div class="row g-3">
+                @foreach ($attachmentKinds as $kind => $kindLabel)
+                    @php $attached = $document?->attachment($kind); @endphp
+                    <div class="col-md-6">
+                        <label class="il-form-label" for="attachment_{{ $kind }}">{{ $kindLabel }}@unless ($attached) <span class="text-danger">*</span>@endunless</label>
+                        @if ($attached)
+                            <div class="small mb-1">
+                                <i class="ti ti-paperclip"></i>
+                                <a href="{{ route('student.documents.attachment', $attached) }}" target="_blank">{{ $attached->original_filename ?: 'Attached file' }}</a>
+                                <span class="text-secondary">&middot; choose a file only to replace it</span>
+                            </div>
+                        @endif
+                        <input type="file" class="form-control @error('attachment_'.$kind) is-invalid @enderror" id="attachment_{{ $kind }}" name="attachment_{{ $kind }}"
+                               accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" {{ $attached ? '' : 'required' }}>
+                        @error('attachment_'.$kind)
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
         <div class="d-flex gap-2 mt-3">
-            <button type="submit" class="il-btn-primary">Submit for review</button>
-            <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
+            <button type="submit" class="il-btn-primary">{{ $isEvaluation ? (\App\Support\EvaluationRouting::isSubmitted($document ?? null) ? 'Save changes' : 'Submit evaluation') : 'Submit for review' }}</button>
+            <a href="{{ $backUrl }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>
 </div>
@@ -1121,8 +1156,8 @@
 <script>
 (function () {
     // Keeps the Major <select> in sync with whichever Course is picked -
-    // only Business Administration has real majors (FM/OM); every other
-    // course collapses Major down to a single locked "N/A" option.
+    // a course with majors offers them; any other course collapses Major
+    // down to a single locked "N/A" option.
     const courseSelect = document.getElementById('course');
     const majorSelect = document.getElementById('major');
 
@@ -1130,9 +1165,8 @@
         return;
     }
 
-    const majorOptionsByCourse = {
-        'Bachelor of Science in Business Administration': ['FM', 'OM'],
-    };
+    // Built from the campus's programs (Programs page): course -> majors.
+    const majorOptionsByCourse = @json($majorOptionsByCourse ?? []);
     const defaultMajorOptions = ['N/A'];
 
     function rebuildMajorOptions() {
@@ -1153,4 +1187,7 @@
     courseSelect.addEventListener('change', rebuildMajorOptions);
 })();
 </script>
+@if (($ratingCount ?? 0) > 0)
+    @include('partials.rating.script')
+@endif
 @endsection

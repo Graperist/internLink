@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Models\DocumentAttachment;
 use App\Models\DocumentFieldValue;
 use App\Models\DocumentEntry;
 use App\Models\DocumentRequirement;
@@ -64,12 +65,7 @@ class DocumentController extends Controller
     public function index(): View
     {
         $student = auth()->user()->student;
-        if ($student->currentInternship) {
-            // Close the deployment if its end date has passed, then reload it.
-            if (\App\Support\DeploymentLifecycle::completeEnded(null, $student->currentInternship->id)) {
-                $student->unsetRelation('currentInternship');
-            }
-        }
+        // The internship is completed by the instructor once the required hours are reached (no end date).
         $internship = $student->currentInternship;
 
         // Inactive requirements (legacy forms, Pre-/Post-OJT Seminar) are
@@ -80,12 +76,18 @@ class DocumentController extends Controller
         $requirements = DocumentRequirement::where('campus_id', $student->campus_id)
             ->where('is_active', true)
             ->whereIn('audience', ['student', 'coordinator'])
+            // The evaluations of the agency (Forms 20, 23c) are on Evaluate Agency.
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentEvaluationCodes())
             ->with('fieldDefinitions')
             ->get()
-            // Latest stage first: post-deployment, then active (e.g. the weekly
-            // report), then pre-deployment; alphabetical within each stage.
+            // In process order: pre-deployment, then active (e.g. the weekly
+            // report), then post-deployment. Within a stage the forms follow
+            // their form number (1, 2, 3, 6, 11, 12, 15, 18 - "23a" after 23);
+            // items without a number come after the numbered forms.
             ->sortBy(fn ($req) => [
-                ['post_deployment' => 1, 'active' => 2, 'pre_deployment' => 3][$req->stage] ?? 4,
+                ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3][$req->stage] ?? 4,
+                self::formNumberSortKey($req->form_number),
+                $req->display_order ?? 0,
                 $req->name,
             ])
             ->values();
@@ -100,7 +102,7 @@ class DocumentController extends Controller
             ->values();
 
         $docsByCode = $internship
-            ? $internship->documents()->with(['requirement', 'latestReview', 'entries'])->get()->keyBy(fn ($d) => $d->requirement->code)
+            ? $internship->documents()->with(['requirement', 'latestReview', 'entries', 'attachments', 'reviews' => fn ($q) => $q->latest('reviewed_at')])->get()->keyBy(fn ($d) => $d->requirement->code)
             : collect();
 
         $checklist = $requirements->map(fn ($req) => [
@@ -108,7 +110,17 @@ class DocumentController extends Controller
             'document' => $docsByCode->get($req->code),
         ]);
 
-        return view('student.documents', compact('checklist', 'internship'));
+        // Like Document Review: the forms on the left, one open on the
+        // right. ?form= picks it; otherwise the first form that needs the
+        // student (returned, signed copy to upload, or not started yet).
+        $selectedId = (int) request('form');
+        if (! $checklist->contains(fn ($row) => $row['requirement']->id === $selectedId)) {
+            $needsStudent = $checklist->first(fn ($row) => ! $row['document']
+                || in_array($row['document']->status, ['returned', 'printed', 'draft'], true));
+            $selectedId = ($needsStudent ?? $checklist->first())['requirement']->id ?? null;
+        }
+
+        return view('student.documents', compact('checklist', 'internship', 'selectedId'));
     }
 
     /**
@@ -128,22 +140,20 @@ class DocumentController extends Controller
 
         $document = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
-            ->with('fieldValues')
+            ->with('fieldValues', 'attachments')
             ->first();
 
         // Once printed, the entered data is what physically went out for
         // signature - editing it here would silently disagree with the
         // signed paper copy, so further changes only happen through a
         // Return-to-student decision, not by revisiting this form.
-        abort_if($document && in_array($document->status, ['printed', 'completed', 'approved']), 403,
+        // Forms 20 and 23c (the student's evaluations of the agency) are not
+        // printed for signing and can be edited after submitting.
+        $isAgencyEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
+        abort_if(! $isAgencyEvaluation && $document && in_array($document->status, ['printed', 'completed', 'approved']), 403,
             'This form has already been printed for signing and can no longer be edited here.');
-
-        // Forms 20 and 23c go straight to the HTE's Evaluations Received, so a
-        // delivered copy is final - the HTE could already have read it.
-        abort_if($document
-            && in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
-            && \App\Support\EvaluationRouting::isSubmitted($document), 403,
-            'This evaluation was already sent to your Host Training Establishment and can no longer be edited.');
+        abort_if($isAgencyEvaluation && ! \App\Support\EvaluationEditWindow::canEdit($document), 403,
+            \App\Support\EvaluationEditWindow::closedMessage($document));
 
         if ($requirement->code === 'CERTIFICATE_OF_UNITS_EARNED') {
             return view('student.documents.certificate-units-earned', compact('requirement', 'document'));
@@ -151,33 +161,45 @@ class DocumentController extends Controller
 
         // The "Name of the Firm/Agency/Company" field (hte_name) is a plain
         // text box by default, but a student shouldn't be free-typing a
-        // company name here - they can only pick from the coordinator's
-        // actual partner HTE list for their campus, so what they submit
-        // always matches a real, MOA'd host.
+        // company name here - they pick from their program's Partner Agency
+        // list for the current term (kept by their subject instructor), so
+        // what they submit always matches a real partner. PM-PSU-03-AA-06,
+        // Note 2: present the list of partner agencies, let the student choose.
         $htes = ($requirement->fieldDefinitions->contains('field_key', 'hte_name')
                 || $requirement->fieldDefinitions->contains('field_key', 'company_name'))
-            ? Hte::where('campus_id', $student->campus_id)->orderBy('name')->get()
+            ? $this->partnerAgencyChoices($student, $internship)
             : collect();
 
-        // Course/Major defaults for this student's own program - IT,
-        // Hospitality Management, and Tourism Management have no major, so
-        // that field only ever offers "N/A". Business Administration is the
-        // one program with majors (Financial Management / Operations
-        // Management), modeled here as two separate Program rows
-        // (BSBA-FM/BSBA-OM) - the form still shows one generic "Business
-        // Administration" course with Major picking between the two, so it
-        // matches the real paper form's Course/Major split.
-        $programCode = $student->program->code ?? '';
+        // Slots per agency for the student's program this term, so a full
+        // agency shows as full and can't be chosen.
+        [$termYear, $termSemester] = \App\Support\Term::current();
+        $hteAvailability = $htes->isNotEmpty()
+            ? \App\Http\Controllers\Instructor\HteController::availability($student->campus_id, $student->program_id, $termYear, $termSemester)
+            : [];
+
+        // Course/Major defaults for this student's own program. Each program
+        // row is one course + optional major (see the coordinator's Programs
+        // page), so e.g. BSBA-OM and BSBA-FM both show the course "Business
+        // Administration" with Major picking between them - matching the
+        // real paper form's Course/Major split.
         $courseMajorDefaults = [
-            'course' => str_starts_with($programCode, 'BSBA')
-                ? 'Bachelor of Science in Business Administration'
-                : ($student->program->name ?? ''),
-            'major' => match ($programCode) {
-                'BSBA-OM' => 'OM',
-                'BSBA-FM' => 'FM',
-                default => 'N/A',
-            },
+            'course' => $student->program?->courseTitle() ?? '',
+            'major' => $student->program?->majorLabel() ?? 'N/A',
         ];
+
+        // Course choices come from the programs the coordinator set up for
+        // this campus (Programs page), not a fixed list.
+        $campusPrograms = \App\Models\Program::where('campus_id', $student->campus_id)->get();
+        $courseOptions = $campusPrograms
+            ->map(fn ($program) => $program->courseTitle())
+            ->push($courseMajorDefaults['course'])
+            ->filter()->unique()->sort()->values()->all();
+        $majorOptionsByCourse = $campusPrograms
+            ->groupBy(fn ($program) => $program->courseTitle())
+            ->map(fn ($programs) => $programs->map(fn ($program) => $program->majorLabel())
+                ->reject(fn ($major) => $major === 'N/A')->unique()->sort()->values())
+            ->filter(fn ($majors) => $majors->isNotEmpty())
+            ->all();
 
         // Endorsement Letter defaults come from the student's current
         // deployment when an HTE has already been selected. The recipient
@@ -232,8 +254,7 @@ class DocumentController extends Controller
         // the student's program as its source of truth. These values are
         // displayed read-only in the student form and re-derived server-side
         // on submission so they cannot be tampered with in the browser.
-        $agreementRequiredHours = (int) ($student->program?->required_hours
-            ?? $internship->required_hours
+        $agreementRequiredHours = (int) ($internship->requiredHours()
             ?? 0);
 
         $agreementStudentAddress = $document?->fieldValue('address');
@@ -258,7 +279,7 @@ class DocumentController extends Controller
         }
 
         return view('student.documents.fill', compact(
-            'requirement', 'document', 'htes', 'courseMajorDefaults', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
+            'requirement', 'document', 'htes', 'courseMajorDefaults', 'courseOptions', 'majorOptionsByCourse', 'hteAvailability', 'endorsementDefaults', 'agreementRequiredHours', 'agreementStudentAddress',
             'student', 'internship'
         ));
     }
@@ -306,12 +327,11 @@ class DocumentController extends Controller
 
             if (blank($hte->address) || blank($hte->contact_person) || blank($hte->representative_position)) {
                 return back()->withInput()->withErrors([
-                    'hte_id' => 'The selected HTE is missing address, representative name, or representative position. Please ask the Coordinator to complete the HTE record first.',
+                    'hte_id' => 'The selected HTE is missing address, representative name, or representative position. Please ask your subject instructor to complete it in Partner Agencies first.',
                 ]);
             }
 
-            $requiredHours = (int) ($student->program?->required_hours
-                ?? $internship->required_hours
+            $requiredHours = (int) ($internship->requiredHours()
                 ?? 0);
 
             if ($requiredHours <= 0) {
@@ -326,14 +346,8 @@ class DocumentController extends Controller
                 ->exists();
 
             $agreementValues = [
-                'course' => str_starts_with((string) ($student->program?->code ?? ''), 'BSBA')
-                    ? 'Bachelor of Science in Business Administration'
-                    : ($student->program?->name ?? ''),
-                'major' => match ($student->program?->code) {
-                    'BSBA-OM' => 'OM',
-                    'BSBA-FM' => 'FM',
-                    default => 'N/A',
-                },
+                'course' => $student->program?->courseTitle() ?? '',
+                'major' => $student->program?->majorLabel() ?? 'N/A',
                 'address' => $selected['address'],
                 'company_name' => $hte->name,
                 'company_address' => $hte->address,
@@ -398,10 +412,9 @@ class DocumentController extends Controller
                     ),
                 ],
                 'signed_date' => ['required', 'date'],
-            ]);
+            ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
 
-            $requiredHours = (int) ($student->program?->required_hours
-                ?? $internship->required_hours
+            $requiredHours = (int) ($internship->requiredHours()
                 ?? 0);
 
             if ($requiredHours <= 0) {
@@ -421,9 +434,7 @@ class DocumentController extends Controller
             $consentValues = [
                 'full_name' => $student->user->name,
                 'address' => $selected['address'],
-                'course' => str_starts_with((string) ($student->program?->code ?? ''), 'BSBA')
-                    ? 'Bachelor of Science in Business Administration'
-                    : ($student->program?->name ?? ''),
+                'course' => $student->program?->courseTitle() ?? '',
                 'required_hours' => (string) $requiredHours,
                 'company_name' => $selected['company_name'],
                 'signed_city' => $signedCity,
@@ -435,7 +446,7 @@ class DocumentController extends Controller
                 ->where('status', 'returned')
                 ->exists();
 
-            $document = DB::transaction(function () use ($requirement, $internship, $consentValues) {
+            $document = DB::transaction(function () use ($requirement, $internship, $consentValues, $request, $student) {
                 $document = Document::updateOrCreate(
                     [
                         'internship_id' => $internship->id,
@@ -454,6 +465,9 @@ class DocumentController extends Controller
                         ['value' => $value]
                     );
                 }
+
+                // The Parent/Guardian Valid ID goes with the consent form.
+                $this->saveAttachments($document, $request, $student);
 
                 return $document;
             });
@@ -475,6 +489,25 @@ class DocumentController extends Controller
                 ->with('status', 'Consent and Waiver submitted for instructor review.');
         }
 
+        // Forms 15 and 18: the student picks the partner agency (hte_id); its
+        // name (and address, where the form has one) come from the HTE
+        // record, like Form 12, so they cannot be altered and always match
+        // the Partner Agencies list.
+        if (in_array($requirement->code, ['INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY', 'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE'], true)
+            && $requirement->fieldDefinitions->contains('field_key', 'company_name')) {
+            $picked = $request->validate([
+                'hte_id' => ['required', 'integer', Rule::exists('htes', 'id')->where(fn ($q) => $q->where('campus_id', $student->campus_id))],
+            ], [
+                'hte_id.required' => 'Select your cooperating company/agency/firm.',
+                'hte_id.exists' => 'Please select a valid partner agency.',
+            ]);
+            $hte = Hte::find($picked['hte_id']);
+            $request->merge(['company_name' => $hte->name]);
+            if ($requirement->fieldDefinitions->contains('field_key', 'company_address')) {
+                $request->merge(['company_address' => filled($hte->address) ? $hte->address : $request->input('company_address')]);
+            }
+        }
+
         $rules = [];
         foreach ($requirement->fieldDefinitions as $field) {
             // These legacy Endorsement Letter fields are no longer part of
@@ -492,23 +525,46 @@ class DocumentController extends Controller
                 ? [$field->is_required ? 'required' : 'nullable', 'in:1,2,3,4,5']
                 : [$field->is_required ? 'required' : 'nullable', 'string', 'max:'.$maxLength];
         }
-        $validated = $request->validate($rules);
+        // Files that go with this form (Form 1: Medical Certificate and
+        // Psychological Test Result). Required the first time; on a
+        // resubmission they are only needed to replace a file.
+        $attachmentKinds = DocumentAttachment::kindsFor($requirement->code);
+        $rules += $this->attachmentRules($requirement, $internship);
 
-        abort_if(
-            in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
-                && \App\Support\EvaluationRouting::isSubmitted(
-                    $internship->documents()->where('document_requirement_id', $requirement->id)->first()
-                ),
-            403,
-            'This evaluation was already sent to your Host Training Establishment and can no longer be edited.'
-        );
+        // Form 1's Academic Credentials table: SEM and SY come from dropdowns
+        // (checked here too). The student can add rows; SIGNATURE is signed on paper.
+        $extraMessages = [];
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            for ($i = 1; $i <= \App\Support\Form1Academics::ROWS; $i++) {
+                unset($rules["academic_{$i}_signature"]);
+            }
+            // Rows beyond the five on the form are the ones the student added.
+            $rules = array_merge($rules, \App\Support\Form1Academics::rules());
+            $extraMessages = \App\Support\Form1Academics::messages();
+        }
+
+        $validated = $request->validate($rules, $extraMessages + self::ATTACHMENT_MESSAGES);
+        foreach (array_keys($attachmentKinds) as $kind) {
+            unset($validated['attachment_'.$kind]);
+        }
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            $validated = \App\Support\Form1Academics::compact($validated);
+        }
+
+        // Forms 20 and 23c can be edited after submitting: a second save updates them.
+        $existingEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true)
+            ? $internship->documents()->where('document_requirement_id', $requirement->id)->first()
+            : null;
+        $wasEvaluated = \App\Support\EvaluationRouting::isSubmitted($existingEvaluation);
+        abort_unless(\App\Support\EvaluationEditWindow::canEdit($existingEvaluation), 403,
+            \App\Support\EvaluationEditWindow::closedMessage($existingEvaluation));
 
         $wasReturned = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
             ->where('status', 'returned')
             ->exists();
 
-        $document = DB::transaction(function () use ($requirement, $internship, $validated) {
+        $document = DB::transaction(function () use ($requirement, $internship, $validated, $request, $student) {
             $document = Document::updateOrCreate(
                 [
                     'internship_id' => $internship->id,
@@ -528,27 +584,45 @@ class DocumentController extends Controller
                 );
             }
 
+            // Form 1: rows the student removed (and the old typed-in
+            // signature column) are cleared so they don't reappear.
+            if ($requirement->code === 'APPLICATION_FOR_OJT') {
+                $document->fieldValues()
+                    ->where('field_key', 'like', 'academic%')
+                    ->whereNotIn('field_key', array_keys($validated))
+                    ->delete();
+            }
+
+            $this->saveAttachments($document, $request, $student);
+
             return $document;
         });
 
         $verb = $wasReturned ? 'resubmitted' : 'submitted';
 
-        if (in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)) {
-            // Form 20 (Student-Intern's Feedback) and Form 23c (Partner Agency
-            // evaluation, Student) are addressed to the host training
-            // establishment, not to the instructor: they land in the HTE
-            // portal's Evaluations Received sidebar.
+        // The "Number of Hours" the student typed in Form 1 is their required hours.
+        if ($requirement->code === 'APPLICATION_FOR_OJT') {
+            $internship->syncRequiredHoursFromForm1();
+        }
+
+        $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
+        if ($isEvaluation) {
+            // Form 20 (Student-Intern's Feedback) and Form 23c (evaluation of the
+            // partner agency) go to the Subject Instructor only - like the PSU
+            // faculty evaluation, the agency being rated never sees it.
             $formLabel = \App\Support\EvaluationRouting::FORMS[$requirement->code]['form'];
-            $hteId = $internship->deployment?->hte_id;
-            \App\Models\HteRepresentative::where('hte_id', $hteId)->pluck('user_id')->each(
-                fn ($userId) => \App\Models\Notification::create([
+            \App\Models\Instructor::where('campus_id', $internship->campus_id)
+                ->where('program_id', $internship->program_id)
+                ->pluck('user_id')
+                ->each(fn ($userId) => \App\Models\Notification::create([
                     'user_id' => $userId,
                     'type' => 'document_status',
-                    'title' => "Evaluation received from {$student->user->name} ({$formLabel})",
-                    'message' => "{$student->user->name} {$verb} {$requirement->name}. Open Evaluations Received to read it.",
-                    'url' => route('hte.evaluations.received', [], false),
-                ])
-            );
+                    'title' => $wasEvaluated
+                        ? "{$student->user->name} updated their evaluation of their agency ({$formLabel})"
+                        : "{$student->user->name} evaluated their agency ({$formLabel})",
+                    'message' => "{$student->user->name} ".($wasEvaluated ? 'edited' : 'submitted')." {$requirement->name}. Open Evaluations to view it.",
+                    'url' => route('instructor.evaluations', [], false).'#student-'.$student->id,
+                ]));
         } else {
             // Notify every instructor scoped to this student's program/campus -
             // there's no strict one-to-one assignment, so more than one
@@ -583,10 +657,15 @@ class DocumentController extends Controller
             }
         }
 
+        if ($isEvaluation) {
+            return redirect()->to(route('student.hte').'#evaluate')
+                ->with('status', $wasEvaluated
+                    ? 'Your evaluation is updated. Your Subject Instructor sees the new answers; your agency does not see it.'
+                    : 'Thank you! Your evaluation is submitted. It goes to your Subject Instructor; your agency does not see it.');
+        }
+
         return redirect()->route('student.documents')
-            ->with('status', in_array($requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true)
-                ? \App\Support\EvaluationRouting::FORMS[$requirement->code]['form'].' submitted and sent to your Host Training Establishment.'
-                : 'Form submitted for instructor review.')
+            ->with('status', 'Form submitted for instructor review.')
             ->with('field_warnings', $fieldWarnings);
     }
 
@@ -597,15 +676,23 @@ class DocumentController extends Controller
      * log, "Submit for Review" moves the whole thing into the same
      * submitted -> printed -> completed -> upload cycle as flat forms.
      */
-    public function showLog(DocumentRequirement $requirement): View
+    public function showLog(DocumentRequirement $requirement): View|RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
         $internship = $student->currentInternship;
         abort_unless($internship, 422, 'You need an internship record before logging entries - contact your coordinator.');
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
+
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
+        }
 
         $query = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
@@ -627,9 +714,13 @@ class DocumentController extends Controller
         return view('student.documents.log', compact('requirement', 'document', 'canEdit', 'packets', 'entries', 'internship'));
     }
 
-    public function createEntry(DocumentRequirement $requirement): View
+    public function createEntry(DocumentRequirement $requirement): View|RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -650,13 +741,33 @@ class DocumentController extends Controller
             ->pluck('entry_date');
         $weekAnchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates);
         $loggedDates = $allDates->map(fn ($date) => $date->toDateString())->all();
+        $weekOneFixed = (bool) $internship->week_one_date;
 
-        return view('student.documents.entry-create', compact('requirement', 'weekAnchor', 'loggedDates'));
+        // Weeks already sent to the instructor - no days can be added to them.
+        $lockedWeeks = [];
+        if ($requirement->code === 'WEEKLY_REPORT' && $weekAnchor) {
+            foreach ($internship->documents()->where('document_requirement_id', $requirement->id)
+                ->whereNotIn('status', ['draft', 'returned'])->whereNotNull('packet_number')->get() as $doc) {
+                $start = $weekAnchor->copy()->addDays(7 * ($doc->packet_number - 1));
+                $lockedWeeks[] = [
+                    'number' => $doc->packet_number,
+                    'start' => $start->toDateString(),
+                    'end' => $start->copy()->addDays(6)->toDateString(),
+                    'label' => $start->format('M d').' – '.$start->copy()->addDays(6)->format('M d, Y'),
+                ];
+            }
+        }
+
+        return view('student.documents.entry-create', compact('requirement', 'weekAnchor', 'loggedDates', 'lockedWeeks', 'weekOneFixed'));
     }
 
     public function storeEntry(Request $request, DocumentRequirement $requirement): RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -665,6 +776,9 @@ class DocumentController extends Controller
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
 
         $rules = ['entry_date' => ['required', 'date']];
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            $rules['entry_date'][] = 'before_or_equal:today';
+        }
 
         // Form 19 is the official Practicum/Internship Weekly Report.
         // It is a weekly report containing one daily row per training day.
@@ -692,13 +806,20 @@ class DocumentController extends Controller
                     ->whereHas('document', fn ($q) => $q->where('internship_id', $internship->id)
                         ->where('document_requirement_id', $requirement->id))
                     ->pluck('entry_date');
-                $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates);
                 $date = \Carbon\Carbon::parse($validated['entry_date'])->startOfDay();
-                $anchor ??= $date;
-                abort_unless($date->greaterThanOrEqualTo($anchor), 422, 'The entry date cannot be earlier than the start of your training period.');
+                if ($internship->week_one_date && $date->lt($internship->week_one_date)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'entry_date' => 'Week 1 of your weekly report started on '.$internship->week_one_date->format('M d, Y')
+                            .' and has already been sent to your instructor, so a day before it can no longer be added.',
+                    ]);
+                }
+                // Before Week 1 is fixed, an earlier day simply becomes the new Week 1
+                // (the draft weeks are renumbered right after).
+                $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $allDates->push($date));
                 $weekStart = \App\Support\TrainingWeeks::weekStart($date, $anchor);
-                $weekIndex = (int) floor($anchor->diffInDays($weekStart, false) / 7);
-                $packetNumber = intdiv(max(0, $weekIndex), 4) + 1;
+                // Each week is its own Form 19, reviewed by the instructor as it
+                // is finished (packet_number = the week number).
+                $packetNumber = \App\Support\TrainingWeeks::number($weekStart, $anchor);
 
                 $document = Document::firstOrCreate(
                     ['internship_id' => $internship->id, 'document_requirement_id' => $requirement->id, 'packet_number' => $packetNumber],
@@ -711,8 +832,15 @@ class DocumentController extends Controller
                 );
             }
 
-            abort_if(in_array($document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved']), 403,
-                'This report packet has already entered review/signing and can no longer be edited here.');
+            if (in_array($document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved'])) {
+                $message = 'This log has already been sent to your instructor and can no longer be edited here.';
+                if ($requirement->code === 'WEEKLY_REPORT') {
+                    $message = 'Week '.$document->packet_number.' ('.$weekStart->format('M d').' – '.$weekStart->copy()->addDays(6)->format('M d, Y')
+                        .') has already been sent to your instructor, so no more days can be added to it. '
+                        .'The next week starts on '.$weekStart->copy()->addDays(7)->format('M d, Y').'.';
+                }
+                throw \Illuminate\Validation\ValidationException::withMessages(['entry_date' => $message]);
+            }
 
             // One entry per day: lock the log so a double-click can't slip two
             // entries for the same date through, then reject a repeated date.
@@ -752,6 +880,10 @@ class DocumentController extends Controller
             }
         });
 
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship->fresh());
+        }
+
         \App\Models\Notification::resolve('logentry:'.$student->id.':'.\Carbon\Carbon::parse($validated['entry_date'])->toDateString());
 
         return redirect()->route('student.documents.log', $requirement)->with('status', 'Entry added.');
@@ -774,7 +906,7 @@ class DocumentController extends Controller
                 ->where('document_requirement_id', $requirement->id))
                 ->with('document')->findOrFail($entry);
             abort_if(in_array($logEntry->document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved']), 403,
-                'This weekly report packet is locked for review/signing.');
+                'This week has already been sent to your instructor and can no longer be edited here.');
         } else {
             $document = $this->editableLogDocument($requirement);
             $logEntry = $document->entries()->findOrFail($entry);
@@ -784,6 +916,10 @@ class DocumentController extends Controller
             $logEntry->values()->delete();
             $logEntry->delete();
         });
+
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
+        }
 
         return redirect()
             ->route('student.documents.log', $requirement)
@@ -819,7 +955,7 @@ class DocumentController extends Controller
             ->get();
         abort_if($entries->isEmpty(), 404);
         abort_if($entries->contains(fn ($entry) => in_array($entry->document->status, ['submitted', 'for_review', 'printed', 'completed', 'approved'])), 403,
-            'This week belongs to a packet that is locked for review/signing.');
+            'This week has already been sent to your instructor and can no longer be edited here.');
 
         DB::transaction(function () use ($entries) {
             foreach ($entries as $logEntry) {
@@ -827,6 +963,7 @@ class DocumentController extends Controller
                 $logEntry->delete();
             }
         });
+        \App\Support\TrainingWeeks::syncDraftWeeks($internship);
 
         return redirect()->route('student.documents.log', $requirement)
             ->with('status', 'Week deleted ('.$entries->count().' '.($entries->count() === 1 ? 'entry' : 'entries').' removed).');
@@ -860,6 +997,10 @@ class DocumentController extends Controller
     public function submitLog(DocumentRequirement $requirement, ?int $packet = null): RedirectResponse
     {
         abort_unless($requirement->is_repeating, 404);
+        if ($requirement->code === 'INTERNSHIP_TIME_FRAME') {
+            // Form 17 is kept in Time Frame (DTR), from the approved daily time in/out.
+            return redirect()->route('student.dtr');
+        }
 
         $student = auth()->user()->student;
         $this->authorizeStudentRequirement($requirement, $student);
@@ -868,19 +1009,52 @@ class DocumentController extends Controller
 
         $documents = $internship->documents()->where('document_requirement_id', $requirement->id);
         if ($requirement->code === 'WEEKLY_REPORT') {
-            abort_unless($packet && $packet >= 1, 422, 'Choose a four-week Form 19 packet to submit.');
+            abort_unless($packet && $packet >= 1, 422, 'Choose the week to submit.');
+            \App\Support\TrainingWeeks::syncDraftWeeks($internship);
             $documents->where('packet_number', $packet);
         }
         $document = $documents->first();
         abort_unless($document, 422, 'Add at least one entry before submitting.');
         abort_if($document->entries()->count() === 0, 422, 'Add at least one entry before submitting.');
-        abort_unless(in_array($document->status, ['draft', 'returned']), 422, 'This report packet has already entered the review/signing workflow.');
+        abort_unless(in_array($document->status, ['draft', 'returned']), 422, 'This week has already been sent to your instructor.');
 
-        $document->update(['status' => 'submitted', 'submitted_at' => now()]);
+        if ($requirement->code === 'WEEKLY_REPORT') {
+            $weekStart = \App\Support\TrainingWeeks::anchorForInternship($internship)->addDays(7 * ($packet - 1));
+            if (! \App\Support\TrainingWeeks::weekFinished($weekStart, $internship)) {
+                return redirect()->route('student.documents.log', $requirement)->withErrors([
+                    'week' => 'Week '.$packet.' is not finished yet. You can submit it on '.$weekStart->copy()->addDays(6)->format('M d, Y').', its last day.',
+                ]);
+            }
+            // From now on Week 1's first day is fixed.
+            \App\Support\TrainingWeeks::pin($internship);
+        }
+
+        $document->update(['status' => 'submitted', 'submitted_at' => now(), 'first_submitted_at' => $document->first_submitted_at ?? now()]);
 
         \App\Models\Notification::resolve('logsubmit:'.$student->id);
 
-        return redirect()->route('student.documents.log', $requirement)->with('status', $requirement->code === 'WEEKLY_REPORT' ? 'Form 19 packet '.$packet.' submitted for instructor review.' : 'Log submitted for instructor review.');
+        // Like MS Teams: a week first sent after its due date is "Late", and
+        // the Subject Instructor is told.
+        if ($requirement->code === 'WEEKLY_REPORT' && ($due = \App\Support\TrainingWeeks::dueDateFor($document->fresh()))
+            && \App\Support\TrainingWeeks::lateness($document->fresh(), $due) === 'late') {
+            $daysLate = (int) ceil($due->diffInHours(now()) / 24);
+            \App\Models\Instructor::where('campus_id', $internship->campus_id)
+                ->where('program_id', $internship->program_id)
+                ->pluck('user_id')
+                ->each(fn ($userId) => \App\Models\Notification::create([
+                    'user_id' => $userId,
+                    'type' => 'document_status',
+                    'title' => "{$student->user->name} submitted Week {$packet} late",
+                    'message' => "Form 19 Week {$packet} was due {$due->format('M d, Y g:i A')}; submitted {$daysLate} ".\Illuminate\Support\Str::plural('day', $daysLate).' late. Awaiting your review.',
+                    'url' => route('instructor.documents', ['student' => $student->id, 'form' => $requirement->id], false),
+                    'resolve_key' => 'document:'.$document->id,
+                ]));
+
+            return redirect()->route('student.documents.log', $requirement)
+                ->with('status', 'Week '.$packet.' submitted for instructor review. It was due '.$due->format('M d, Y').', so it is marked Late.');
+        }
+
+        return redirect()->route('student.documents.log', $requirement)->with('status', $requirement->code === 'WEEKLY_REPORT' ? 'Week '.$packet.' submitted for instructor review.' : 'Log submitted for instructor review.');
     }
 
     /**
@@ -906,13 +1080,20 @@ class DocumentController extends Controller
                 // Lock and re-check inside the transaction so duplicate requests
                 // cannot replace a signed copy after the first upload succeeds.
                 $locked = Document::query()->lockForUpdate()->findOrFail($document->id);
-                abort_unless($locked->status === 'completed', 403, 'Your instructor must confirm that the signed physical form has returned before upload.');
-                abort_if($locked->file_path !== null, 422, 'A signed copy has already been uploaded. Contact your instructor if a correction is needed.');
+                // The student prints the form once the instructor approved it
+                // for printing, has it signed, and uploads the scan here. The
+                // instructor then approves (or returns) the signed copy.
+                abort_unless(in_array($locked->status, ['printed', 'completed'], true), 403, 'Your instructor has to approve this form for printing first.');
+                abort_if($locked->file_path !== null, 422, 'A signed copy has already been uploaded and is waiting for your instructor.');
+                // The upload opens only after the instructor checked the
+                // signatures on the physical form the student brought back.
+                abort_unless($locked->signedUploadOpen(), 403, 'Bring the signed form to your instructor first. The upload opens once they confirm the signatures.');
 
                 $locked->update([
                     'file_path' => $path,
                     'original_filename' => $file->getClientOriginalName(),
-                    'status' => 'approved',
+                    'status' => 'completed',
+                    'completed_at' => now(),
                 ]);
             });
         } catch (\Throwable $exception) {
@@ -920,9 +1101,89 @@ class DocumentController extends Controller
             throw $exception;
         }
 
-        \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->fresh()->internship);
+        $document->refresh();
+        \App\Models\Instructor::where('campus_id', $document->internship->campus_id)
+            ->where('program_id', $document->internship->program_id)
+            ->get()
+            ->each(fn ($instructor) => \App\Models\Notification::create([
+                'user_id' => $instructor->user_id,
+                'type' => 'document_status',
+                'title' => "{$student->user->name} uploaded the signed {$document->requirement->name}",
+                'message' => 'Check the signed copy and approve it.',
+                'url' => route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id], false),
+                'resolve_key' => 'document:'.$document->id,
+            ]));
 
-        return redirect()->route('student.documents')->with('status', 'Signed copy uploaded and locked. This does not complete your internship.');
+        return back()->with('status', 'Signed copy uploaded. Your instructor will check and approve it.');
+    }
+
+    /**
+     * Form 10 - MOA: the MOA is processed outside InternLink, so the student
+     * uploads scans of the signed MOA. Several files can be uploaded at once
+     * and more can be added later (each upload is a new submission for the
+     * instructor); files already uploaded are kept.
+     */
+    public function uploadMoa(Request $request, DocumentRequirement $requirement): RedirectResponse
+    {
+        $student = auth()->user()->student;
+        $this->authorizeStudentRequirement($requirement, $student);
+        abort_unless(isset(DocumentAttachment::MULTI_UPLOAD[$requirement->code]), 404);
+        $internship = $student->currentInternship;
+        abort_unless($internship, 422, 'You need an internship record before uploading documents - contact your coordinator.');
+        abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
+
+        $request->validate([
+            'files' => ['required', 'array', 'min:1', 'max:10'],
+            'files.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ], [
+            'files.required' => 'Choose at least one scanned file of the signed MOA.',
+            'files.*.mimes' => 'Each file must be a PDF, JPG or PNG.',
+            'files.*.max' => 'Each file must be 10 MB or smaller.',
+        ]);
+
+        $prefix = DocumentAttachment::MULTI_UPLOAD[$requirement->code];
+        $wasReturned = false;
+
+        $document = DB::transaction(function () use ($request, $requirement, $internship, $student, $prefix, &$wasReturned) {
+            $document = Document::firstOrCreate(
+                ['internship_id' => $internship->id, 'document_requirement_id' => $requirement->id],
+                ['uploaded_by_user_id' => auth()->id(), 'status' => 'submitted', 'submitted_at' => now()]
+            );
+            $wasReturned = $document->status === 'returned';
+
+            $next = $document->attachments()->where('kind', 'like', $prefix.'_%')->get()
+                ->map(fn ($a) => (int) substr($a->kind, strlen($prefix) + 1))->max() ?? 0;
+
+            foreach ($request->file('files') as $file) {
+                DocumentAttachment::create([
+                    'document_id' => $document->id,
+                    'kind' => $prefix.'_'.(++$next),
+                    'file_path' => $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}"),
+                    'original_filename' => $file->getClientOriginalName(),
+                    'uploaded_by_user_id' => auth()->id(),
+                ]);
+            }
+
+            // Every upload is a new submission for the instructor to check.
+            $document->update(['uploaded_by_user_id' => auth()->id(), 'status' => 'submitted', 'submitted_at' => now()]);
+
+            return $document;
+        });
+
+        $count = count($request->file('files'));
+        \App\Models\Instructor::where('campus_id', $internship->campus_id)
+            ->where('program_id', $internship->program_id)
+            ->get()
+            ->each(fn ($instructor) => \App\Models\Notification::create([
+                'user_id' => $instructor->user_id,
+                'type' => 'document_status',
+                'title' => "{$student->user->name} uploaded {$count} ".\Illuminate\Support\Str::plural('scan', $count)." of the signed MOA",
+                'message' => 'Awaiting your review.',
+                'url' => route('instructor.documents', ['student' => $student->id, 'form' => $requirement->id], false),
+                'resolve_key' => 'document:'.$document->id,
+            ]));
+
+        return back()->with('status', $count === 1 ? 'Signed MOA scan uploaded and submitted for review.' : "{$count} signed MOA scans uploaded and submitted for review.");
     }
 
     /**
@@ -947,6 +1208,7 @@ class DocumentController extends Controller
             ->firstOrFail();
         abort_unless($this->isRequirementAvailable($requirement, $internship), 403, 'This requirement is not available yet.');
         abort_if($requirement->hasStructuredFields(), 422, 'This form must be filled out in-system rather than uploaded directly.');
+        abort_if(isset(DocumentAttachment::MULTI_UPLOAD[$requirement->code]), 422, 'Upload the signed MOA scans with "Upload Scanned MOA".');
 
         $document = $internship->documents()
             ->where('document_requirement_id', $requirement->id)
@@ -1013,11 +1275,170 @@ class DocumentController extends Controller
             : 'Document uploaded and submitted for review.');
     }
 
+    /**
+     * Sorts form numbers as numbers ("2" before "11"), with a letter suffix
+     * after the number ("23a" before "23b"); no number sorts last.
+     */
+    private static function formNumberSortKey(?string $formNumber): array
+    {
+        if (! preg_match('/^(\d+)\s*([a-z]*)$/i', trim((string) $formNumber), $m)) {
+            return [PHP_INT_MAX, ''];
+        }
+
+        return [(int) $m[1], strtolower($m[2])];
+    }
+
+    private const ATTACHMENT_MESSAGES = [
+        'attachment_medical_certificate.required' => 'Attach your Medical Certificate from a government physician.',
+        'attachment_psychological_test.required' => 'Attach your Psychological Test Result.',
+        'attachment_parent_guardian_id.required' => 'Attach a photocopy of your parent/guardian\'s valid ID.',
+        'attachment_*.mimes' => 'Attachments must be a PDF, JPG or PNG file.',
+        'attachment_*.max' => 'Each attachment must be 10 MB or smaller.',
+    ];
+
+    /**
+     * Upload rules for the files a form takes (Form 1: Medical Certificate
+     * and Psychological Test; Form 3: Parent/Guardian Valid ID). Required
+     * the first time; on a resubmission only needed to replace a file.
+     */
+    private function attachmentRules(DocumentRequirement $requirement, $internship): array
+    {
+        $kinds = DocumentAttachment::kindsFor($requirement->code);
+        if (! $kinds) {
+            return [];
+        }
+
+        $existing = $internship->documents()
+            ->where('document_requirement_id', $requirement->id)
+            ->with('attachments')
+            ->first();
+
+        $rules = [];
+        foreach (array_keys($kinds) as $kind) {
+            $rules['attachment_'.$kind] = [
+                $existing?->attachment($kind) ? 'nullable' : 'required',
+                'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240',
+            ];
+        }
+
+        return $rules;
+    }
+
+    /** Stores the uploaded attachments on the form, replacing older files. */
+    private function saveAttachments(Document $document, Request $request, $student): void
+    {
+        $code = $document->requirement?->code
+            ?? DocumentRequirement::whereKey($document->document_requirement_id)->value('code');
+
+        foreach (array_keys(DocumentAttachment::kindsFor($code)) as $kind) {
+            $file = $request->file('attachment_'.$kind);
+            if (! $file) {
+                continue;
+            }
+            $current = $document->attachments()->where('kind', $kind)->first();
+            $path = $file->store("internship_documents/campus_{$student->campus_id}/student_{$student->id}");
+            DocumentAttachment::updateOrCreate(
+                ['document_id' => $document->id, 'kind' => $kind],
+                [
+                    'file_path' => $path,
+                    'original_filename' => $file->getClientOriginalName(),
+                    'uploaded_by_user_id' => auth()->id(),
+                ]
+            );
+            if ($current && $current->file_path !== $path && Storage::exists($current->file_path)) {
+                Storage::delete($current->file_path);
+            }
+        }
+    }
+
+    /** The student opens a file they attached to a form (e.g. Form 1). */
+    public function attachment(DocumentAttachment $attachment): StreamedResponse
+    {
+        abort_unless($attachment->document->internship->student_id === auth()->user()->student?->id, 403);
+        abort_unless(Storage::exists($attachment->file_path), 404);
+
+        return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
+    }
+
+    /**
+     * The student prints their own form once the instructor approved it for
+     * printing, to bring it to the signatories. Same official template the
+     * instructor sees.
+     */
+    public function printable(Document $document)
+    {
+        $student = auth()->user()->student;
+        abort_unless($student && $document->internship->student_id === $student->id, 403);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 404);
+        // A Form 19 week can be downloaded any time (a copy of what's written so far);
+        // other forms once the instructor approved them for printing.
+        abort_unless($document->requirement->code === 'WEEKLY_REPORT'
+            || in_array($document->status, ['printed', 'completed', 'approved'], true), 403,
+            'Your instructor has to approve this form for printing first.');
+
+        $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user');
+        $view = \App\Http\Controllers\Instructor\DocumentReviewController::printableView($document);
+
+        if (! request()->boolean('download')) {
+            if (request()->boolean('view')) {
+                // Opened from Files: shown without the print dialog (it can still be printed from the page).
+                $html = str_replace('<body onload="window.print()">', '<body>', view($view, ['document' => $document, 'autoPrint' => false])->render());
+
+                return response($html);
+            }
+
+            return view($view, compact('document'));
+        }
+
+        // Download: the same official page, saved as a PDF in the browser
+        // (so it looks exactly like the printout) instead of the print dialog.
+        $html = view($view, ['document' => $document, 'autoPrint' => false])->render();
+        $html = str_replace('<body onload="window.print()">', '<body>', $html);
+        $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
+
+        $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
+            .($document->packet_number ? ' - Week '.$document->packet_number : '')
+            .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
+            .' - '.$student->user->name));
+
+        $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
+        $html = str_ireplace('</body>', $script.'</body>', $html);
+
+        return response($html);
+    }
+
+    /** The student opens their own uploaded file in the browser. */
+    public function view(Document $document): StreamedResponse
+    {
+        abort_unless($document->internship->student_id === auth()->user()->student->id, 403);
+        abort_unless($document->file_path && Storage::exists($document->file_path), 404);
+
+        return Storage::response($document->file_path, $document->original_filename, [], 'inline');
+    }
+
     public function download(Document $document): StreamedResponse
     {
         abort_unless($document->internship->student_id === auth()->user()->student->id, 403);
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
         return Storage::download($document->file_path, $document->original_filename);
+    }
+
+    /**
+     * Partner agencies a student may choose: their program's list for the
+     * current term. The HTE they are already placed at is always included,
+     * so a later form still shows it even if the list changed.
+     */
+    private function partnerAgencyChoices($student, $internship)
+    {
+        [$academicYear, $semester] = \App\Support\Term::current();
+
+        $htes = \App\Http\Controllers\Instructor\HteController::listedHtes($student->program_id, $academicYear, $semester);
+
+        if ($current = $internship?->deployment?->hte) {
+            $htes = $htes->push($current)->unique('id')->sortBy('name')->values();
+        }
+
+        return $htes;
     }
 }

@@ -58,7 +58,19 @@ class DocumentReviewController extends Controller
 
      */
 
-    public function index(Request $request): View
+    /**
+     * Document Tracking (coordinator): one student's forms, any program of
+     * the campus, opened from the tracking list. Students of other programs
+     * are view only; the page stays in the Document Tracking module.
+     */
+    public function tracking(Request $request, \App\Models\Student $student): View
+    {
+        $request->query->set('student', $student->id);
+
+        return $this->index($request, true);
+    }
+
+    public function index(Request $request, bool $tracking = false): View
 
     {
 
@@ -66,9 +78,22 @@ class DocumentReviewController extends Controller
 
 
 
+        // Document Review lists the reviewer's own program - the coordinator
+        // included. The coordinator follows the other programs in Document
+        // Tracking and can open a student from there read-only.
+        $pendingCount = fn ($query) => $query
+            ->with(['user', 'program'])
+            ->withCount(['documents as pending_documents_count' => fn ($q) => $q
+                ->whereIn('documents.status', ['submitted', 'for_review'])
+                ->whereHas('requirement', fn ($r) => $r
+                    ->where('is_active', true)
+                    ->where('is_required', true)
+                    ->whereIn('audience', ['student', 'coordinator'])
+                    ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes()))
+            ]);
         $advisees = $instructor->advisees()
 
-            ->with('user')
+            ->with(['user', 'program'])
 
             ->withCount(['documents as pending_documents_count' => fn ($q) => $q
 
@@ -93,9 +118,27 @@ class DocumentReviewController extends Controller
 
 
 
-        $selectedId = $request->query('student', $advisees->first()?->id);
+        // Teams-style: Document Review opens on the student list; clicking a
+        // name opens that one student's forms (and nothing else).
+        if (! $request->filled('student')) {
+            return $this->studentList($request, $instructor, $advisees);
+        }
 
-        $student = $advisees->firstWhere('id', (int) $selectedId) ?? $advisees->first();
+        $student = $tracking ? null : $advisees->firstWhere('id', (int) $request->query('student'));
+        $fromTracking = false;
+        if (! $student && $instructor->isCoordinator()) {
+            // Another program's student, opened from Document Tracking: view only.
+            $student = $pendingCount($instructor->visibleStudents())->find((int) $request->query('student'));
+            $fromTracking = (bool) $student;
+        }
+        abort_unless($student, 404);
+
+        // Previous / next student, in the same name order as the list.
+        $ordered = $fromTracking ? collect([$student]) : $advisees->sortBy(fn ($a) => $a->user->name, SORT_NATURAL | SORT_FLAG_CASE)->values();
+        $position = $ordered->search(fn ($a) => $a->id === $student->id);
+        $prevStudent = $position > 0 ? $ordered[$position - 1] : null;
+        $nextStudent = $position < $ordered->count() - 1 ? $ordered[$position + 1] : null;
+        $studentPosition = ['index' => $position + 1, 'total' => $ordered->count()];
 
 
 
@@ -163,7 +206,7 @@ class DocumentReviewController extends Controller
 
 
             $allStudentDocuments = $internship
-                ? $internship->documents()->with(['latestReview', 'fieldValues', 'entries.values', 'requirement'])->get()
+                ? $internship->documents()->with(['latestReview', 'fieldValues', 'entries.values', 'requirement', 'attachments'])->get()
                 : collect();
             $documentsByRequirement = $allStudentDocuments->keyBy('document_requirement_id');
             $form19Packets = $allStudentDocuments
@@ -206,15 +249,169 @@ class DocumentReviewController extends Controller
 
 
 
+        // Approve / return / print / unlock buttons only for students in the
+        // viewer's own program. The coordinator sees other programs read-only.
+        $canAct = $student ? $instructor->canActOn($student) : false;
+
         return view('instructor.documents.index', compact(
 
-            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets'
+            'advisees', 'student', 'internship', 'requirementsByStage', 'documentsByRequirement', 'fieldWarnings', 'form19Packets', 'canAct',
+            'prevStudent', 'nextStudent', 'studentPosition', 'instructor', 'fromTracking'
 
         ));
 
     }
 
 
+
+    /**
+     * The student list (first screen of Document Review): one row per
+     * student with how many forms wait for review, how many are approved,
+     * and a View link that opens only that student. Mirrors MS Teams'
+     * assignment list -> one student's work.
+     */
+    private function studentList(Request $request, $instructor, $advisees): View
+    {
+        $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
+            ->where('is_required', true)
+            ->where('is_active', true)
+            ->whereIn('audience', ['student', 'coordinator'])
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes())
+            ->get(['id', 'stage']);
+
+        $advisees->load('currentInternship.documents', 'currentInternship.deployment.hte');
+
+        // Partner agencies the listed students are placed at, for the filter.
+        $agencies = $advisees->map(fn ($s) => $s->currentInternship?->deployment?->hte)
+            ->filter()->unique('id')->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        $rows = $advisees->map(function ($student) use ($requirements, $instructor) {
+            $internship = $student->currentInternship;
+            $applicable = $requirements->filter(fn ($r) => match (true) {
+                ! $internship, $internship->status === 'pre_deployment' => $r->stage === 'pre_deployment',
+                ! $internship->hasCompletedDeployment() => in_array($r->stage, ['pre_deployment', 'active'], true),
+                default => true,
+            });
+            $docs = $internship ? $internship->documents->whereIn('document_requirement_id', $applicable->pluck('id')) : collect();
+            $byStatus = fn (array $statuses) => $docs->whereIn('status', $statuses)->pluck('document_requirement_id')->unique()->count();
+
+            return (object) [
+                'student' => $student,
+                'required' => $applicable->count(),
+                'approved' => $byStatus(['approved']),
+                'to_review' => $byStatus(['submitted', 'for_review', 'completed']),
+                'signing' => $byStatus(['printed']),
+                'returned' => $byStatus(['returned']),
+                'missing' => max($applicable->count() - $docs->pluck('document_requirement_id')->unique()->count(), 0),
+                'last_submitted' => $docs->max('submitted_at'),
+                'can_act' => $instructor->canActOn($student),
+            ];
+        });
+
+        if ($search = trim((string) $request->query('search'))) {
+            $needle = mb_strtolower($search);
+            $rows = $rows->filter(fn ($r) => str_contains(mb_strtolower($r->student->user->name), $needle)
+                || str_contains(mb_strtolower((string) $r->student->user->id_number), $needle));
+        }
+        if ($instructor->isCoordinator() && ($programId = $request->query('program_id'))) {
+            $rows = $rows->where('student.program_id', (int) $programId);
+        }
+        if ($hteId = $request->query('hte_id')) {
+            $rows = $rows->filter(fn ($r) => $hteId === 'none'
+                ? ! $r->student->currentInternship?->deployment?->hte_id
+                : (int) $r->student->currentInternship?->deployment?->hte_id === (int) $hteId);
+        }
+
+        $counts = [
+            'all' => $rows->count(),
+            'review' => $rows->filter(fn ($r) => $r->to_review > 0)->count(),
+            'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0)->count(),
+            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required)->count(),
+        ];
+
+        $tab = in_array($request->query('tab'), ['review', 'missing', 'complete'], true) ? $request->query('tab') : 'all';
+        $rows = match ($tab) {
+            'review' => $rows->filter(fn ($r) => $r->to_review > 0),
+            'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0),
+            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required),
+            default => $rows,
+        };
+
+        // Students with forms waiting on the reviewer first, then by name.
+        $rows = $rows->sortBy(fn ($r) => sprintf('%d|%s', $r->to_review > 0 ? 0 : 1, mb_strtolower($r->student->user->name)))->values();
+
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = 25;
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $rows->forPage($page, $perPage)->values(), $rows->count(), $perPage, $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        $programs = $instructor->isCoordinator()
+            ? \App\Models\Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
+            : collect();
+
+        return view('instructor.documents.list', [
+            'rows' => $paginator,
+            'counts' => $counts,
+            'tab' => $tab,
+            'programs' => $programs,
+            'agencies' => $agencies,
+            'instructor' => $instructor,
+        ]);
+    }
+
+    /**
+     * Bulk action from the student list: remind the selected students (own
+     * program only) which forms they still need to submit or correct.
+     */
+    public function remind(Request $request): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $data = $request->validate([
+            'student_ids' => ['required', 'array', 'min:1'],
+            'student_ids.*' => ['integer'],
+        ], ['student_ids.required' => 'Select at least one student first.']);
+
+        $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
+            ->where('is_required', true)->where('is_active', true)
+            ->where('audience', 'student')
+            ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes())
+            ->get();
+
+        $sent = 0;
+        $instructor->visibleStudents()->with(['user', 'currentInternship.documents'])
+            ->whereIn('id', $data['student_ids'])->get()
+            ->filter(fn ($student) => $instructor->canActOn($student))
+            ->each(function ($student) use ($requirements, &$sent) {
+                $internship = $student->currentInternship;
+                $stages = ! $internship || $internship->status === 'pre_deployment'
+                    ? ['pre_deployment']
+                    : ($internship->hasCompletedDeployment() ? ['pre_deployment', 'active', 'post_deployment'] : ['pre_deployment', 'active']);
+                $docs = $internship?->documents->keyBy('document_requirement_id') ?? collect();
+
+                $outstanding = $requirements->whereIn('stage', $stages)
+                    ->filter(fn ($r) => ! $docs->has($r->id) || $docs[$r->id]->status === 'returned')
+                    ->pluck('name');
+
+                if ($outstanding->isEmpty()) {
+                    return;
+                }
+
+                Notification::create([
+                    'user_id' => $student->user_id,
+                    'type' => 'document_status',
+                    'title' => 'Reminder: forms to submit',
+                    'message' => 'Please submit or correct: '.$outstanding->take(6)->implode(', ').($outstanding->count() > 6 ? ', and '.($outstanding->count() - 6).' more' : '').'.',
+                    'url' => route('student.documents', [], false),
+                ]);
+                $sent++;
+            });
+
+        return back()->with('status', $sent
+            ? "Reminder sent to {$sent} ".\Illuminate\Support\Str::plural('student', $sent).'.'
+            : 'Nothing to remind - the selected students have no missing or returned forms (or are in another program).');
+    }
 
     /**
 
@@ -249,7 +446,7 @@ class DocumentReviewController extends Controller
 
             return redirect()
 
-                ->route('instructor.documents', ['student' => $document->internship->student_id])
+                ->to($this->backUrl($document))
 
                 ->with('status', 'Document is already returned to the student.');
 
@@ -257,7 +454,15 @@ class DocumentReviewController extends Controller
 
 
 
-        abort_unless(in_array($document->status, ['submitted', 'for_review'], true), 422, 'This document is not awaiting review.');
+        // A form can be returned while waiting for review, and also while it
+        // is out for signing (printed) if the instructor spots an error
+        // before the signed copy comes back. Approving still needs review status.
+        $returnable = ['submitted', 'for_review', 'printed', 'completed'];
+        // Students print their own forms: a form approved for printing
+        // (printed) or whose signed copy was uploaded (completed) can still
+        // be returned. The signed copy itself is approved with "complete".
+        abort_unless(in_array($document->status, $returnable, true), 422, 'This document is not awaiting review.');
+        abort_if(in_array($document->status, ['printed', 'completed'], true) && $request->input('decision') !== 'returned', 422, 'A form in the signing step can only be returned here.');
 
 
 
@@ -287,6 +492,12 @@ class DocumentReviewController extends Controller
 
 
 
+        if ($validated['decision'] === 'approved' && ($blocked = \App\Support\AutoDeployment::blockedReason($document))) {
+            return redirect()
+                ->to($this->backUrl($document))
+                ->withErrors(['placement' => $blocked]);
+        }
+
         DocumentReview::create([
 
             'document_id' => $document->id,
@@ -303,13 +514,27 @@ class DocumentReviewController extends Controller
 
 
 
-        $document->update(['status' => $validated['decision']]);
+        // Returning a signed copy clears it, so the student can correct the
+        // form, print it again and upload the new signed copy.
+        if ($validated['decision'] === 'returned' && $document->requirement->workflow_mode === 'print_sign' && $document->file_path) {
+            $oldFile = $document->file_path;
+            $document->update(['file_path' => null, 'original_filename' => null, 'completed_at' => null]);
+            Storage::delete($oldFile);
+        }
+
+        $document->update(['status' => $validated['decision'], 'signatures_confirmed_at' => null]);
 
 
+
+        $placement = null;
 
         if ($validated['decision'] === 'approved') {
 
             \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->internship);
+
+            // An accepted Application for OJT places the student at the
+            // firm they chose - no manual deployment assignment.
+            $placement = \App\Support\AutoDeployment::fromAcceptedApplication($document);
 
         }
 
@@ -333,9 +558,9 @@ class DocumentReviewController extends Controller
 
         return redirect()
 
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
+            ->to($this->backUrl($document))
 
-            ->with('status', 'Document '.$validated['decision'].'.');
+            ->with('status', trim('Document '.$validated['decision'].'. '.($placement ?? '')));
 
     }
 
@@ -369,15 +594,26 @@ class DocumentReviewController extends Controller
 
 
 
-        $document->update(['status' => 'printed', 'printed_at' => now()]);
+        if ($blocked = \App\Support\AutoDeployment::blockedReason($document)) {
+            return redirect()
+                ->to($this->backUrl($document))
+                ->withErrors(['placement' => $blocked]);
+        }
+
+        $document->update(['status' => 'printed', 'printed_at' => now(), 'signatures_confirmed_at' => null]);
+
+        // Print for Signing is how the instructor accepts a print-and-sign
+        // form, so an accepted Application for OJT creates the deployment.
+        $placement = \App\Support\AutoDeployment::fromAcceptedApplication($document);
 
 
+
+        $this->notifyStudent($document, "{$document->requirement->name} approved for printing",
+            "Your {$document->requirement->name} looks good. Print it from My Documents, have it signed by the signatories, then upload the signed copy.", true);
 
         return redirect()
-
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
-
-            ->with('status', 'Marked as printed - out for signing.');
+            ->to($this->backUrl($document))
+            ->with('status', trim('Approved for printing - the student will print it, have it signed and upload the signed copy. '.($placement ?? '')));
 
     }
 
@@ -391,13 +627,17 @@ class DocumentReviewController extends Controller
 
      */
 
-    public function printable(Document $document): View
+    public function printable(Document $document): View|\Illuminate\Http\Response
 
     {
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
+
+        // Evaluations are read on the instructor's Evaluations page only
+        // (never by the coordinator, the rated party or anyone else).
+        abort_if(isset(\App\Support\EvaluationRouting::FORMS[$document->requirement?->code]), 404);
 
 
 
@@ -411,54 +651,32 @@ class DocumentReviewController extends Controller
 
         // still falls back to the generic label/value printable view below.
 
-        $dedicatedViews = [
-
-            'APPLICATION_FOR_OJT' => 'instructor.documents.printable-application-for-ojt',
-
-            'CERTIFICATE_OF_UNITS_EARNED' => 'instructor.documents.printable-certificate-units-earned',
-
-            'ENDORSEMENT_LETTER' => 'instructor.documents.printable-endorsement-letter',
+        $view = self::printableView($document);
 
 
 
-            'PARENT_CONSENT' => 'instructor.documents.printable-consent-waiver',
+        // The instructor (and coordinator) only view and download forms - the
+        // student is the one who prints them for signing. So no print dialog
+        // or Print button here; ?download=1 saves the same page as a PDF.
+        $html = view($view, ['document' => $document, 'autoPrint' => false])->render();
+        $html = str_replace('<body onload="window.print()">', '<body>', $html);
+        $html = preg_replace('#<button class="no-print" onclick="window\.print\(\)">[^<]*</button>#', '', $html);
 
-            'OJT_RESUME' => 'instructor.documents.printable-ojt-resume',
+        if (request()->boolean('preview') && ! request()->boolean('download')) {
+            // Shown inside Document Review: the form on a white A4 page.
+            $html = str_ireplace('</head>', '<style>html{background:#fff}body{width:8.27in;max-width:none;min-height:11.69in;padding:.5in;margin:0;box-sizing:border-box}</style></head>', $html);
+        }
 
-            'INTERNSHIP_AGREEMENT' => 'instructor.documents.printable-internship-agreement',
+        if (request()->boolean('download')) {
+            $name = trim(preg_replace('#[\\\\/:*?"<>|]+#', '-', $document->requirement->name
+                .($document->packet_number ? ' - Week '.$document->packet_number : '')
+                .\App\Support\TrainingWeeks::downloadSuffix($document->internship)
+                .' - '.$document->internship->student->user->name));
+            $script = view('student.documents._pdf-download', ['filename' => $name.'.pdf'])->render();
+            $html = str_ireplace('</body>', $script.'</body>', $html);
+        }
 
-            'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE' => 'instructor.documents.printable-internship-academic-practicum',
-
-            'DAILY_JOURNAL' => 'instructor.documents.printable-daily-journal',
-
-            'WEEKLY_REPORT' => 'instructor.documents.printable-weekly-report',
-            'INTERNSHIP_TIME_FRAME' => 'instructor.documents.printable-internship-time-frame',
-
-            'STUDENT_FEEDBACK_FORM' => 'instructor.documents.printable-student-feedback',
-
-            'STUDENT_HTE_EVALUATION' => 'instructor.documents.printable-student-hte-evaluation',
-
-            'INTERNSHIP_RELEASE_FORM' => 'instructor.documents.printable-internship-release-form',
-
-            'TRAINING_LIABILITY' => 'instructor.documents.printable-training-agreement',
-
-            'EVALUATION_FORM' => 'instructor.documents.printable-form13',
-
-            'TRAINING_SUPERVISOR_FEEDBACK' => 'instructor.documents.printable-training-supervisor-feedback',
-
-            'PARTNER_AGENCY_EVAL_SELF' => 'instructor.documents.printable-partner-agency-eval-self',
-
-            'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
-
-        ];
-
-
-
-        $view = $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
-
-
-
-        return view($view, compact('document'));
+        return response($html);
 
     }
 
@@ -474,40 +692,87 @@ class DocumentReviewController extends Controller
 
      */
 
-    public function markCompleted(Document $document): RedirectResponse
-
+    /** The official printable template of a form (also used for the student's Print). */
+    public static function printableView(Document $document): string
     {
+        $dedicatedViews = [
+            'APPLICATION_FOR_OJT' => 'instructor.documents.printable-application-for-ojt',
+            'CERTIFICATE_OF_UNITS_EARNED' => 'instructor.documents.printable-certificate-units-earned',
+            'ENDORSEMENT_LETTER' => 'instructor.documents.printable-endorsement-letter',
+            'PARENT_CONSENT' => 'instructor.documents.printable-consent-waiver',
+            'OJT_RESUME' => 'instructor.documents.printable-ojt-resume',
+            'INTERNSHIP_AGREEMENT' => 'instructor.documents.printable-internship-agreement',
+            'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE' => 'instructor.documents.printable-internship-academic-practicum',
+            'DAILY_JOURNAL' => 'instructor.documents.printable-daily-journal',
+            'WEEKLY_REPORT' => 'instructor.documents.printable-weekly-report',
+            'INTERNSHIP_TIME_FRAME' => 'instructor.documents.printable-internship-time-frame',
+            'STUDENT_FEEDBACK_FORM' => 'instructor.documents.printable-student-feedback',
+            'STUDENT_HTE_EVALUATION' => 'instructor.documents.printable-student-hte-evaluation',
+            'INTERNSHIP_RELEASE_FORM' => 'instructor.documents.printable-internship-release-form',
+            'TRAINING_LIABILITY' => 'instructor.documents.printable-training-agreement',
+            'EVALUATION_FORM' => 'instructor.documents.printable-form13',
+            'TRAINING_SUPERVISOR_FEEDBACK' => 'instructor.documents.printable-training-supervisor-feedback',
+            'PARTNER_AGENCY_EVAL_SELF' => 'instructor.documents.printable-partner-agency-eval-self',
+            'PARTNER_AGENCY_EVAL_INSTRUCTOR' => 'instructor.documents.printable-partner-agency-eval-instructor',
+        ];
+                $view = $dedicatedViews[$document->requirement->code] ?? 'instructor.documents.printable';
 
-        $instructor = auth()->user()->instructor;
-
-        $this->authorizeInstructor($document, $instructor);
-
-        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
-
-        abort_unless($document->status === 'printed', 422, 'Only a form that has been printed for signing can be unlocked for signed-copy upload.');
-        abort_if($document->file_path, 422, 'A signed copy has already been uploaded for this form.');
-
-        // This completes the physical-signature handoff only. It does NOT
-        // complete the student's internship/deployment.
-        $document->update(['status' => 'completed', 'completed_at' => now()]);
-
-
-
-        $this->notifyStudent($document, "{$document->requirement->name} ready for upload",
-
-            "Your signed {$document->requirement->name} is ready - upload the scanned copy from My Documents.", true);
-
-
-
-        return redirect()
-
-            ->route('instructor.documents', ['student' => $document->internship->student_id])
-
-            ->with('status', 'Signed-copy upload unlocked for the student. Internship completion is unchanged.');
-
+                // A retired form whose own template is gone uses the generic one.
+                return view()->exists($view) ? $view : 'instructor.documents.printable';
     }
 
+    /**
+     * The student brought the printed form back with the physical
+     * signatures; the instructor checked them, which opens the student's
+     * upload of the scanned signed copy.
+     */
+    public function confirmSignatures(Document $document): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeInstructor($document, $instructor);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
+        abort_unless($document->status === 'printed', 422, 'Only a form that is out for signing can be confirmed.');
+        abort_if($document->signatures_confirmed_at !== null, 422, 'The signatures are already confirmed; the upload is open for the student.');
 
+        $document->update(['signatures_confirmed_at' => now()]);
+
+        $name = $document->requirement->name.($document->packet_number ? ' (Week '.$document->packet_number.')' : '');
+        $this->notifyStudent($document, "Upload your signed {$name}",
+            "Your subject instructor confirmed the signatures on your {$name}. Upload a scan of the signed copy now.", true);
+
+        return redirect()
+            ->to($this->backUrl($document))
+            ->with('status', 'Signatures confirmed. The student can now upload the signed copy.');
+    }
+
+    public function markCompleted(Document $document): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeInstructor($document, $instructor);
+        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
+        abort_unless($document->status === 'completed' && $document->file_path, 422, 'Waiting for the student to upload the signed copy.');
+
+        // Final step of print-and-sign: the student printed the form, had it
+        // signed and uploaded the scan; the instructor approves that copy.
+        // This does NOT complete the student's internship/deployment.
+        DocumentReview::create([
+            'document_id' => $document->id,
+            'instructor_id' => $instructor->id,
+            'decision' => 'approved',
+            'remarks' => null,
+            'reviewed_at' => now(),
+        ]);
+        $document->update(['status' => 'approved']);
+
+        \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->internship);
+
+        $this->notifyStudent($document, "{$document->requirement->name} approved",
+            "Your signed {$document->requirement->name} has been approved by your subject instructor.");
+
+        return redirect()
+            ->to($this->backUrl($document))
+            ->with('status', 'Signed copy approved. Internship completion is unchanged.');
+    }
 
     public function download(Document $document): StreamedResponse
 
@@ -515,7 +780,7 @@ class DocumentReviewController extends Controller
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
 
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
@@ -543,7 +808,7 @@ class DocumentReviewController extends Controller
 
         $instructor = auth()->user()->instructor;
 
-        $this->authorizeInstructor($document, $instructor);
+        $this->authorizeViewer($document, $instructor);
 
         abort_unless($document->file_path && Storage::exists($document->file_path), 404);
 
@@ -555,20 +820,81 @@ class DocumentReviewController extends Controller
 
 
 
-    private function authorizeInstructor(Document $document, $instructor): void
-
+    /**
+     * Opens a file attached to a form (Form 1's Medical Certificate or
+     * Psychological Test Result). Anyone who may view the form may open it.
+     */
+    public function attachment(\App\Models\DocumentAttachment $attachment): StreamedResponse
     {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeViewer($attachment->document, $instructor);
+        abort_unless(Storage::exists($attachment->file_path), 404);
 
-        abort_unless(
+        return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
+    }
 
-            $document->internship->campus_id === $instructor->campus_id
+    /**
+     * Full view of one submitted form (Google Classroom style): the form or
+     * file on the left, and on the right the files, previous remarks and the
+     * Return / Approve / Print for signing actions with a remarks box. Arrows
+     * move through this student's other submitted forms.
+     */
+    public function show(Document $document): View
+    {
+        $instructor = auth()->user()->instructor;
+        $this->authorizeViewer($document, $instructor);
+        $document->load('requirement.fieldDefinitions', 'internship.student.user', 'internship.student.program', 'latestReview', 'uploader', 'attachments');
 
-                && $document->internship->program_id === $instructor->program_id,
+        abort_if(in_array($document->requirement->code, \App\Support\EvaluationRouting::studentToHteCodes(), true), 404);
 
-            403
+        // This student's other submitted forms, in checklist order.
+        $siblings = Document::where('internship_id', $document->internship_id)
+            ->whereNotNull('status')
+            ->whereHas('requirement', fn ($r) => $r->where('is_active', true)->where('is_required', true)
+                ->whereIn('audience', ['student', 'coordinator'])
+                ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes()))
+            ->with('requirement')
+            ->get()
+            ->sortBy(fn ($d) => sprintf('%d|%05d|%s|%05d',
+                ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3][$d->requirement->stage] ?? 9,
+                $d->requirement->display_order ?? 0, $d->requirement->name, $d->packet_number ?? 0))
+            ->values();
 
-        );
+        $position = $siblings->search(fn ($d) => $d->id === $document->id);
+        $prevDocument = $position !== false && $position > 0 ? $siblings[$position - 1] : null;
+        $nextDocument = $position !== false && $position < $siblings->count() - 1 ? $siblings[$position + 1] : null;
 
+        $reviews = DocumentReview::where('document_id', $document->id)->with('instructor.user')->latest('reviewed_at')->get();
+
+        return view('instructor.documents.viewer', [
+            'document' => $document,
+            'student' => $document->internship->student,
+            'canAct' => $instructor->canActOn($document->internship),
+            'prevDocument' => $prevDocument,
+            'nextDocument' => $nextDocument,
+            'position' => ['index' => $position === false ? 1 : $position + 1, 'total' => max($siblings->count(), 1)],
+            'reviews' => $reviews,
+        ]);
+    }
+
+    /** After an action: back to the viewer if it came from there, else the student's page. */
+    private function backUrl(Document $document): string
+    {
+        return request()->input('return_to') === 'viewer'
+            ? route('instructor.documents.show', $document)
+            : route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id]);
+    }
+
+    /** Acting on a document: own program only (the coordinator included). */
+    private function authorizeInstructor(Document $document, $instructor): void
+    {
+        abort_unless($instructor->canActOn($document->internship), 403);
+    }
+
+    /** Opening / printing / downloading: anything the viewer can see. */
+    private function authorizeViewer(Document $document, $instructor): void
+    {
+        abort_unless($instructor->canView($document->internship), 403);
     }
 
 

@@ -19,14 +19,19 @@ class Document extends Model
     }
 
     protected $fillable = [
-        'internship_id', 'document_requirement_id', 'uploaded_by_user_id',
+        'internship_id', 'hte_id', 'document_requirement_id', 'uploaded_by_user_id',
         'file_path', 'original_filename', 'status',
-        'submitted_at', 'printed_at', 'completed_at', 'packet_number',
+        'submitted_at', 'first_submitted_at', 'printed_at', 'signatures_confirmed_at', 'completed_at', 'packet_number',
+        'locked_at', 'unlocked_at', 'locked_by_user_id',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
+        'first_submitted_at' => 'datetime',
+        'locked_at' => 'datetime',
+        'unlocked_at' => 'datetime',
         'printed_at' => 'datetime',
+        'signatures_confirmed_at' => 'datetime',
         'completed_at' => 'datetime',
     ];
 
@@ -50,6 +55,12 @@ class Document extends Model
         return $this->hasMany(DocumentReview::class);
     }
 
+    /** The agency an agency-level evaluation (Form 23a / 23b) is about. */
+    public function hte()
+    {
+        return $this->belongsTo(Hte::class);
+    }
+
     public function latestReview()
     {
         return $this->hasOne(DocumentReview::class)->latestOfMany();
@@ -58,6 +69,17 @@ class Document extends Model
     public function fieldValues()
     {
         return $this->hasMany(DocumentFieldValue::class);
+    }
+
+    /** Files attached to this form (e.g. Form 1's medical certificate). */
+    public function attachments()
+    {
+        return $this->hasMany(DocumentAttachment::class);
+    }
+
+    public function attachment(string $kind): ?DocumentAttachment
+    {
+        return $this->attachments->firstWhere('kind', $kind);
     }
 
     public function entries()
@@ -73,5 +95,16 @@ class Document extends Model
     public function fieldValue(string $key): ?string
     {
         return $this->fieldValues->firstWhere('field_key', $key)?->value;
+    }
+
+    /**
+     * Print-and-sign: the student may upload the signed copy only after the
+     * instructor confirmed the signatures on the physical form. (A form left
+     * "completed" without a file by the older flow stays open too.)
+     */
+    public function signedUploadOpen(): bool
+    {
+        return ($this->status === 'printed' && $this->signatures_confirmed_at !== null)
+            || ($this->status === 'completed' && blank($this->file_path));
     }
 }

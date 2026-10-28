@@ -64,20 +64,10 @@
     </table>
 </div>
 
-<div class="il-card mb-3">
+<div class="il-card">
     <h2 class="h6 fw-bold mb-3">Generate Reports</h2>
 
     <div class="row g-3">
-        <div class="col-md-6">
-            <div class="border rounded p-3 h-100">
-                <p class="fw-semibold small mb-1">Evaluation Summary</p>
-                <p class="text-secondary small mb-3">Grades and evaluation data per student, all programs</p>
-                <a href="{{ route('coordinator.reports.export-evaluations') }}" class="btn btn-primary btn-sm">
-                    <i class="ti ti-download"></i> Generate &amp; Download
-                </a>
-            </div>
-        </div>
-
         <div class="col-md-6">
             <div class="border rounded p-3 h-100">
                 <p class="fw-semibold small mb-1">HTE Directory</p>
@@ -97,35 +87,29 @@
                 </a>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="il-card mb-3">
-    <div class="d-flex justify-content-between align-items-center gap-3">
-        <div>
-            <h2 class="h6 fw-bold mb-1">Approved Student Documents</h2>
-            <p class="text-secondary small mb-0">Download all documents that have been approved for students in your campus as one ZIP archive.</p>
+        <div class="col-md-6">
+            <div class="border rounded p-3 h-100">
+                <p class="fw-semibold small mb-1">Approved Student Documents</p>
+                <p class="text-secondary small mb-3">All approved documents of your campus as one ZIP, by student and document type, with a MANIFEST.csv</p>
+                <a href="{{ route('coordinator.reports.export-approved-documents') }}" class="btn btn-primary btn-sm">
+                    <i class="ti ti-download"></i> Generate &amp; Download
+                </a>
+            </div>
         </div>
-        <a href="{{ route('coordinator.reports.export-approved-documents') }}" class="il-btn-primary text-decoration-none text-nowrap">
-            <i class="ti ti-download"></i> Download Approved Documents
-        </a>
-    </div>
-    <div class="alert alert-light border mt-3 mb-0 small">
-        The ZIP is organized by student and document type. Only <strong>approved</strong> documents with an uploaded file are included; a <strong>MANIFEST.csv</strong> lists all approved records.
-    </div>
-</div>
 
-<div class="il-card">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h6 fw-bold mb-0">Partner HTE Summary</h2>
-        <a href="{{ route('coordinator.reports.export-hte') }}" class="small fw-semibold text-decoration-none">
-            <i class="ti ti-download"></i> Export HTE Partnership (CSV)
-        </a>
+        <div class="col-md-6">
+            <div class="border rounded p-3 h-100">
+                <p class="fw-semibold small mb-1">Partner HTE Summary</p>
+                <p class="text-secondary small mb-3">
+                    {{ $hteCount }} partner HTE{{ $hteCount === 1 ? '' : 's' }} on file, {{ $activeMoaCount }} with an active MOA.
+                    Full breakdown in <a href="{{ route('instructor.htes') }}">Partner Agencies</a>.
+                </p>
+                <a href="{{ route('coordinator.reports.export-hte') }}" class="btn btn-primary btn-sm">
+                    <i class="ti ti-download"></i> Generate &amp; Download
+                </a>
+            </div>
+        </div>
     </div>
-    <p class="text-secondary small mb-0">
-        {{ $hteCount }} partner HTE{{ $hteCount === 1 ? '' : 's' }} on file,
-        {{ $activeMoaCount }} with an active MOA.
-        See <a href="{{ route('coordinator.htes') }}">Partner HTEs</a> for the full breakdown per establishment.
-    </p>
 </div>
 @endsection

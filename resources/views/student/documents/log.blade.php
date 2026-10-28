@@ -6,24 +6,28 @@
 @if ($requirement->code === 'WEEKLY_REPORT')
     @php
         $entries = $entries ?? ($document?->entries ?? collect());
-        // Week 1 starts on the first DTR day. Each official Form 19 packet contains four consecutive weeks.
+        // Week 1 starts on the first DTR day (or an earlier entry). Each week is
+        // its own Form 19, reviewed by the instructor as soon as it is finished.
         $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $entries->pluck('entry_date'));
         $weeks = $anchor ? \App\Support\TrainingWeeks::group($entries, $anchor) : collect();
-        $packetStatus = fn ($packet) => $packet?->status ?? 'draft';
-        $statusText = fn ($status) => match ($status) {
-            'submitted', 'for_review' => 'Awaiting instructor review',
-            'printed' => 'Printed — awaiting physical signatures',
-            'completed' => 'Signed-copy upload unlocked',
-            'approved' => 'Signed copy received',
-            'returned' => 'Returned for correction',
-            default => 'Draft — editable',
+        $weekDocs = $packets->keyBy('packet_number');
+        // Days fold into weeks, weeks into months.
+        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->format('Y-m'), true);
+        $status = fn ($doc) => match ($doc?->status) {
+            'submitted', 'for_review' => ['With your instructor', 'text-bg-warning'],
+            'printed' => [$doc->signatures_confirmed_at ? 'Upload the signed copy' : 'Approved for printing', 'text-bg-info'],
+            'completed' => [filled($doc->file_path) ? 'Signed copy uploaded' : 'Upload the signed copy', 'text-bg-primary'],
+            'approved' => ['Approved', 'text-bg-success'],
+            'returned' => ['Returned', 'text-bg-danger'],
+            default => ['Not submitted', 'text-bg-light text-secondary border'],
         };
+        $editable = fn ($doc) => ! $doc || in_array($doc->status, ['draft', 'returned'], true);
     @endphp
 
     <div class="il-page-header">
         <div>
             <h1 class="il-page-title">Form 19 – Practicum/Internship Weekly Report</h1>
-            <p class="text-secondary mb-0">Add daily entries. Four consecutive weeks are grouped into one Form 19 packet with its own review, physical-signing confirmation, and one-time signed-copy upload.</p>
+            <p class="text-secondary mb-0">Add a row for every training day. Each week is its own Form 19: submit it when the week is finished, your instructor checks it, then you print it, have it signed and upload the signed copy.</p>
         </div>
         <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">
             <i class="ti ti-arrow-left"></i> Back to My Documents
@@ -33,150 +37,194 @@
     @if (session('status'))
         <div class="alert alert-success">{{ session('status') }}</div>
     @endif
-
-    @if ($document && $document->status === 'returned' && $document->latestReview?->remarks)
-        <div class="alert alert-danger">
-            <strong>Returned for correction:</strong> {{ $document->latestReview->remarks }}
-        </div>
+    @if ($errors->any())
+        <div class="alert alert-danger">{{ $errors->first() }}</div>
     @endif
-
-    <div class="alert alert-info">
-        <strong>Weekly report format:</strong> Each week is one Form 19 report page. Add one row for every training day with the date, tasks accomplished, and knowledge, skills, and values learned.
-    </div>
-
-    <div class="il-card mb-3">
-        <h2 class="h6 fw-bold">Form 19 packets</h2>
-        <p class="small text-secondary">Each packet covers up to four consecutive training weeks. Physical signing and signed-copy upload are tracked independently for each packet.</p>
-        @forelse ($packets as $packet)
-            @php $packetEntries = $packet->entries; @endphp
-            <div class="border rounded-3 p-3 mb-2">
-                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-                    <div>
-                        <div class="fw-semibold">Form 19 · Packet {{ $packet->packet_number ?? 1 }}</div>
-                        <div class="small text-secondary">{{ $packetEntries->count() }} training {{ $packetEntries->count() === 1 ? 'day' : 'days' }} · {{ $statusText($packet->status) }}</div>
-                        @if ($packet->status === 'returned' && $packet->latestReview?->remarks)
-                            <div class="small text-danger mt-1">Instructor remarks: {{ $packet->latestReview->remarks }}</div>
-                        @endif
-                    </div>
-                    <div class="d-flex gap-2 flex-wrap">
-                        @if (in_array($packet->status, ['draft', 'returned']) && $packetEntries->isNotEmpty())
-                            <form method="POST" action="{{ route('student.documents.log.packet.submit', [$requirement, $packet->packet_number]) }}">
-                                @csrf
-                                <button type="submit" class="btn btn-sm btn-primary">Submit packet for review</button>
-                            </form>
-                        @elseif ($packet->status === 'completed')
-                            <form method="POST" action="{{ route('student.documents.upload-signed', $packet) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
-                                @csrf
-                                <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">
-                                <button type="submit" class="btn btn-sm btn-primary">Upload signed copy</button>
-                            </form>
-                        @elseif ($packet->status === 'approved')
-                            <span class="badge text-bg-success">Upload locked</span>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        @empty
-            <p class="small text-secondary mb-0">Your first packet will be created when you add your first training day.</p>
-        @endforelse
-    </div>
 
     <div class="il-card">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
             <div>
                 <h2 class="h6 fw-bold mb-0">Weekly Reports</h2>
                 <span class="text-secondary small">
-                    {{ $weeks->count() }} {{ $weeks->count() === 1 ? 'week' : 'weeks' }} recorded
+                    {{ $weeks->count() }} {{ $weeks->count() === 1 ? 'week' : 'weeks' }}
                     · {{ $entries->count() }} training {{ $entries->count() === 1 ? 'day' : 'days' }}
+                    · {{ $packets->where('status', 'approved')->count() }} approved
                 </span>
             </div>
-
-            @if ($canEdit)
-                <a href="{{ route('student.documents.log.entry.create', $requirement) }}" class="il-btn-primary text-decoration-none">
-                    <i class="ti ti-plus"></i> Add Day to Weekly Report
-                </a>
-            @endif
+            <a href="{{ route('student.documents.log.entry.create', $requirement) }}" class="il-btn-primary text-decoration-none">
+                <i class="ti ti-plus"></i> Add Day to Weekly Report
+            </a>
         </div>
+
+        @php
+            $todayStart = $anchor && now()->startOfDay()->gte($anchor) ? \App\Support\TrainingWeeks::weekStart(now(), $anchor) : null;
+            $todayNumber = $todayStart ? \App\Support\TrainingWeeks::number($todayStart, $anchor) : null;
+            $todayDoc = $todayNumber ? $weekDocs->get($todayNumber) : null;
+        @endphp
+        @if ($todayDoc && ! $editable($todayDoc))
+            <div class="alert alert-info small py-2">
+                <i class="ti ti-info-circle"></i>
+                This week (Week {{ $todayNumber }}, {{ $todayStart->format('M d') }} – {{ $todayStart->copy()->addDays(6)->format('M d, Y') }}) has already been sent to your instructor, so no more days can be added to it.
+                You can add days again from <strong>{{ $todayStart->copy()->addDays(7)->format('M d, Y') }}</strong>, when Week {{ $todayNumber + 1 }} starts.
+            </div>
+        @endif
 
         @if ($weeks->isEmpty())
             <div class="text-center py-4">
                 <i class="ti ti-calendar-week" style="font-size: 2rem;"></i>
                 <h3 class="h6 fw-bold mt-2">No weekly report entries yet</h3>
                 <p class="text-secondary small mb-3">Start your Form 19 by adding your first training day.</p>
-                @if ($canEdit)
-                    <a href="{{ route('student.documents.log.entry.create', $requirement) }}" class="il-btn-primary text-decoration-none">
-                        <i class="ti ti-plus"></i> Start Week 1
-                    </a>
-                @endif
+                <a href="{{ route('student.documents.log.entry.create', $requirement) }}" class="il-btn-primary text-decoration-none">
+                    <i class="ti ti-plus"></i> Start Week 1
+                </a>
             </div>
         @else
-            @foreach ($weeks as $weekStart => $weekEntries)
+            @foreach ($months as $month => $monthWeeks)
                 @php
-                    $start = \Carbon\Carbon::parse($weekStart);
-                    $end = $start->copy()->addDays(6);
-                    $weekNumber = $loop->iteration;
+                    $monthId = 'month-'.$month;
+                    $monthOpen = $loop->last;
+                    $monthDocs = $monthWeeks->keys()->map(fn ($ws) => $weekDocs->get(\App\Support\TrainingWeeks::number(\Carbon\Carbon::parse($ws), $anchor)));
                 @endphp
-
-                <div class="border rounded-3 mb-3 overflow-hidden">
-                    <div class="p-3 bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div>
-                            <div class="fw-bold">Week {{ $weekNumber }}</div>
-                            <div class="text-secondary small">
-                                {{ $start->format('M d, Y') }} – {{ $end->format('M d, Y') }}
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge text-bg-primary">
-                                {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'training day' : 'training days' }}
-                            </span>
-                            @if ($canEdit)
-                                <form method="POST" action="{{ route('student.documents.log.week.destroy', [$requirement, $weekStart]) }}" class="d-inline">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger"
-                                            onclick="return confirm('Delete Week {{ $weekNumber }} ({{ $start->format('M d') }} – {{ $end->format('M d, Y') }}) and all {{ $weekEntries->count() }} of its entries? This cannot be undone.')">
-                                        <i class="ti ti-trash"></i> Delete week
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="table-responsive">
-                        <table class="table align-middle mb-0">
-                            <thead>
-                                <tr class="text-secondary" style="font-size:.72rem;text-transform:uppercase;">
-                                    <th style="width:14%;">Date</th>
-                                    <th style="width:40%;">Tasks Accomplished</th>
-                                    <th>Knowledge, Skills, Values Learned</th>
-                                    @if ($canEdit)<th style="width:1%;"></th>@endif
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($weekEntries as $entry)
-                                    <tr>
-                                        <td class="text-nowrap">{{ $entry->entry_date->format('M d, Y') }}</td>
-                                        <td style="white-space:pre-line;">{{ $entry->value('tasks_accomplished') }}</td>
-                                        <td style="white-space:pre-line;">{{ $entry->value('knowledge_skills_learned') }}</td>
-                                        @if ($canEdit)
-                                            <td class="text-end">
-                                                <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}">
+                <div class="border rounded-3 mb-2 overflow-hidden log-month">
+                    <button type="button" class="w-100 btn btn-link text-reset text-decoration-none px-3 py-2 d-flex align-items-center gap-2 text-start log-toggle {{ $monthOpen ? '' : 'collapsed' }}"
+                            style="background:#eef2f7;" data-bs-toggle="collapse" data-bs-target="#{{ $monthId }}" aria-expanded="{{ $monthOpen ? 'true' : 'false' }}">
+                        <i class="ti ti-chevron-right log-chevron fs-5 text-secondary"></i>
+                        <span class="fw-bold flex-grow-1">{{ \Carbon\Carbon::parse($month.'-01')->format('F Y') }}</span>
+                        <span class="small text-secondary">
+                            {{ $monthWeeks->count() }} {{ \Illuminate\Support\Str::plural('week', $monthWeeks->count()) }}
+                            · {{ $monthDocs->filter(fn ($d) => $d?->status === 'approved')->count() }} approved
+                        </span>
+                    </button>
+                    <div class="collapse {{ $monthOpen ? 'show' : '' }}" id="{{ $monthId }}">
+                        <div class="p-2">
+                            @foreach ($monthWeeks as $weekStart => $weekEntries)
+                                @php
+                                    $start = \Carbon\Carbon::parse($weekStart);
+                                    $end = $start->copy()->addDays(6);
+                                    $weekNumber = \App\Support\TrainingWeeks::number($start, $anchor);
+                                    $doc = $weekNumber >= 1 ? $weekDocs->get($weekNumber) : $weekEntries->first()?->document;
+                                    $beforeWeekOne = $weekNumber < 1;
+                                    $finished = \App\Support\TrainingWeeks::weekFinished($start, $internship);
+                                    $due = \App\Support\TrainingWeeks::dueDate($start, $internship);
+                                    $late = $beforeWeekOne ? null : \App\Support\TrainingWeeks::lateness($doc, $due);
+                                    [$label, $color] = $status($doc);
+                                    $canEditWeek = $editable($doc);
+                                    $isOpen = $monthOpen && $loop->last;
+                                    $weekId = 'week-'.$weekStart;
+                                @endphp
+                                <div class="border rounded-3 mb-2 overflow-hidden log-week bg-white">
+                                    <div class="px-3 py-2 bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <button type="button" class="btn btn-link text-reset text-decoration-none p-0 d-flex align-items-center gap-2 text-start flex-grow-1 log-toggle {{ $isOpen ? '' : 'collapsed' }}"
+                                                data-bs-toggle="collapse" data-bs-target="#{{ $weekId }}" aria-expanded="{{ $isOpen ? 'true' : 'false' }}" aria-controls="{{ $weekId }}">
+                                            <i class="ti ti-chevron-right log-chevron fs-5 text-secondary"></i>
+                                            <span>
+                                                <span class="fw-bold d-block">{{ $beforeWeekOne ? 'Before Week 1' : 'Week '.$weekNumber }}</span>
+                                                <span class="text-secondary small">{{ $start->format('M d') }} – {{ $end->format('M d, Y') }} · {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}@unless ($beforeWeekOne) · <span class="{{ $late === 'missing' ? 'text-danger fw-semibold' : '' }}">Due {{ $due->format('M d, g:i A') }}</span>@endunless</span>
+                                            </span>
+                                        </button>
+                                        <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                                            @if ($late === 'late')
+                                                <span class="badge rounded-pill text-bg-warning" title="Submitted after the due date">Late</span>
+                                            @elseif ($late === 'missing')
+                                                <span class="badge rounded-pill text-bg-danger" title="Past the due date and not submitted yet">Missing</span>
+                                            @endif
+                                            <span class="badge rounded-pill {{ $color }}">{{ $label }}</span>
+                                            @if ($beforeWeekOne)
+                                                <span class="small text-secondary">Before your Week 1 – delete these days</span>
+                                            @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty() && ! $finished)
+                                                <span class="small text-secondary" title="A week is sent to your instructor once it is finished">Submit on {{ $end->format('M d') }}</span>
+                                            @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty())
+                                                <form method="POST" action="{{ route('student.documents.log.packet.submit', [$requirement, $weekNumber]) }}" class="d-inline">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-send"></i> Submit week</button>
+                                                </form>
+                                            @endif
+                                            {{-- Every week can be downloaded (Form 19 for that week); printing for signatures waits for the instructor. --}}
+                                            @if ($doc && ! $beforeWeekOne && $weekEntries->isNotEmpty())
+                                                @php $forSigning = in_array($doc->status, ['printed', 'completed'], true) && ! filled($doc->file_path); @endphp
+                                                <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank"
+                                                   class="btn btn-sm {{ $forSigning ? 'btn-outline-primary' : 'btn-outline-secondary' }}"
+                                                   title="{{ $forSigning ? 'Download, print and have it signed' : 'Download a copy of this week' }}"><i class="ti ti-download"></i> Download</a>
+                                            @endif
+                                            @if ($canEditWeek)
+                                                <form method="POST" action="{{ route('student.documents.log.week.destroy', [$requirement, $weekStart]) }}" class="d-inline">
                                                     @csrf
                                                     @method('DELETE')
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete this day"
-                                                            onclick="return confirm('Delete the entry for {{ $entry->entry_date->format('M d, Y') }}? This cannot be undone.')">
-                                                        <i class="ti ti-trash"></i> Delete
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete week" aria-label="Delete week"
+                                                            onclick="return confirm('Delete {{ $beforeWeekOne ? 'these days' : 'Week '.$weekNumber }} ({{ $start->format('M d') }} – {{ $end->format('M d, Y') }}) and all {{ $weekEntries->count() }} of its entries? This cannot be undone.')">
+                                                        <i class="ti ti-trash"></i>
                                                     </button>
                                                 </form>
-                                            </td>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    <div class="collapse {{ $isOpen ? 'show' : '' }}" id="{{ $weekId }}">
+                                        @if ($doc?->status === 'returned' && $doc->latestReview?->remarks)
+                                            <div class="alert alert-danger small py-2 m-2 mb-0"><strong>Returned by your instructor:</strong> {{ $doc->latestReview->remarks }}</div>
                                         @endif
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                                        @if ($doc && in_array($doc->status, ['printed', 'completed'], true) && ! filled($doc->file_path))
+                                            <div class="small m-2 mb-0 p-2 rounded" style="background:#f4f6f9;">
+                                                @if ($doc->signedUploadOpen())
+                                                    <form method="POST" action="{{ route('student.documents.upload-signed', $doc) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
+                                                        @csrf
+                                                        <span>Your instructor confirmed the signatures. Upload the signed copy:</span>
+                                                        <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">
+                                                        <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-upload"></i> Upload signed copy</button>
+                                                    </form>
+                                                @else
+                                                    <i class="ti ti-lock"></i> Download and print this week, have it signed, then bring it to your instructor. The upload opens once they confirm the signatures.
+                                                @endif
+                                            </div>
+                                        @endif
+                                        <div class="table-responsive">
+                                            <table class="table align-middle mb-0">
+                                                <thead>
+                                                    <tr class="text-secondary" style="font-size:.72rem;text-transform:uppercase;">
+                                                        <th style="width:14%;">Date</th>
+                                                        <th style="width:40%;">Tasks Accomplished</th>
+                                                        <th>Knowledge, Skills, Values Learned</th>
+                                                        @if ($canEditWeek)<th style="width:1%;"></th>@endif
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach ($weekEntries as $entry)
+                                                        <tr>
+                                                            <td class="text-nowrap">{{ $entry->entry_date->format('M d, Y') }}</td>
+                                                            <td style="white-space:pre-line;">{{ $entry->value('tasks_accomplished') }}</td>
+                                                            <td style="white-space:pre-line;">{{ $entry->value('knowledge_skills_learned') }}</td>
+                                                            @if ($canEditWeek)
+                                                                <td class="text-end">
+                                                                    <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}">
+                                                                        @csrf
+                                                                        @method('DELETE')
+                                                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete this day" aria-label="Delete this day"
+                                                                                onclick="return confirm('Delete the entry for {{ $entry->entry_date->format('M d, Y') }}? This cannot be undone.')">
+                                                                            <i class="ti ti-trash"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                </td>
+                                                            @endif
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     </div>
                 </div>
             @endforeach
+            <div class="d-flex gap-3 small mt-2">
+                <a href="#" class="text-decoration-none" onclick="document.querySelectorAll('.log-month > .collapse, .log-week .collapse').forEach(el => bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).show()); return false;">Expand all</a>
+                <a href="#" class="text-decoration-none" onclick="document.querySelectorAll('.log-week .collapse, .log-month > .collapse').forEach(el => bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide()); return false;">Collapse all</a>
+            </div>
+            <style>
+                .log-chevron { transition: transform .15s ease; }
+                .log-toggle[aria-expanded="true"] > .log-chevron { transform: rotate(90deg); }
+            </style>
         @endif
     </div>
 

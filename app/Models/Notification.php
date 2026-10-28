@@ -64,6 +64,17 @@ class Notification extends Model
     }
 
     /**
+     * Clear every notice about one DTR day: the main one ('dtr:ID') and the
+     * supervisor's one-per-save time in/out notices ('dtr:ID:...').
+     */
+    public static function resolveDtr(int $dtrId): void
+    {
+        static::withoutGlobalScopes()
+            ->where(fn ($q) => $q->where('resolve_key', 'dtr:'.$dtrId)->orWhere('resolve_key', 'like', 'dtr:'.$dtrId.':%'))
+            ->delete();
+    }
+
+    /**
      * Notices with no open issue behind them (an approval, a "ready for
      * upload" FYI, older notifications) are cleared when the user opens them.
      * Notices tied to an open issue stay until it is actually resolved.
@@ -93,21 +104,14 @@ class Notification extends Model
                 'dtr' => $path('student.dtr'),
                 default => $path('student.notifications'),
             },
-            'instructor' => match ($type) {
+            'instructor', 'coordinator' => match ($type) {
                 'document_status' => $path('instructor.documents'),
-                'dtr' => $path('instructor.advisees'),
-                default => $path('instructor.notifications'),
+                'pre_deployment_complete', 'deployment' => $path('instructor.advisees'),
+                'dtr' => $path('instructor.monitoring'),
+                default => $path('instructor.dashboard'),
             },
             'hte_representative' => match ($type) {
-                'dtr' => $path('hte.dtr'),
-                'document_status' => $path('hte.evaluations'),
-                default => $path('hte.notifications'),
-            },
-            'coordinator' => match ($type) {
-                'pre_deployment_complete' => $path('coordinator.deployments'),
-                'document_status' => $path('coordinator.documents'),
-                'dtr' => $path('coordinator.monitoring'),
-                default => $path('coordinator.notifications'),
+                default => $path('hte.evaluations'),
             },
             default => null,
         };

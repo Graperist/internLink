@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\Instructor;
-use App\Models\Program;
+use App\Models\Internship;
 use App\Models\Role;
 use App\Models\Student;
 use App\Models\User;
@@ -11,58 +11,87 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Concerns\Importable;
-use Maatwebsite\Excel\Concerns\SkipsOnError;
-use Maatwebsite\Excel\Concerns\SkipsOnFailure;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\WithValidation;
-use Maatwebsite\Excel\Validators\Failure;
 use Throwable;
 
 /**
  * Bulk-provisions Student Intern accounts from an uploaded spreadsheet.
  *
- * Expected columns (see public/templates/student_import_template.csv):
- *   id_number, name, email, program_code, instructor_email (optional)
+ * Read with App\Support\SpreadsheetRows (.csv or .xlsx). Expected columns
+ * (see public/templates/student_import_template.csv):
+ *   id_number, name, email, program_code (optional)
  *
- * campus_id is NEVER read from the file - every row is provisioned into the
- * logged-in coordinator's own campus, same rule as the single-add form.
+ * Interns are added by their subject instructor, so every row goes into the
+ * importing instructor's own campus AND program - neither is read from the
+ * file. If a row does fill in program_code, it must match that program, so
+ * a sheet meant for another program is caught instead of silently imported.
+ *
+ * The OJT Coordinator can import into any program of the campus: each row's
+ * program_code decides (or the program chosen on the form when it is blank),
+ * and the intern is placed under that program's subject instructor.
  */
-class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, SkipsOnError, SkipsOnFailure
+class StudentsImport
 {
-    use Importable;
-
     /** @var array<int, array{row:int,name:string,id_number:string,temporary_password:string}> */
     public array $created = [];
 
     /** @var array<int, array{row:int,reason:string}> */
     public array $skipped = [];
 
-    public function __construct(private readonly int $campusId)
+    public function __construct(private readonly Instructor $instructor, private readonly ?\App\Models\Program $defaultProgram = null)
     {
     }
 
     public function collection(Collection $rows): void
     {
         $studentRole = Role::where('code', 'student')->firstOrFail();
+        $ownProgram = $this->instructor->program;
+        $campusId = $this->instructor->campus_id;
+        $coordinator = $this->instructor->isCoordinator();
+        $campusPrograms = \App\Models\Program::where('campus_id', $campusId)->get();
 
         foreach ($rows as $index => $row) {
             $excelRow = $index + 2; // +1 for zero-index, +1 for the header row
+            if ($row === null) {
+                continue;   // a blank row in the sheet
+            }
 
             $idNumber = trim((string) ($row['id_number'] ?? ''));
             $name = trim((string) ($row['name'] ?? ''));
             $email = trim((string) ($row['email'] ?? ''));
             $programCode = trim((string) ($row['program_code'] ?? ''));
-            $instructorEmail = trim((string) ($row['instructor_email'] ?? ''));
 
-            if ($idNumber === '' || $name === '' || $email === '' || $programCode === '') {
+            if ($idNumber === '' || $name === '' || $email === '') {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Missing required field(s).'];
                 continue;
             }
 
-            if (User::where('campus_id', $this->campusId)->where('id_number', $idNumber)->exists()) {
-                $this->skipped[] = ['row' => $excelRow, 'reason' => "ID number {$idNumber} already exists at this campus."];
+            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $this->skipped[] = ['row' => $excelRow, 'reason' => "Email {$email} is not a valid email address."];
+                continue;
+            }
+
+            if ($coordinator) {
+                $program = $programCode !== ''
+                    ? $campusPrograms->first(fn ($p) => strcasecmp($p->code, $programCode) === 0)
+                    : ($this->defaultProgram ?? $ownProgram);
+                if (! $program) {
+                    $this->skipped[] = ['row' => $excelRow, 'reason' => $programCode !== ''
+                        ? "Program '{$programCode}' is not a program of this campus."
+                        : 'Fill in program_code, or choose a program on the import form.'];
+                    continue;
+                }
+            } else {
+                $program = $ownProgram;
+                if ($programCode !== '' && strcasecmp($programCode, $program->code) !== 0) {
+                    $this->skipped[] = ['row' => $excelRow, 'reason' => "Program '{$programCode}' is not your program ({$program->code}). Only its own instructor can add this intern."];
+                    continue;
+                }
+            }
+            $handler = $this->instructor->handlerFor($program);
+
+            // Unique across ALL campuses - sign-in is by ID alone.
+            if (User::where('id_number', $idNumber)->exists()) {
+                $this->skipped[] = ['row' => $excelRow, 'reason' => "ID number {$idNumber} is already registered."];
                 continue;
             }
 
@@ -71,31 +100,12 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
                 continue;
             }
 
-            $program = Program::where('campus_id', $this->campusId)->where('code', $programCode)->first();
-            if (! $program) {
-                $this->skipped[] = ['row' => $excelRow, 'reason' => "Program code '{$programCode}' not found for this campus."];
-                continue;
-            }
-
-            $instructorId = null;
-            if ($instructorEmail !== '') {
-                $instructor = Instructor::whereHas('user', fn ($q) => $q->where('email', $instructorEmail))
-                    ->where('campus_id', $this->campusId)
-                    ->first();
-
-                if (! $instructor) {
-                    $this->skipped[] = ['row' => $excelRow, 'reason' => "Instructor '{$instructorEmail}' not found for this campus."];
-                    continue;
-                }
-                $instructorId = $instructor->id;
-            }
-
             $temporaryPassword = Str::password(10, symbols: false);
 
             try {
-                DB::transaction(function () use ($idNumber, $name, $email, $program, $instructorId, $studentRole, $temporaryPassword) {
+                DB::transaction(function () use ($idNumber, $name, $email, $program, $handler, $campusId, $studentRole, $temporaryPassword) {
                     $user = User::create([
-                        'campus_id' => $this->campusId,
+                        'campus_id' => $campusId,
                         'role_id' => $studentRole->id,
                         'id_number' => $idNumber,
                         'name' => $name,
@@ -105,12 +115,23 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
                         'must_change_password' => true,
                     ]);
 
-                    Student::create([
+                    $student = Student::create([
                         'user_id' => $user->id,
-                        'campus_id' => $this->campusId,
+                        'campus_id' => $campusId,
                         'program_id' => $program->id,
-                        'instructor_id' => $instructorId,
+                        'instructor_id' => $handler?->id,
                         'hours_rendered' => 0,
+                    ]);
+
+                    // Same as the single Add Intern form: every student starts
+                    // with an internship record so they can fill in forms.
+                    Internship::create([
+                        'student_id' => $student->id,
+                        'campus_id' => $campusId,
+                        'program_id' => $program->id,
+                        'instructor_id' => $handler?->id,
+                        'required_hours' => $program->required_hours ?? 486,
+                        'status' => 'pre_deployment',
                     ]);
                 });
 
@@ -123,31 +144,6 @@ class StudentsImport implements ToCollection, WithHeadingRow, WithValidation, Sk
             } catch (Throwable $e) {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Unexpected error: '.$e->getMessage()];
             }
-        }
-    }
-
-    public function rules(): array
-    {
-        return [
-            'id_number' => ['required'],
-            'name' => ['required'],
-            'email' => ['required', 'email'],
-            'program_code' => ['required'],
-        ];
-    }
-
-    public function onError(Throwable $e): void
-    {
-        $this->skipped[] = ['row' => 0, 'reason' => $e->getMessage()];
-    }
-
-    public function onFailure(Failure ...$failures): void
-    {
-        foreach ($failures as $failure) {
-            $this->skipped[] = [
-                'row' => $failure->row(),
-                'reason' => implode(' ', $failure->errors()),
-            ];
         }
     }
 }

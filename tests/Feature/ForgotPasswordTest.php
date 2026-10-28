@@ -42,7 +42,6 @@ class ForgotPasswordTest extends TestCase
         Mail::fake();
 
         $this->post(route('password.forgot.send'), [
-            'campus_id' => $this->campus->id,
             'id_number' => '23-AC-0001',
         ])->assertRedirect(route('password.forgot.verify'));
 
@@ -118,7 +117,6 @@ class ForgotPasswordTest extends TestCase
         Mail::fake();
 
         $this->post(route('password.forgot.send'), [
-            'campus_id' => $this->campus->id,
             'id_number' => 'does-not-exist',
         ])->assertRedirect(route('password.forgot.verify'));
 

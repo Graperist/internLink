@@ -1,0 +1,544 @@
+/* PSU Intern-Link – sign-in page.
+   The campus photos fill the page behind a white side with a gold edge,
+   a royal-blue sweep with a gold wave carries the headline, and the
+   sign-in card sits on the right. */
+
+:root {
+    --lx-blue: #1546b8;
+    --lx-blue-2: #1a55c9;
+    --lx-blue-dark: #0b2f86;
+    --lx-gold: #f5b800;
+    --lx-gold-light: #ffc928;
+    --lx-ink: #14213a;
+    --lx-muted: #5b6880;
+    --lx-line: #d8dfea;
+}
+
+.login-body {
+    margin: 0;
+    background: #fff;
+    font-family: 'Plus Jakarta Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    color: var(--lx-ink);
+    -webkit-font-smoothing: antialiased;
+}
+
+.lx {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: #fff;
+}
+
+/* ---------------- Background layers ---------------- */
+.lx-photos {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 70%;
+    background: var(--lx-blue-dark);
+}
+
+.lx-hero-photo {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transform: scale(1.04);
+    transition: opacity 1.2s ease, transform 6s ease;
+}
+
+/* A little see-through so the photo sits softly on the blue. */
+.lx-hero-photo.is-active {
+    opacity: .82;
+    transform: scale(1);
+}
+
+.lx-photos::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .55) 0%, rgba(255, 255, 255, 0) 22%),
+                linear-gradient(0deg, rgba(11, 47, 134, .45) 0%, rgba(11, 47, 134, 0) 45%);
+}
+
+.lx-white {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 52%;
+    height: 100%;
+}
+
+.lx-corner {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 40%;
+    height: 170px;
+}
+
+.lx-seal {
+    position: absolute;
+    top: -40px;
+    right: -50px;
+    width: 280px;
+    border-radius: 50%;
+    opacity: .08;
+    pointer-events: none;
+}
+
+.lx-sweep {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 52%;
+}
+
+/* ---------------- Brand and campus label ---------------- */
+.lx-brand {
+    position: absolute;
+    z-index: 3;
+    top: 1.5rem;
+    left: 2.2rem;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+
+.lx-brand img {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: #fff;
+    padding: 2px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
+}
+
+.lx-brand-name {
+    display: block;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--lx-blue-dark);
+}
+
+.lx-brand-sub {
+    display: block;
+    font-size: .78rem;
+    color: var(--lx-blue);
+    font-weight: 600;
+}
+
+.lx-campus {
+    position: absolute;
+    z-index: 3;
+    left: 2.2rem;
+    top: 6.2rem;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+}
+
+.lx-campus-name {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    background: rgba(11, 47, 134, .78);
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.lx-campus-name[hidden] { display: none; }
+
+.lx-campus-name svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: var(--lx-gold-light);
+    stroke-width: 2;
+}
+
+.lx-dots { display: flex; gap: .3rem; }
+
+.lx-dot {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(11, 47, 134, .35);
+    cursor: pointer;
+    transition: width .25s, background .25s;
+}
+
+.lx-dot.is-active {
+    width: 22px;
+    border-radius: 4px;
+    background: var(--lx-gold);
+}
+
+/* ---------------- Foreground: headline and card ---------------- */
+.lx-layout {
+    position: relative;
+    z-index: 2;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: 1fr minmax(360px, 430px);
+    align-items: end;
+    gap: 2rem;
+    padding: 0 6vw 0 2.2rem;
+    box-sizing: border-box;
+}
+
+.lx-hero {
+    color: #fff;
+    padding-bottom: 2.4rem;
+    max-width: 620px;
+}
+
+.lx-hero h2 {
+    margin: 0 0 1rem;
+    font-size: clamp(2rem, 3.3vw, 3.1rem);
+    line-height: 1.07;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, .15);
+}
+
+.lx-hero h2 span { color: var(--lx-gold-light); }
+
+.lx-tagline {
+    display: flex;
+    align-items: flex-start;
+    gap: .9rem;
+    margin: 0 0 1.6rem;
+    font-size: 1rem;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, .95);
+}
+
+.lx-tagline-line {
+    flex: none;
+    width: 42px;
+    height: 3px;
+    margin-top: .6rem;
+    border-radius: 2px;
+    background: var(--lx-gold);
+}
+
+.lx-features {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.lx-features li {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .55rem;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 600;
+    line-height: 1.25;
+    border-left: 1px solid rgba(255, 255, 255, .28);
+}
+
+.lx-features li:first-child { border-left: 0; }
+
+.lx-feature-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    border: 2px solid rgba(255, 255, 255, .85);
+    background: rgba(255, 255, 255, .08);
+}
+
+.lx-feature-icon svg {
+    width: 28px;
+    height: 28px;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.lx-card {
+    align-self: center;
+    width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    border-radius: 18px;
+    padding: 2rem 2rem 1.4rem;
+    box-shadow: 0 24px 50px rgba(11, 47, 134, .18), 0 2px 8px rgba(11, 47, 134, .08);
+    text-align: left;
+}
+
+.lx-cap { text-align: center; margin-bottom: .35rem; }
+.lx-cap svg { width: 60px; height: 45px; }
+
+.lx-card h1 {
+    margin: 0;
+    text-align: center;
+    font-size: 1.65rem;
+    font-weight: 800;
+    color: var(--lx-blue-dark);
+}
+
+.lx-card h1 span { color: var(--lx-gold); }
+
+.lx-card-sub {
+    margin: .25rem 0 1.3rem;
+    text-align: center;
+    font-size: .88rem;
+    color: var(--lx-muted);
+}
+
+.lx-label {
+    display: block;
+    margin: 0 0 .35rem;
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.lx-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.lx-input > svg {
+    position: absolute;
+    left: .85rem;
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: #6f7d94;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+.lx-input input {
+    width: 100%;
+    height: 48px;
+    box-sizing: border-box;
+    padding: 0 2.8rem 0 2.6rem;
+    border: 1px solid var(--lx-line);
+    border-radius: 9px;
+    background: #fff;
+    font: inherit;
+    font-size: .95rem;
+    color: var(--lx-ink);
+    transition: border-color .15s, box-shadow .15s;
+}
+
+.lx-input input::placeholder { color: #9aa5b6; }
+
+.lx-input input:focus {
+    outline: 0;
+    border-color: var(--lx-blue-2);
+    box-shadow: 0 0 0 3px rgba(26, 85, 201, .15);
+}
+
+.lx-input input.is-invalid { border-color: #d64545; }
+
+.lx-reveal {
+    position: absolute;
+    right: .45rem;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.lx-reveal svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: #6b788d;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.lx-reveal .eye-closed,
+.lx-reveal.is-on .eye-open { display: none; }
+.lx-reveal.is-on .eye-closed { display: block; }
+
+.lx-detect {
+    min-height: 1.45rem;
+    margin: .4rem 0 .9rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .4rem;
+    font-size: .76rem;
+    color: var(--lx-muted);
+}
+
+.login-detect-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    background: #e8efff;
+    color: var(--lx-blue-dark);
+    font-weight: 700;
+}
+
+.login-detect-chip svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.login-detect-kind {
+    padding: .15rem .55rem;
+    border-radius: 999px;
+    background: #fff3cc;
+    color: #8a5d00;
+    font-weight: 700;
+}
+
+.lx-forgot {
+    text-align: right;
+    margin: .5rem 0 1.15rem;
+}
+
+.lx-forgot a {
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--lx-blue);
+    text-decoration: none;
+}
+
+.lx-forgot a:hover { text-decoration: underline; }
+
+.lx-submit {
+    width: 100%;
+    height: 50px;
+    border: 0;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #1f63e0, var(--lx-blue));
+    color: #fff;
+    font: inherit;
+    font-weight: 800;
+    font-size: .95rem;
+    letter-spacing: .08em;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(21, 70, 184, .28);
+    transition: filter .15s, transform .15s;
+}
+
+.lx-submit:hover { filter: brightness(1.07); }
+.lx-submit:active { transform: translateY(1px); }
+.lx-submit.is-loading { opacity: .8; cursor: progress; }
+
+.lx-or {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin: 1rem 0 .5rem;
+    font-size: .78rem;
+    color: var(--lx-muted);
+}
+
+.lx-or::before,
+.lx-or::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--lx-line);
+}
+
+.lx-help {
+    margin: 0 0 .7rem;
+    text-align: center;
+    font-size: .78rem;
+    color: var(--lx-muted);
+}
+
+.lx-card-foot {
+    margin: 0;
+    padding-top: .7rem;
+    border-top: 1px solid #eef1f6;
+    text-align: center;
+    font-size: .72rem;
+    color: #7b879b;
+}
+
+.lx-alert {
+    margin: 0 0 1rem;
+    padding: .65rem .85rem;
+    border-radius: 9px;
+    font-size: .84rem;
+}
+
+.lx-alert-success { background: #e7f6ec; color: #1d6b3a; }
+.lx-alert-error { background: #fdecec; color: #a32525; }
+
+/* ---------------- Medium screens ---------------- */
+@media (max-width: 1199.98px) {
+    .lx-layout { padding-right: 3vw; }
+    .lx-features li { font-size: .74rem; }
+    .lx-feature-icon { width: 48px; height: 48px; }
+    .lx-feature-icon svg { width: 23px; height: 23px; }
+}
+
+/* ---------------- Phones and small tablets: stacked ---------------- */
+@media (max-width: 899.98px) {
+    .lx { background: linear-gradient(180deg, var(--lx-blue-2) 330px, var(--lx-blue-dark) 100%); }
+    .lx-sweep path:last-child { fill: var(--lx-blue-2); }
+
+    .lx-photos { position: relative; width: 100%; height: 300px; }
+    .lx-white, .lx-corner, .lx-seal { display: none; }
+
+    .lx-sweep { top: 210px; bottom: auto; height: 120px; }
+
+    .lx-brand { top: 1rem; left: 1rem; }
+    .lx-brand img { width: 44px; height: 44px; }
+    .lx-brand-name { font-size: .88rem; }
+    .lx-campus { left: 1rem; top: 4.4rem; }
+
+    .lx-layout {
+        min-height: 0;
+        display: block;
+        padding: 0 1rem 1.5rem;
+        margin-top: -40px;
+    }
+
+    .lx-hero { padding: 0 .25rem 1.4rem; }
+    .lx-hero h2 { font-size: 1.75rem; }
+    .lx-tagline { font-size: .88rem; margin-bottom: 1.1rem; }
+    .lx-features li { font-size: .7rem; }
+    .lx-feature-icon { width: 44px; height: 44px; }
+    .lx-feature-icon svg { width: 21px; height: 21px; }
+
+    .lx-card { padding: 1.6rem 1.3rem 1.2rem; }
+}

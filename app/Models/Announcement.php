@@ -28,4 +28,10 @@ class Announcement extends Model
     {
         return self::CATEGORIES[$this->category] ?? 'Announcement';
     }
+
+    /** The program it was sent to; null when it went to every program. */
+    public function program()
+    {
+        return $this->belongsTo(Program::class);
+    }
 }

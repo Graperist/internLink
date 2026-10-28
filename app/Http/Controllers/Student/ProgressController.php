@@ -21,7 +21,7 @@ class ProgressController extends Controller
         $internship = $student->currentInternship;
         $deployment = $internship?->deployment;
 
-        $requiredHours = $student->program?->required_hours;
+        $requiredHours = $internship?->requiredHours() ?? $student->program?->required_hours;
         $requiredHours = is_numeric($requiredHours) && (float) $requiredHours > 0 ? (float) $requiredHours : null;
         $hoursPercent = $requiredHours !== null ? min(100, (int) round(($student->hours_rendered / $requiredHours) * 100)) : 0;
 
@@ -91,11 +91,12 @@ class ProgressController extends Controller
                 ? 'Completed' : 'Upcoming',
         ];
 
-        // Done once the host company has sent the student its evaluation form(s)
-        // (Form 21 - Training Supervisor's Feedback, shown under My HTE Info).
+        // Done once the host company has evaluated the student (Forms 13 / 21).
+        // The student only sees that it is done - the evaluation itself goes to
+        // the Subject Instructor.
         $evaluationReceived = $internship?->documents()
             ->whereIn('status', EvaluationRouting::SUBMITTED)
-            ->whereHas('requirement', fn ($q) => $q->whereIn('code', EvaluationRouting::codesTo('student')))
+            ->whereHas('requirement', fn ($q) => $q->whereIn('code', EvaluationRouting::HTE_INTERN_CODES))
             ->exists();
 
         $steps[] = [

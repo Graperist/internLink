@@ -48,27 +48,31 @@
 
 <div class="row g-3 mb-3">
     <div class="col-md-3">
-        <a href="{{ route('student.dtr') }}" class="il-card il-card-link text-center">
-            <div class="il-stat-number">{{ $hoursRendered }}</div>
-            <div class="text-secondary small">Hours Rendered</div>
+        <a href="{{ route('student.dtr') }}" class="il-card il-card-link d-flex align-items-center gap-3 py-3 h-100">
+            <span class="il-tile-icon"><i class="ti ti-clock-check"></i></span>
+            <div><div class="il-stat-number">{{ $hoursRendered }}</div>
+            <div class="text-secondary small">Hours Rendered</div></div>
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('student.progress') }}" class="il-card il-card-link text-center">
-            <div class="il-stat-number">{{ $requiredHours }}</div>
-            <div class="text-secondary small">Required Hours</div>
+        <a href="{{ route('student.progress') }}" class="il-card il-card-link d-flex align-items-center gap-3 py-3 h-100">
+            <span class="il-tile-icon"><i class="ti ti-target"></i></span>
+            <div><div class="il-stat-number">{{ $requiredHours }}</div>
+            <div class="text-secondary small">Required Hours</div></div>
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('student.dtr') }}" class="il-card il-card-link text-center">
-            <div class="il-stat-number">{{ $hoursRemaining }}</div>
-            <div class="text-secondary small">Hours Remaining</div>
+        <a href="{{ route('student.dtr') }}" class="il-card il-card-link d-flex align-items-center gap-3 py-3 h-100">
+            <span class="il-tile-icon"><i class="ti ti-hourglass"></i></span>
+            <div><div class="il-stat-number">{{ $hoursRemaining }}</div>
+            <div class="text-secondary small">Hours Remaining</div></div>
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('student.documents') }}" class="il-card il-card-link text-center">
-            <div class="il-stat-number">{{ $submittedCount }}/{{ $checklist->count() }}</div>
-            <div class="text-secondary small">Documents Submitted</div>
+        <a href="{{ route('student.documents') }}" class="il-card il-card-link d-flex align-items-center gap-3 py-3 h-100">
+            <span class="il-tile-icon"><i class="ti ti-files"></i></span>
+            <div><div class="il-stat-number">{{ $submittedCount }}/{{ $checklist->count() }}</div>
+            <div class="text-secondary small">Documents Submitted</div></div>
         </a>
     </div>
 </div>
@@ -77,7 +81,7 @@
     <div class="col-lg-8">
         <div class="il-card">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h2 class="h6 fw-bold mb-0">My Document Checklist</h2>
+                <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-checklist"></i></span> My Document Checklist</h2>
                 <span class="text-secondary small">{{ $submittedCount }} of {{ $checklist->count() }} complete</span>
             </div>
 
@@ -102,7 +106,7 @@
 
     <div class="col-lg-4">
         <a href="{{ route('student.progress') }}" class="il-card il-card-link d-block">
-            <h2 class="h6 fw-bold mb-3">Hours Progress</h2>
+            <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-chart-donut"></i></span> Hours Progress</h2>
             <div class="text-center mb-3">
                 <div class="il-stat-number" style="font-size: 2.5rem;">{{ $hoursPercent }}%</div>
                 <div class="text-secondary small">{{ $hoursPercent }}% of required {{ $requiredHours }} hours completed</div>

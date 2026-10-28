@@ -40,8 +40,9 @@
         <span class="text-secondary small">{{ $instructors->total() }} total</span>
     </div>
 
-    <form method="GET" class="row g-2 mb-3">
-        <div class="col-md-8">
+    <form method="GET" class="row g-2 mb-3 align-items-center">
+        <div class="col-md il-search">
+            <i class="ti ti-search"></i>
             <input
                 type="text"
                 name="search"
@@ -60,8 +61,8 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-12">
-            <button type="submit" class="btn btn-sm btn-outline-primary">
+        <div class="col-md-auto d-flex align-items-center gap-1">
+            <button type="submit" class="btn btn-primary">
                 <i class="ti ti-search"></i> Search
             </button>
             @if (request()->hasAny(['search', 'program_id']))
@@ -82,8 +83,14 @@
             @forelse ($instructors as $instructor)
                 <tr>
                     <td>
-                        <div class="fw-semibold">{{ $instructor->user->name }}</div>
-                        <div class="text-secondary" style="font-size: 0.78rem;">{{ $instructor->user->id_number }}</div>
+                        @php $ini = \App\Models\User::initialsOf($instructor->user->name); @endphp
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="il-avatar-sm">{{ $ini }}</span>
+                            <div>
+                                <div class="fw-semibold">{{ $instructor->user->name }}</div>
+                                <div class="text-secondary" style="font-size: 0.78rem;">{{ $instructor->user->id_number }}</div>
+                            </div>
+                        </div>
                     </td>
                     <td>
                         @if ($instructor->program)
@@ -92,17 +99,24 @@
                             <span class="badge rounded-pill text-bg-light text-secondary">Unassigned</span>
                         @endif
                     </td>
-                    <td class="text-end">
+                    <td class="text-end text-nowrap">
                         <a href="{{ route('coordinator.instructors.edit', $instructor) }}" class="btn btn-sm btn-outline-secondary">
-                            Reassign
+                            <i class="ti ti-arrows-exchange"></i> Reassign
                         </a>
                         <form method="POST" action="{{ route('coordinator.instructors.reset-password', $instructor) }}" class="d-inline">
                             @csrf
-                            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                            <button type="submit" class="il-icon-btn" title="Reset password"
                                     onclick="return confirm('Generate a new temporary password for {{ $instructor->user->name }}?')">
-                                Reset password
+                                <i class="ti ti-key"></i><span class="visually-hidden">Reset password</span>
                             </button>
                         </form>
+                        @if (\App\Support\CampusManager::active())
+                            {{-- Super Admin only --}}
+                            @include('partials.admin-delete-button', [
+                                'action' => route('admin.campus-accounts.destroy', $instructor->user),
+                                'message' => "Delete the instructor account of {$instructor->user->name} ({$instructor->user->id_number})? They will no longer be able to sign in. The reviews they made stay on the students' documents. This cannot be undone.",
+                            ])
+                        @endif
                     </td>
                 </tr>
             @empty

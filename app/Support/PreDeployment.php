@@ -25,7 +25,6 @@ class PreDeployment
             ->where('is_active', true)
             ->where('is_required', true)
             ->where('stage', 'pre_deployment')
-            ->where('code', '!=', 'MOA')
             ->whereIn('audience', ['student', 'hte', 'coordinator'])
             ->pluck('id');
     }
@@ -53,6 +52,44 @@ class PreDeployment
         ) < '.$ids->count();
     }
 
+    /**
+     * The required pre-deployment forms the student still needs approved,
+     * with where each one stands - shown to the student while their
+     * deployment waits to start.
+     *
+     * @return Collection<int,array{name:string,status:string}>
+     */
+    public static function outstanding(Internship $internship): Collection
+    {
+        $ids = self::requirementIds($internship->campus_id);
+        $requirements = DocumentRequirement::whereIn('id', $ids)->get()
+            ->sortBy(fn ($r) => [(int) preg_replace('/\D.*/', '', (string) ($r->form_number ?: '999')), $r->display_order]);
+        $documents = $internship->documents()->whereIn('document_requirement_id', $ids)->get()->keyBy('document_requirement_id');
+
+        return $requirements
+            ->reject(fn ($r) => $documents->get($r->id)?->status === 'approved')
+            ->map(function ($r) use ($documents) {
+                $doc = $documents->get($r->id);
+
+                return [
+                    'id' => $r->id,
+                    'name' => $r->name,
+                    'status' => match ($doc?->status) {
+                        null => 'Not submitted yet',
+                        'draft' => 'Not submitted yet',
+                        'submitted', 'for_review' => 'Waiting for your instructor\'s review',
+                        'returned' => 'Returned - correct it and submit again',
+                        'printed' => 'Download, print, have it signed and upload the signed copy',
+                        'completed' => filled($doc->file_path) ? 'Signed copy uploaded - waiting for your instructor\'s approval' : 'Upload the signed copy',
+                        default => ucfirst($doc->status),
+                    },
+                    'waiting_on' => in_array($doc?->status, ['submitted', 'for_review'], true)
+                        || ($doc?->status === 'completed' && filled($doc->file_path)) ? 'instructor' : 'student',
+                ];
+            })
+            ->values();
+    }
+
     public static function isComplete(Internship $internship): bool
     {
         $ids = self::requirementIds($internship->campus_id);
@@ -72,8 +109,8 @@ class PreDeployment
 
     /**
      * Call after any document becomes approved. When that completes the
-     * student's pre-deployment requirements, notify the campus coordinators
-     * (once per student).
+     * student's pre-deployment requirements, notify the campus coordinator
+     * and the program's instructors (once per student).
      */
     public static function notifyCoordinatorsIfComplete(Internship $internship): void
     {
@@ -87,26 +124,32 @@ class PreDeployment
 
         $title = 'Pre-deployment requirements complete';
         $message = $name.($idNumber ? " ({$idNumber})" : '')
-            .' has completed all pre-deployment requirements and is ready for deployment.';
+            .' has completed all pre-deployment requirements and is ready for deployment.'
+            .' Set the OJT dates and start the deployment in My Students.';
 
-        $coordinators = User::where('campus_id', $internship->campus_id)
-            ->whereHas('role', fn ($q) => $q->where('code', 'coordinator'))
+        // The program's instructors start the OJT; the coordinator follows
+        // the whole campus. Both get the notice.
+        $recipients = User::where('campus_id', $internship->campus_id)
             ->where('status', 'active')
+            ->where(fn ($q) => $q
+                ->whereHas('role', fn ($r) => $r->where('code', 'coordinator'))
+                ->orWhereHas('instructor', fn ($i) => $i->where('program_id', $internship->program_id)))
             ->get();
 
-        foreach ($coordinators as $coordinator) {
-            $alreadyNotified = Notification::where('user_id', $coordinator->id)
+        foreach ($recipients as $recipient) {
+            $alreadyNotified = Notification::where('user_id', $recipient->id)
                 ->where('type', 'pre_deployment_complete')
-                ->where('message', $message)
+                ->where('resolve_key', 'predeploy:'.$student->id)
                 ->exists();
 
             if (! $alreadyNotified) {
                 Notification::create([
-                    'user_id' => $coordinator->id,
+                    'user_id' => $recipient->id,
                     'type' => 'pre_deployment_complete',
                     'resolve_key' => 'predeploy:'.$student->id,
                     'title' => $title,
                     'message' => $message,
+                    'url' => route('instructor.advisees', ['search' => $idNumber], false),
                 ]);
             }
         }

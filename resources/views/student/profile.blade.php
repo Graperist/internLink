@@ -24,7 +24,7 @@
 <div class="row g-3">
     <div class="col-lg-6">
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-3">My Account</h2>
+            <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-user-circle"></i></span> My Account</h2>
 
             <form method="POST" action="{{ route('student.profile.account') }}">
                 @csrf
@@ -68,7 +68,7 @@
         </div>
 
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-2">Password</h2>
+            <h2 class="h6 fw-bold mb-2 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-lock"></i></span> Password</h2>
             <p class="small text-secondary mb-3">
                 Change the password you use to sign in.
             </p>

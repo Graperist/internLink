@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Instructor;
 
 use App\Http\Controllers\Controller;
 use App\Models\Deployment;
-use App\Models\DocumentRequirement;
+use App\Models\HteRepresentative;
+use App\Models\Program;
 use App\Models\Dtr;
 use App\Models\Notification;
 use App\Support\AuditLogger;
+use App\Support\PreDeployment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -27,21 +29,105 @@ class AdviseeController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
-        $requiredDocsCount = DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('is_required', true)
-            ->count();
+        $preDeploymentIds = PreDeployment::requirementIds($instructor->campus_id);
+        $requiredDocsCount = $preDeploymentIds->count();
 
-        $query = $this->filteredAdvisees($instructor, $request);
+        $advisees = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)
+            ->latest('id')->paginate(20)->withQueryString();
 
-        $advisees = $query->latest('id')->paginate(20)->withQueryString();
+        // The coordinator sees the whole campus, so give them a program filter.
+        $programs = $instructor->isCoordinator()
+            ? Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
+            : collect();
 
-        return view('instructor.advisees.index', compact('advisees', 'requiredDocsCount'));
+        // Partner agencies the instructor's (or campus's) students are placed at.
+        $agencies = $instructor->visibleStudents()
+            ->with('currentInternship.deployment.hte')
+            ->when($instructor->isCoordinator() && $request->query('program_id'), fn ($q) => $q->where('program_id', $request->query('program_id')))
+            ->get()
+            ->map(fn ($s) => $s->currentInternship?->deployment?->hte)
+            ->filter()->unique('id')->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
+
+        return view('instructor.advisees.index', compact('advisees', 'requiredDocsCount', 'programs', 'instructor', 'agencies'));
     }
 
     /**
-     * Confirm internship completion only after the scheduled end date and
-     * verified DTR hours satisfy the internship requirement. This action is
-     * instructor-only; the end date alone never completes a deployment.
+     * Start the OJT. The deployment itself was created automatically when
+     * the student's Application for OJT was accepted (see AutoDeployment);
+     * here the subject instructor sets the training dates and marks the
+     * student as deployed, once every pre-OJT requirement is approved.
+     */
+    public function activate(Request $request, Deployment $deployment): RedirectResponse
+    {
+        $user = auth()->user();
+        $instructor = $user->instructor;
+        $deployment->load('internship.student.user', 'hte');
+        $internship = $deployment->internship;
+        abort_unless($instructor && $instructor->canActOn($internship), 403);
+
+        if ($deployment->status !== 'pending') {
+            throw ValidationException::withMessages(['activation' => 'Only a pending deployment can be started.']);
+        }
+
+        if (! PreDeployment::isComplete($internship)) {
+            throw ValidationException::withMessages([
+                'activation' => 'This student cannot be deployed yet - every required pre-OJT document must be approved first.',
+            ]);
+        }
+
+        // No dates to enter: the internship runs until the student's rendered
+        // hours reach the required hours (from Form 1). The start is recorded
+        // as today (Week 1 and the first Time Frame day count from it); the
+        // end is set when the instructor confirms completion.
+        DB::transaction(function () use ($deployment, $internship) {
+            $deployment->update([
+                'start_date' => today()->toDateString(),
+                'end_date' => null,
+                'status' => 'active',
+            ]);
+            $internship->update(['status' => 'deployed']);
+        });
+
+        $start = $deployment->start_date->format('M d, Y');
+        $required = \App\Support\TimeFrame::format((float) ($internship->requiredHours() ?? 0));
+
+        if ($studentUserId = $internship->student?->user_id) {
+            Notification::create([
+                'user_id' => $studentUserId,
+                'type' => 'deployment',
+                'title' => 'You are now deployed',
+                'message' => "Your OJT at {$deployment->hte?->name} started on {$start}. Enter the hours you finish each day in Time Frame (DTR) until you reach your {$required} required hours.",
+                'url' => route('student.dtr', [], false),
+            ]);
+        }
+
+        HteRepresentative::where('hte_id', $deployment->hte_id)->pluck('user_id')->each(
+            fn ($userId) => Notification::create([
+                'user_id' => $userId,
+                'type' => 'deployment',
+                'title' => 'New student-intern assigned',
+                'message' => ($internship->student?->user?->name ?? 'A student')." starts training with you on {$start} ({$required} required hours).",
+                'url' => route('hte.students', [], false),
+            ])
+        );
+
+        AuditLogger::record(
+            'deployment.activated',
+            "Deployment started at {$deployment->hte?->name} on {$start}.",
+            $user,
+            $request,
+            $deployment,
+            $internship->campus_id,
+        );
+
+        return redirect()->route('instructor.advisees', $request->only('search', 'status', 'program_id'))
+            ->with('status', ($internship->student?->user?->name ?? 'The student').' is now deployed.');
+    }
+
+    /**
+     * Confirm internship completion once the hours the student entered in
+     * Time Frame reach the required hours (from Form 1). The end date is
+     * then set to the last day entered.
      */
     public function confirmCompletion(Deployment $deployment): RedirectResponse
     {
@@ -53,8 +139,7 @@ class AdviseeController extends Controller
             $locked = Deployment::query()->whereKey($deployment->id)->lockForUpdate()->firstOrFail();
             $locked->load(['internship.student.program', 'internship.program']);
             $internship = $locked->internship;
-            abort_unless($internship && $internship->campus_id === $instructor->campus_id
-                && $internship->program_id === $instructor->program_id, 403);
+            abort_unless($instructor->canActOn($internship), 403);
 
             if ($locked->status !== 'active' || $internship->status !== 'deployed') {
                 throw ValidationException::withMessages([
@@ -62,69 +147,27 @@ class AdviseeController extends Controller
                 ]);
             }
 
-            if (! $locked->start_date || ! $locked->end_date) {
-                throw ValidationException::withMessages([
-                    'completion' => 'A start date and end date must be set before completion can be confirmed.',
-                ]);
-            }
-
-            if ($locked->start_date->isAfter($locked->end_date)) {
-                throw ValidationException::withMessages([
-                    'completion' => 'The deployment dates are invalid. The start date cannot be after the end date.',
-                ]);
-            }
-
-            if ($locked->end_date->isFuture()) {
-                throw ValidationException::withMessages([
-                    'completion' => 'The scheduled end date has not been reached yet.',
-                ]);
-            }
-
-            $requiredHours = (float) ($internship->program?->required_hours ?? 0);
+            $requiredHours = (float) ($internship->requiredHours() ?? 0);
 
             if ($requiredHours <= 0) {
                 throw ValidationException::withMessages([
-                    'completion' => 'The required internship hours are not configured. Ask the coordinator to correct the internship record.',
+                    'completion' => 'The required internship hours are not set. Check the hours on the student\'s Application for OJT (Form 1).',
                 ]);
             }
 
-            $dtrsInPeriod = Dtr::query()
-                ->where('deployment_id', $locked->id)
-                ->whereDate('log_date', '>=', $locked->start_date->toDateString())
-                ->whereDate('log_date', '<=', $locked->end_date->toDateString())
-                ->whereDate('log_date', '<=', today());
-
-            $verifiedHours = (float) (clone $dtrsInPeriod)
-                ->where('status', 'approved')
-                ->whereNotNull('time_in')
-                ->whereNotNull('time_out')
-                ->whereNotNull('clock_in_verified_at')
-                ->whereNotNull('clock_out_verified_at')
-                ->sum('hours_logged');
-
-            $hasUnverifiedEntries = (clone $dtrsInPeriod)
-                ->where(function ($query) {
-                    $query->where('status', '!=', 'approved')
-                        ->orWhereNull('time_in')
-                        ->orWhereNull('time_out')
-                        ->orWhereNull('clock_in_verified_at')
-                        ->orWhereNull('clock_out_verified_at');
-                })
-                ->exists();
-
-            if ($hasUnverifiedEntries) {
-                throw ValidationException::withMessages([
-                    'completion' => 'There are DTR entries within the internship period that are still pending, flagged, incomplete, or not fully verified. Resolve them before confirming completion.',
-                ]);
-            }
+            // The hours the student entered in Time Frame (they count right away).
+            $days = Dtr::where('deployment_id', $locked->id)->get();
+            $verifiedHours = round((float) $days->sum(fn ($d) => $d->countedHours()), 2);
 
             if ($verifiedHours < $requiredHours) {
-                $remaining = number_format(max($requiredHours - $verifiedHours, 0), 2);
+                $remaining = \App\Support\TimeFrame::format(max($requiredHours - $verifiedHours, 0));
                 throw ValidationException::withMessages([
-                    'completion' => "The student has {$verifiedHours} verified hours out of {$requiredHours} required hours. {$remaining} more verified hours are needed.",
+                    'completion' => 'The student has rendered '.\App\Support\TimeFrame::format($verifiedHours).' of '.\App\Support\TimeFrame::format($requiredHours)." required hours. {$remaining} more hours are needed.",
                 ]);
             }
 
+            // The internship ends on the last day entered.
+            $locked->end_date = $days->max('log_date') ?? today();
             $locked->update(['status' => 'completed']);
             $internship->update(['status' => 'completed']);
 
@@ -134,7 +177,7 @@ class AdviseeController extends Controller
                     'user_id' => $studentUserId,
                     'type' => 'deployment_completed',
                     'title' => 'Internship completion confirmed',
-                    'message' => 'Your instructor confirmed your internship completion after checking the end date and verified DTR hours. Your post-OJT requirements are now available under My Documents.',
+                    'message' => 'Your instructor confirmed your internship completion: you reached your required hours. Your post-OJT requirements are now available under My Documents.',
                     'url' => route('student.documents'),
                 ]);
             }
@@ -144,7 +187,7 @@ class AdviseeController extends Controller
 
         AuditLogger::record(
             'deployment.instructor_completed',
-            "Instructor confirmed internship completion with {$result['hours']} of {$result['required']} verified DTR hours.",
+            "Instructor confirmed internship completion with {$result['hours']} of {$result['required']} rendered hours.",
             $user,
             request(),
             $deployment,
@@ -165,17 +208,16 @@ class AdviseeController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
-        $requiredDocsCount = DocumentRequirement::where('campus_id', $instructor->campus_id)
-            ->where('is_required', true)
-            ->count();
+        $preDeploymentIds = PreDeployment::requirementIds($instructor->campus_id);
+        $requiredDocsCount = $preDeploymentIds->count();
 
-        $advisees = $this->filteredAdvisees($instructor, $request)->get();
+        $advisees = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)->get();
 
         $callback = function () use ($advisees, $requiredDocsCount) {
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, [
-                'Name', 'ID Number', 'Required Hours', 'HTE Assignment',
+                'Name', 'ID Number', 'Program', 'Required Hours', 'HTE Assignment',
                 'Documents Approved', 'Documents Required', 'Deployment Status',
             ]);
 
@@ -186,7 +228,8 @@ class AdviseeController extends Controller
                 fputcsv($handle, [
                     $student->user->name,
                     $student->user->id_number,
-                    $internship?->required_hours ?? $student->program->required_hours,
+                    $student->program?->code ?? '',
+                    $internship?->requiredHours() ?? $student->program->required_hours,
                     $deployment?->hte?->name ?? '',
                     $student->approved_documents_count,
                     $requiredDocsCount,
@@ -203,17 +246,30 @@ class AdviseeController extends Controller
         ]);
     }
 
-    private function filteredAdvisees($instructor, Request $request)
+    private function filteredAdvisees($instructor, Request $request, $preDeploymentIds)
     {
-        $query = $instructor->advisees()
+        // Coordinator: whole campus. Instructor: own program.
+        $query = $instructor->visibleStudents()
             ->with(['user', 'program', 'currentInternship.deployment.hte', 'currentInternship.deployment.dtrs'])
-            ->withCount(['documents as approved_documents_count' => fn ($q) => $q->where('documents.status', 'approved')]);
+            ->withCount(['documents as approved_documents_count' => fn ($q) => $q
+                ->where('documents.status', 'approved')
+                ->whereIn('documents.document_requirement_id', $preDeploymentIds)]);
+
+        if ($instructor->isCoordinator() && ($programId = $request->query('program_id'))) {
+            $query->where('program_id', $programId);
+        }
 
         if ($search = $request->query('search')) {
             $query->whereHas('user', fn ($q) => $q
                 ->where('name', 'like', "%{$search}%")
                 ->orWhere('id_number', 'like', "%{$search}%")
             );
+        }
+
+        if ($hteId = $request->query('hte_id')) {
+            $hteId === 'none'
+                ? $query->whereDoesntHave('currentInternship.deployment', fn ($q) => $q->whereNotNull('hte_id'))
+                : $query->whereHas('currentInternship.deployment', fn ($q) => $q->where('hte_id', (int) $hteId));
         }
 
         if ($status = $request->query('status')) {

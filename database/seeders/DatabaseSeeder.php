@@ -28,7 +28,12 @@ class DatabaseSeeder extends Seeder
             ['code' => 'ACC', 'name' => 'Pangasinan State University - Alaminos City Campus', 'address' => 'Alaminos City, Pangasinan'],
             ['code' => 'BC', 'name' => 'Pangasinan State University - Bayambang Campus', 'address' => 'Bayambang, Pangasinan'],
             ['code' => 'LC', 'name' => 'Pangasinan State University - Lingayen Campus', 'address' => 'Lingayen, Pangasinan'],
-            ['code' => 'UC', 'name' => 'Pangasinan State University - Urdaneta City Campus', 'address' => 'Urdaneta City, Pangasinan'],
+            ['code' => 'UR', 'name' => 'Pangasinan State University - Urdaneta City Campus', 'address' => 'Urdaneta City, Pangasinan'],
+            ['code' => 'SM', 'name' => 'Pangasinan State University - Sta. Maria Campus', 'address' => 'Sta. Maria City, Pangasinan'],
+            ['code' => 'AC', 'name' => 'Pangasinan State University - Asingan City Campus', 'address' => 'Asingan City, Pangasinan'],
+            ['code' => 'SC', 'name' => 'Pangasinan State University - San Carlos City Campus', 'address' => 'San Carlos City, Pangasinan'],
+            ['code' => 'IC', 'name' => 'Pangasinan State University - Infanta Campus', 'address' => 'Infanta, Pangasinan'],
+            ['code' => 'BMC', 'name' => 'Pangasinan State University - Binmaley Campus', 'address' => 'Binmaley, Pangasinan'],
         ];
 
         $campuses = collect($campusData)->map(fn ($c) => Campus::firstOrCreate(
@@ -38,18 +43,30 @@ class DatabaseSeeder extends Seeder
 
         $pilotCampus = $campuses->firstWhere('code', 'ACC');
 
-        // --- Programs (per your Scope and Delimitations) ---
-        // Seeded for every campus so each campus can independently offer the same five programs.
-        $programs = [
-            ['code' => 'BSIT', 'name' => 'Bachelor of Science in Information Technology'],
-            ['code' => 'BSBA-OM', 'name' => 'Bachelor of Science in Business Administration - Operations Management'],
-            ['code' => 'BSBA-FM', 'name' => 'Bachelor of Science in Business Administration - Financial Management'],
-            ['code' => 'BSHM', 'name' => 'Bachelor of Science in Hospitality Management'],
-            ['code' => 'BSTM', 'name' => 'Bachelor of Science in Tourism Management'],
+        // --- Programs: each campus offers its own ---
+        // Keyed by campus code. A campus not listed (or with an empty list)
+        // starts with no programs; its OJT Coordinator adds them on the
+        // Programs page. Add a campus's programs here to seed them.
+        $programsByCampus = [
+            'ACC' => [
+                ['code' => 'BSIT', 'name' => 'Bachelor of Science in Information Technology'],
+                ['code' => 'BSBA-OM', 'name' => 'Bachelor of Science in Business Administration - Operations Management'],
+                ['code' => 'BSBA-FM', 'name' => 'Bachelor of Science in Business Administration - Financial Management'],
+                ['code' => 'BSHM', 'name' => 'Bachelor of Science in Hospitality Management'],
+                ['code' => 'BSTM', 'name' => 'Bachelor of Science in Tourism Management'],
+            ],
+            'BC' => [],
+            'LC' => [],
+            'UR' => [],
+            'SM' => [],
+            'AC' => [],
+            'SC' => [],
+            'IC' => [],
+            'BMC' => [],
         ];
 
         foreach ($campuses as $campus) {
-            foreach ($programs as $program) {
+            foreach ($programsByCampus[$campus->code] ?? [] as $program) {
                 Program::firstOrCreate(
                     ['campus_id' => $campus->id, 'code' => $program['code']],
                     ['name' => $program['name'], 'required_hours' => null]
@@ -69,19 +86,10 @@ class DatabaseSeeder extends Seeder
             ['code' => 'MOA', 'name' => 'Memorandum of Agreement', 'stage' => 'pre_deployment'],
             ['code' => 'TRAINING_LIABILITY', 'name' => 'Training Liability Form', 'stage' => 'pre_deployment'],
             ['code' => 'MEDICAL_CERTIFICATE', 'name' => 'Medical Certificate', 'stage' => 'pre_deployment'],
-            // Renamed from "Parental Consent Form" - the actual document is the
-            // student's own sworn declaration/waiver, not a parent's signature;
-            // no mention of a parent anywhere in the real form's text.
             ['code' => 'PARENT_CONSENT', 'name' => 'Consent and Waiver', 'stage' => 'pre_deployment'],
             ['code' => 'OJT_RESUME', 'name' => 'OJT Resume', 'stage' => 'pre_deployment'],
             ['code' => 'INTERNSHIP_AGREEMENT', 'name' => 'Internship Agreement', 'stage' => 'pre_deployment'],
             ['code' => 'INTERNSHIP_ACADEMIC_PRACTICUM_COURSE', 'name' => 'Internship-Academic Practicum Course', 'stage' => 'pre_deployment'],
-            // Renamed from the placeholder "DTR" / "Daily Time Record" - this is
-            // the real, distinct "Internship Time Frame" document (form 17), a
-            // periodically compiled and physically signed hours summary. It is
-            // NOT the same thing as the live clock-in/out DTR feature already
-            // built elsewhere (dtrs table, Student's Daily Time Record page) -
-            // that feature keeps its own name and is untouched by this change.
             ['code' => 'INTERNSHIP_TIME_FRAME', 'name' => 'Internship Time Frame', 'stage' => 'active', 'is_repeating' => true, 'entry_cadence' => 'daily'],
             ['code' => 'DAILY_JOURNAL', 'name' => 'Daily Journal', 'stage' => 'active', 'is_repeating' => true, 'entry_cadence' => 'daily'],
             ['code' => 'WEEKLY_REPORT', 'name' => 'Form 19 – Practicum/Internship Weekly Report', 'stage' => 'active', 'is_repeating' => true, 'entry_cadence' => 'daily'],
@@ -106,16 +114,6 @@ class DatabaseSeeder extends Seeder
                 );
             }
         }
-
-        // --- Structured fields: flat one-time forms ---
-        // Everything else stays a plain file upload for now. These five
-        // requirements use the real fill-in-system -> print -> sign ->
-        // mark complete -> upload workflow. Three forms from the real
-        // document set are deliberately excluded here since they need
-        // repeating/tabular entries (Daily Journal, Internship Time Frame,
-        // Weekly Report) or rating-scale fields (Student Feedback Form) -
-        // the current field system only supports flat text/textarea
-        // values, so those need new capability, not just more seed data.
         $structuredForms = [
             'APPLICATION_FOR_OJT' => [
                 // Personal Profile - matches the real form's exact sections;
@@ -135,6 +133,7 @@ class DatabaseSeeder extends Seeder
                 ['field_key' => 'parent_guardian_name', 'label' => 'Parent/Guardian', 'field_type' => 'text', 'group_label' => 'Personal Profile', 'sort_order' => 11],
                 ['field_key' => 'current_address', 'label' => 'Current Address', 'field_type' => 'textarea', 'group_label' => 'Personal Profile', 'sort_order' => 12],
                 ['field_key' => 'home_address', 'label' => 'Home Address', 'field_type' => 'textarea', 'group_label' => 'Personal Profile', 'sort_order' => 13],
+
                 // Firm/Agency/Company for OJT
                 ['field_key' => 'hte_name', 'label' => 'Name of the Firm/Agency/Company', 'field_type' => 'text', 'group_label' => 'Firm/Agency/Company for OJT', 'sort_order' => 20],
                 ['field_key' => 'hte_address', 'label' => 'Address', 'field_type' => 'textarea', 'group_label' => 'Firm/Agency/Company for OJT', 'sort_order' => 21],
@@ -303,9 +302,14 @@ class DatabaseSeeder extends Seeder
 
         $coordinatorData = [
             'ACC' => ['id_number' => 'ACC-COORD-001', 'name' => 'Test OJT Coordinator - ACC', 'email' => 'coordinator.acc@internlink.test'],
-            'BC'  => ['id_number' => 'BC-COORD-001',  'name' => 'Test OJT Coordinator - BC',  'email' => 'coordinator.bc@internlink.test'],
-            'LC'  => ['id_number' => 'LC-COORD-001',  'name' => 'Test OJT Coordinator - LC',  'email' => 'coordinator.lc@internlink.test'],
-            'UC'  => ['id_number' => 'UC-COORD-001',  'name' => 'Test OJT Coordinator - UC',  'email' => 'coordinator.uc@internlink.test'],
+            'BC' => ['id_number' => 'BC-COORD-001', 'name' => 'Test OJT Coordinator - BC', 'email' => 'coordinator.bc@internlink.test'],
+            'LC' => ['id_number' => 'LC-COORD-001', 'name' => 'Test OJT Coordinator - LC', 'email' => 'coordinator.lc@internlink.test'],
+            'UR' => ['id_number' => 'UR-COORD-001', 'name' => 'Test OJT Coordinator - UR', 'email' => 'coordinator.ur@internlink.test'],
+            'SM' => ['id_number' => 'SMC-COORD-001', 'name' => 'Test OJT Coordinator - SMC', 'email' => 'coordinator.smc@internlink.test'],
+            'AC' => ['id_number' => 'AC-COORD-001', 'name' => 'Test OJT Coordinator - AC', 'email' => 'coordinator.ac@internlink.test'],
+            'SC' => ['id_number' => 'SC-COORD-001', 'name' => 'Test OJT Coordinator - SC', 'email' => 'coordinator.sc@internlink.test'],
+            'IC' => ['id_number' => 'IC-COORD-001', 'name' => 'Test OJT Coordinator - IC', 'email' => 'coordinator.ic@internlink.test'],
+            'BMC' => ['id_number' => 'BMC-COORD-001', 'name' => 'Test OJT Coordinator - BMC', 'email' => 'coordinator.bmc@internlink.test'],
         ];
 
         foreach ($campuses as $campus) {

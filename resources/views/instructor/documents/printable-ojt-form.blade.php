@@ -32,7 +32,10 @@
         .entry-table th, .entry-table td { border:1px solid #777; padding:5px; vertical-align:top; }
         .entry-table th { background:#f5f5f5; }
         @media print { .no-print { display:none; } body { max-width:none; } }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-person { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body @if ($autoPrint ?? true) onload="window.print()" @endif>
 @isset($backUrl)
@@ -156,26 +159,28 @@
 
 @if ($requirement->code === 'EVALUATION_FORM')
     @php
-        $ratings = \App\Support\InternshipEvaluationForm::ratingsFrom($value);
-        $totalPoints = \App\Support\InternshipEvaluationForm::totalPoints($ratings);
-        $ojtGrade = \App\Support\InternshipEvaluationForm::grade($ratings);
     @endphp
     <div class="section-title">Evaluation Summary</div>
     <table class="field-table">
-        <tr><td class="label">Total points (A + B + C + D + E + F + G + H × 10)</td><td>{{ $totalPoints !== null ? number_format($totalPoints, 2).' / 50' : 'Incomplete — not all competencies rated' }}</td></tr>
-        <tr><td class="label">OJT GRADE = Total Points / 50 × 50 + 50</td><td><strong>{{ $ojtGrade !== null ? number_format($ojtGrade, 2) : '—' }}</strong></td></tr>
         <tr><td class="label">Disposition / remarks</td><td>{{ $value('other_termination_reason') ?: '—' }}</td></tr>
         <tr><td class="label">Evaluation Date</td><td>{{ $value('evaluation_date') ?: '—' }}</td></tr>
     </table>
 @endif
 
+@php $sig = \App\Support\Signatories::for($document->internship); @endphp
 <div class="signature-row">
     <div class="signature">
+        @if ($requirement->audience === 'instructor' && $sig['instructor'] !== '')
+            <div class="fw-bold sig-person" style="font-weight:700;">{{ $sig['instructor'] }}</div>
+        @endif
         <div class="line"></div>
         <div class="name">{{ $signatoryLabel }}</div>
         <div class="muted">{{ $preparedBy ?: '____________________________' }}</div>
     </div>
     <div class="signature">
+        @if ($sig['coordinator'] !== '')
+            <div class="sig-person" style="font-weight:700;">{{ $sig['coordinator'] }}</div>
+        @endif
         <div class="line"></div>
         <div class="name">Campus Internship Coordinator</div>
         <div class="muted">Review / record copy</div>

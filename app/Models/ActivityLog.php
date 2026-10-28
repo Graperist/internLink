@@ -73,6 +73,9 @@ class ActivityLog extends Model
     public function scopeVisibleTo(Builder $query, User $viewer): Builder
     {
         return match ($viewer->role?->code) {
+            // The Super Admin sees every campus (and their own actions).
+            'super_admin' => $query,
+
             'coordinator' => $query->where('campus_id', $viewer->campus_id),
 
             'instructor' => $query->where(function (Builder $q) use ($viewer) {

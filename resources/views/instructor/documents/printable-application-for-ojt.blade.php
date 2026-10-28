@@ -51,12 +51,16 @@
         .sig-line { border-top: 1px solid #000; width: 80%; margin: 0 auto 3px; padding-top: 2px; }
         .sig-name { font-weight: 700; font-size: 9px; }
         .sig-title { font-size: 8.5px; }
+        .sig-name { font-weight: 700; font-size: 9px; min-height: 12px; margin-top: 8px; }
         .approved-header { padding: 4px 8px; font-weight: 700; font-size: 10.5px; border-top: 1px solid #000; border-bottom: 1px solid #000; }
         .approved-block { text-align: center; padding: 14px 9px 11px; }
         .approved-name { display: inline-block; border-bottom: 1px solid #000; min-width: 280px; padding: 14px 6px 1px; margin-bottom: 3px; font-weight: 700; font-size: 9px; }
         .no-print { margin-bottom: 8px; }
         @media print { .no-print { display: none; } body { max-width: none; } }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-name, .registrar-sig .name, .approved-name { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body onload="window.print()">
 @php
@@ -65,18 +69,24 @@
     $student = $internship?->student;
     $campus = $internship?->campus;
     $campusName = preg_replace('/^Pangasinan State University\s*[-,:]\s*/i', '', trim((string) ($campus?->name ?: ''))) ?: 'Alaminos City Campus';
-    $cedName = trim((string) ($campus?->ced_name ?: ''));
+    // Signatory names come from the records (Signatories helper).
+    $sig = \App\Support\Signatories::for($internship);
+    $cedName = $sig['ced'];
     $academicRows = [];
-    for ($i = 1; $i <= 5; $i++) {
+    // The five rows of the official form, plus any rows the student added.
+    $academicRowCount = \App\Support\Form1Academics::rowCount(fn ($key) => $v($key, ''));
+    for ($i = 1; $i <= $academicRowCount; $i++) {
+        $academicDate = $v("academic_{$i}_date", '');
         $academicRows[] = [
-            'sem' => $v("academic_{$i}_sem", ''),
+            // Shortened to fit the narrow SEM column of the official form.
+            'sem' => str_replace(['1st Semester', '2nd Semester'], ['1st Sem', '2nd Sem'], $v("academic_{$i}_sem", '')),
             'sy' => $v("academic_{$i}_sy", ''),
             'subject' => $v("academic_{$i}_subject", ''),
             'passing' => $v("academic_{$i}_passing", ''),
             'failing' => $v("academic_{$i}_failing", ''),
             'grade' => $v("academic_{$i}_grade", ''),
             'signature' => $v("academic_{$i}_signature", ''),
-            'date' => $v("academic_{$i}_date", ''),
+            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $academicDate) ? \Carbon\Carbon::parse($academicDate)->format('m/d/Y') : $academicDate,
         ];
     }
 @endphp
@@ -168,7 +178,7 @@
         <div class="fit-line">This is to certify that he/she is <u style="color:#c00000;">qualified</u> to undergo internship.</div>
         <div class="cert-line">Certified and verified true and correct:</div>
         <div class="registrar-sig">
-            <div class="name">&nbsp;</div>
+            <div class="name">{!! $sig['registrar'] !== '' ? e($sig['registrar']) : '&nbsp;' !!}</div>
             <div>Registrar</div>
         </div>
     </div>
@@ -191,12 +201,12 @@
 
     <div class="approval-header">RECOMMENDING APPROVAL</div>
     <div class="approval-grid">
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Internship/Practicum Subject Instructor</div></div>
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Campus Internship Coordinator</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['instructor'] }}</div><div class="sig-line"></div><div class="sig-title">Internship/Practicum Subject Instructor</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['coordinator'] }}</div><div class="sig-line"></div><div class="sig-title">Campus Internship Coordinator</div></div>
     </div>
     <div class="approval-grid">
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">Department Chair</div></div>
-        <div class="approval-col"><div class="sig-line"></div><div class="sig-title">College Dean</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['department_chair'] }}</div><div class="sig-line"></div><div class="sig-title">Department Chair</div></div>
+        <div class="approval-col"><div class="sig-name">{{ $sig['college_dean'] }}</div><div class="sig-line"></div><div class="sig-title">College Dean</div></div>
     </div>
 
     <div class="approved-header">APPROVED BY:</div>

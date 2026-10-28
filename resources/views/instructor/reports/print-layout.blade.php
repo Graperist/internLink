@@ -67,6 +67,7 @@
         }
     </style>
     @yield('styles')
+    @include('partials.a4-page')
 </head>
 <body>
 

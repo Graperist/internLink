@@ -18,14 +18,21 @@ class PasswordChangeController extends Controller
 
     public function __construct(private PasswordCodeService $codes) {}
 
-    public function show(): View
+    public function show(): View|RedirectResponse
     {
+        if (auth()->user()?->isHteRepresentative()) {
+            return $this->hteCannotChange();
+        }
+
         return view('auth.change-password');
     }
 
     public function update(Request $request): RedirectResponse
     {
         $user = $request->user();
+        if ($user?->isHteRepresentative()) {
+            return $this->hteCannotChange();
+        }
 
         $validated = $request->validate([
             // Skip the "current password" check the very first time - a
@@ -67,6 +74,9 @@ class PasswordChangeController extends Controller
 
     public function showVerify(Request $request): View|RedirectResponse
     {
+        if ($request->user()?->isHteRepresentative()) {
+            return $this->hteCannotChange();
+        }
         if (! $this->pending($request)) {
             return redirect()->route('password.change')->withErrors(['password' => 'Please enter your new password again.']);
         }
@@ -104,6 +114,9 @@ class PasswordChangeController extends Controller
 
     public function verify(Request $request): RedirectResponse
     {
+        if ($request->user()?->isHteRepresentative()) {
+            return $this->hteCannotChange();
+        }
         if (! $this->pending($request)) {
             return redirect()->route('password.change')->withErrors(['password' => 'Please enter your new password again.']);
         }
@@ -151,5 +164,12 @@ class PasswordChangeController extends Controller
 
         return $pending
             && now()->timestamp - (int) ($pending['at'] ?? 0) <= self::PENDING_MINUTES * 60;
+    }
+
+    /** HTE accounts are given by the coordinator for evaluations only; they keep that password. */
+    private function hteCannotChange(): RedirectResponse
+    {
+        return redirect()->route('hte.evaluations')
+            ->with('status', 'HTE supervisor accounts keep the password given by the OJT Coordinator.');
     }
 }

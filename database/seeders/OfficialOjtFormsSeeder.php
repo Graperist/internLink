@@ -14,13 +14,17 @@ class OfficialOjtFormsSeeder extends Seeder
         $requirements = [
             // Pre-OJT / Before deployment — source checklist order.
             ['code' => 'APPLICATION_FOR_OJT', 'name' => 'Form 1 – Application for Internship', 'stage' => 'pre_deployment', 'form_number' => '1', 'display_order' => 10, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
-            ['code' => 'MEDICAL_CERTIFICATE', 'name' => 'Medical Certificate from Government Physician', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 20, 'audience' => 'student', 'workflow_mode' => 'upload'],
-            ['code' => 'PSYCHOLOGICAL_TEST', 'name' => 'Psychological Test Result', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 30, 'audience' => 'student', 'workflow_mode' => 'upload'],
+            // Medical Certificate and Psychological Test are now attached to
+            // Form 1 itself (document_attachments), not separate requirements.
+            ['code' => 'MEDICAL_CERTIFICATE', 'name' => 'Medical Certificate from Government Physician', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 20, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
+            ['code' => 'PSYCHOLOGICAL_TEST', 'name' => 'Psychological Test Result', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 30, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
             ['code' => 'CERTIFICATE_OF_UNITS_EARNED', 'name' => 'Form 2 – Certification of Units Earned for Practicum/Internship', 'stage' => 'pre_deployment', 'form_number' => '2', 'display_order' => 40, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'PARENT_CONSENT', 'name' => 'Form 3 – Consent and Waiver', 'stage' => 'pre_deployment', 'form_number' => '3', 'display_order' => 50, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
-            ['code' => 'PARENT_GUARDIAN_ID', 'name' => 'Photocopy of Parent/Guardian Valid ID', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 60, 'audience' => 'student', 'workflow_mode' => 'upload'],
-            ['code' => 'ENDORSEMENT_LETTER', 'name' => 'Form 6 – Endorsement Letter (Rev. 2, 2024)', 'stage' => 'pre_deployment', 'form_number' => '6', 'display_order' => 70, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
-            ['code' => 'MOA', 'name' => 'Form 10 – Memorandum of Agreement (Outside InternLink Scope)', 'stage' => 'pre_deployment', 'form_number' => '10', 'display_order' => 80, 'audience' => 'coordinator', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
+            // Now attached to Form 3 (Consent and Waiver) itself.
+            ['code' => 'PARENT_GUARDIAN_ID', 'name' => 'Photocopy of Parent/Guardian Valid ID', 'stage' => 'pre_deployment', 'form_number' => null, 'display_order' => 60, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
+            ['code' => 'ENDORSEMENT_LETTER', 'name' => 'Form 6 – Endorsement Letter', 'stage' => 'pre_deployment', 'form_number' => '6', 'display_order' => 70, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
+            // The MOA is processed outside InternLink; the student uploads scans of the signed MOA.
+            ['code' => 'MOA', 'name' => 'Form 10 – Memorandum of Agreement', 'stage' => 'pre_deployment', 'form_number' => '10', 'display_order' => 80, 'audience' => 'student', 'workflow_mode' => 'upload'],
             ['code' => 'OJT_RESUME', 'name' => 'Form 11 – Internship Resume', 'stage' => 'pre_deployment', 'form_number' => '11', 'display_order' => 90, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'INTERNSHIP_AGREEMENT', 'name' => 'Form 12 – Internship Agreement', 'stage' => 'pre_deployment', 'form_number' => '12', 'display_order' => 100, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
             ['code' => 'INTERNSHIP_RELEASE_FORM', 'name' => 'Form 15 – Internship Release Form', 'stage' => 'pre_deployment', 'form_number' => '15', 'display_order' => 110, 'audience' => 'student', 'workflow_mode' => 'print_sign'],
@@ -32,7 +36,7 @@ class OfficialOjtFormsSeeder extends Seeder
             // weekly work-reporting feature used during the internship.
             ['code' => 'WEEKLY_JOURNAL', 'name' => 'Form 4 – Weekly Journal (Legacy)', 'stage' => 'post_deployment', 'form_number' => '4', 'display_order' => 230, 'audience' => 'student', 'workflow_mode' => 'upload', 'is_active' => false, 'is_required' => false],
             ['code' => 'EVALUATION_FORM', 'name' => 'Form 13 – Internship Evaluation Form', 'stage' => 'post_deployment', 'form_number' => '13', 'display_order' => 240, 'audience' => 'hte', 'workflow_mode' => 'review_only'],
-            ['code' => 'INTERNSHIP_TIME_FRAME', 'name' => 'Form 17 – Internship Time Frame', 'stage' => 'active', 'form_number' => '17', 'display_order' => 250, 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_repeating' => true, 'entry_cadence' => 'daily'],
+            ['code' => 'INTERNSHIP_TIME_FRAME', 'name' => 'Form 17 – Internship Time Frame', 'stage' => 'active', 'form_number' => '17', 'display_order' => 250, 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_repeating' => true, 'entry_cadence' => 'daily', 'is_required' => false],
             ['code' => 'WEEKLY_REPORT', 'name' => 'Form 19 – Internship/Practicum Weekly Report', 'stage' => 'active', 'form_number' => '19', 'display_order' => 260, 'audience' => 'student', 'workflow_mode' => 'print_sign', 'is_repeating' => true, 'entry_cadence' => 'daily'],
             ['code' => 'STUDENT_FEEDBACK_FORM', 'name' => 'Form 20 – Student-Intern’s Feedback Form', 'stage' => 'post_deployment', 'form_number' => '20', 'display_order' => 270, 'audience' => 'student', 'workflow_mode' => 'review_only'],
             ['code' => 'TRAINING_SUPERVISOR_FEEDBACK', 'name' => 'Form 21 – Training Supervisor’s Feedback Form', 'stage' => 'post_deployment', 'form_number' => '21', 'display_order' => 280, 'audience' => 'hte', 'workflow_mode' => 'review_only'],
@@ -63,6 +67,7 @@ class OfficialOjtFormsSeeder extends Seeder
             'CERTIFICATE_OF_UNITS_EARNED' => 'instructor',
             'PARENT_CONSENT' => 'instructor',
             'PARENT_GUARDIAN_ID' => 'instructor',
+            'MOA' => 'instructor',
             'ENDORSEMENT_LETTER' => 'instructor',
             'OJT_RESUME' => 'instructor',
             'INTERNSHIP_AGREEMENT' => 'instructor',
@@ -371,7 +376,8 @@ class OfficialOjtFormsSeeder extends Seeder
                 }
                 $add('other_termination_reason', 'Other termination reason / remarks', 'textarea', 'Disposition', null, false, 60);
                 $add('strengths_weaknesses', 'Strengths and Weaknesses (discuss with student-trainee)', 'textarea', 'Performance Discussion', null, false, 61);
-                $add('ojt_grade', 'OJT Grade', 'number', 'Final Rating', 'numeric|min:0|max:100', true, 62);
+                // No OJT Grade here: the Subject Instructor computes the final grade
+                // outside the system (with seminar attendance etc.).
                 $add('evaluation_date', 'Evaluation Date', 'date', 'Signature', null, true, 63);
                 $add('supervisor_signature_name', 'Host Training Supervisor / Designated Evaluator', 'text', 'Signature', null, true, 64);
                 break;

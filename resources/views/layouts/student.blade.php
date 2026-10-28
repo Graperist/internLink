@@ -7,8 +7,10 @@
     <title>@yield('title', 'Student Portal - PSU Intern-Link')</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ asset('css/internlink.css') }}?v={{ filemtime(public_path('css/internlink.css')) }}" rel="stylesheet">
+    {{-- Tabler Icons 2.47.0, bundled locally so the icons load even offline or when a CDN is blocked --}}
+    <link rel="stylesheet" href="{{ asset('vendor/tabler-icons/tabler-icons.min.css') }}">
 </head>
-<body class="il-shell-body">
+<body class="il-shell-body il-staff il-student">
     <div class="il-shell">
         @include('partials.mobile-nav')
         <aside class="il-sidebar">
@@ -24,7 +26,7 @@
                 @if (auth()->user()->avatar_url)
                     <img src="{{ auth()->user()->avatar_url }}" alt="{{ auth()->user()->name }}" class="il-avatar-img">
                 @else
-                    <div class="il-avatar">{{ collect(explode(' ', auth()->user()->name))->map(fn($p) => $p[0] ?? '')->join('') }}</div>
+                    <div class="il-avatar">{{ \App\Models\User::initialsOf(auth()->user()->name) }}</div>
                 @endif
                 <div class="min-w-0">
                     <p class="il-user-name text-truncate">{{ auth()->user()->name }}</p>
@@ -39,21 +41,25 @@
                     <i class="ti ti-layout-dashboard"></i> Dashboard
                 </a>
                 <a href="{{ route('student.dtr') }}" class="il-nav-link {{ request()->routeIs('student.dtr*') ? 'active' : '' }}">
-                    <i class="ti ti-clock"></i> Daily Time Record
+                    <i class="ti ti-clock"></i> Time Frame (DTR)
                 </a>
                 <a href="{{ route('student.documents') }}" class="il-nav-link {{ request()->routeIs('student.documents*') ? 'active' : '' }}">
                     <i class="ti ti-file-text"></i> My Documents
                 </a>
                 <a href="{{ route('student.hte') }}" class="il-nav-link {{ request()->routeIs('student.hte') ? 'active' : '' }}">
-                    <i class="ti ti-building"></i> My HTE Info
+                    <i class="ti ti-building"></i> My HTE
                 </a>
 
                 <p class="il-nav-label">Records</p>
                 <a href="{{ route('student.progress') }}" class="il-nav-link {{ request()->routeIs('student.progress') ? 'active' : '' }}">
                     <i class="ti ti-chart-bar"></i> My Progress
                 </a>
-                <a href="{{ route('student.notifications') }}" class="il-nav-link {{ request()->routeIs('student.notifications') ? 'active' : '' }}">
-                    <i class="ti ti-bell"></i> Notifications
+                @php $unreadAnnouncements = auth()->user()->notifications_()->where('type', 'announcement')->whereNull('read_at')->count(); @endphp
+                <a href="{{ route('student.announcements') }}" class="il-nav-link {{ request()->routeIs('student.announcements', 'student.notifications') ? 'active' : '' }}">
+                    <i class="ti ti-speakerphone"></i> Announcements
+                    @if ($unreadAnnouncements)
+                        <span class="badge rounded-pill text-bg-warning ms-auto" style="font-size:.65rem;">{{ $unreadAnnouncements }}</span>
+                    @endif
                 </a>
 
                 <p class="il-nav-label">Account</p>
@@ -73,7 +79,6 @@
         </main>
     </div>
 
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     {{-- Invisible click tracker only. The audit pop-up itself is deliberately NOT included on student screens. --}}
     @include('partials.audit-tracker')

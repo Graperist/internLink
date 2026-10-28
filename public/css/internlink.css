@@ -801,3 +801,62 @@ body {
         overflow-x: auto;
     }
 }
+
+/* =====================================================================
+   Staff portal polish (Instructor & Coordinator pages, body.il-staff):
+   one look for headers, stat tiles, tables, badges and search rows.
+   ===================================================================== */
+.il-staff .il-page-title { font-size: 1.5rem; font-weight: 800; color: #14213a; letter-spacing: -.01em; }
+.il-staff .il-page-header p { margin-top: .15rem; }
+.il-staff .il-card { border-color: #e6eaf0; box-shadow: 0 1px 2px rgba(20, 33, 58, .03); }
+.il-staff .il-card h2.h6 { color: #14213a; }
+
+/* Stat numbers */
+.il-staff .il-stat-number { font-size: 1.65rem; font-weight: 800; color: #14213a; line-height: 1.1; }
+
+/* Tables inside cards */
+.il-staff .il-main .table { --bs-table-bg: transparent; margin-bottom: 0; }
+.il-staff .il-main .table > thead th,
+.il-staff .il-main .table > thead tr.text-secondary th {
+    font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: #6c7a90;
+    font-weight: 700; background: #f8f9fb; border-bottom: 1px solid #e6eaf0; white-space: nowrap;
+    padding-top: .65rem; padding-bottom: .65rem;
+}
+.il-staff .il-main .table > tbody > tr > td { border-bottom-color: #eef1f5; padding-top: .8rem; padding-bottom: .8rem; }
+.il-staff .il-main .table-hover > tbody > tr:hover > *,
+.il-staff .il-main .table > tbody > tr:hover > td { background: #fafbfd; }
+.il-staff .il-main .table > tbody > tr:last-child > td { border-bottom: 0; }
+
+/* Status badges: soft tinted pills */
+.il-staff .il-main .badge { font-weight: 700; font-size: .72rem; letter-spacing: .02em; padding: .34em .72em; border-radius: 999px; }
+.il-staff .il-main .badge.text-bg-primary { background: #e6efff !important; color: #1546b8 !important; }
+.il-staff .il-main .badge.text-bg-success { background: #e7f6ec !important; color: #1d6b3a !important; }
+.il-staff .il-main .badge.text-bg-danger { background: #fde2e4 !important; color: #b42318 !important; }
+.il-staff .il-main .badge.text-bg-warning { background: #fff3d6 !important; color: #8a5d00 !important; }
+.il-staff .il-main .badge.text-bg-secondary { background: #eef1f6 !important; color: #5d6b80 !important; }
+.il-staff .il-main .badge.text-bg-info { background: #e3f4fb !important; color: #0b6a8a !important; }
+.il-staff .il-main .badge.text-bg-light { background: #f1f3f7 !important; color: #5d6b80 !important; border: 0 !important; }
+
+/* Search rows: icon in the box, button on the same line */
+.il-staff .il-search { position: relative; }
+.il-staff .il-search > .ti { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); color: #9aa6b8; pointer-events: none; }
+.il-staff .il-search > .form-control { padding-left: 2.2rem; }
+
+/* Small icon buttons for row actions */
+.il-staff .il-icon-btn { vertical-align: middle; width: 32px; height: 32px; border-radius: 9px; border: 1px solid #dfe5ee; background: #fff; color: #1c3f66;
+    display: inline-grid; place-items: center; text-decoration: none; font-size: 1rem; padding: 0; }
+.il-staff .il-icon-btn:hover { background: #eef3fb; border-color: #c9d6ea; color: #0b2f86; }
+.il-staff .il-icon-btn.danger { color: #b42318; }
+.il-staff .il-icon-btn.danger:hover { background: #fff1f2; border-color: #f1b0b7; color: #912018; }
+
+/* Readable "view only" note in action cells */
+.il-staff .il-viewonly { display: inline-flex; align-items: center; gap: .3rem; background: #eef1f6; color: #5d6b80; border-radius: 999px;
+    padding: .2rem .6rem; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.il-staff .il-avatar-sm { width: 34px; height: 34px; border-radius: 50%; background: #e8eef7; color: #1c3f66; font-weight: 700; font-size: .76rem; display: grid; place-items: center; flex: none; }
+.il-staff .il-tile-icon { width: 44px; height: 44px; border-radius: 12px; background: #e8eef7; color: #1c3f66; display: grid; place-items: center; font-size: 1.3rem; flex: none; }
+.il-staff .il-tile-icon.sm { width: 32px; height: 32px; border-radius: 9px; font-size: 1rem; }
+.il-staff .il-report-card { border: 1px solid #e6eaf0; border-radius: 12px; padding: 1rem; background: #fff; transition: border-color .15s, box-shadow .15s; }
+.il-staff .il-report-card:hover { border-color: #c9d6ea; box-shadow: 0 4px 14px rgba(20, 33, 58, .06); }
+.il-staff .il-report-card .form-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #6c7a90; font-weight: 700; }
+.il-staff .il-announce { border: 1px solid #e6eaf0; border-radius: 12px; padding: .9rem 1rem; margin-bottom: .75rem; background: #fff; }
+.il-staff .il-announce:hover { border-color: #c9d6ea; }

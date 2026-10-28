@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Evaluation Instrument of PSU Partner Agencies (Self Ratee) — {{ $document->internship->student->user->name }}</title>
+    <title>Evaluation Instrument of PSU Partner Agencies (Self Ratee) — {{ $document->hte?->name ?? $document->internship?->deployment?->hte?->name }}</title>
     <style>
         * { box-sizing: border-box; }
 
@@ -77,7 +77,10 @@
             .no-print { display: none; }
             body { max-width: none; }
         }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig .name { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body @if ($autoPrint ?? true) onload="window.print()" @endif>
 @php
@@ -91,7 +94,8 @@
         $campusLabel .= ' Campus';
     }
 
-    $hte = $internship->deployment?->hte;
+    // The agency this one-per-agency evaluation is about.
+    $hte = $document->hte ?? $internship->deployment?->hte;
     $rate = fn (string $key) => $document->fieldValue($key);
 
     $evaluator = $rate('rater_name') ?: ($document->uploader?->name ?? '');

@@ -16,7 +16,7 @@
 
     <div class="d-flex align-items-center gap-3 mb-3">
         <div id="{{ $prefix }}AvatarInitials" class="il-avatar {{ auth()->user()->avatar_url ? 'd-none' : '' }}" style="width:64px;height:64px;font-size:1.25rem;">
-            {{ collect(explode(' ', auth()->user()->name))->map(fn($p) => $p[0] ?? '')->join('') }}
+            {{ \App\Models\User::initialsOf(auth()->user()->name) }}
         </div>
         <img
             id="{{ $prefix }}AvatarPreview"

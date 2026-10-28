@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Mail\PasswordResetCodeMail;
-use App\Models\Campus;
 use App\Models\PasswordResetCode;
 use App\Models\User;
+use App\Support\AccountResolver;
 use App\Support\AuditLogger;
 use App\Support\PasswordCodeService;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +21,7 @@ use Throwable;
 
 /**
  * "Forgot password?" flow (like Facebook):
- *   1. person gives campus + ID number
+ *   1. person gives their ID number (campus is read from the ID)
  *   2. a 6-digit code is emailed to the address on their profile
  *   3. they type the code
  *   4. they choose a new password
@@ -36,28 +36,31 @@ class ForgotPasswordController extends Controller
     private const RESEND_SECONDS = 60;    // minimum gap between emails
     private const RESET_WINDOW_MINUTES = 15; // time allowed to pick the new password after verifying
 
-    // ---------- step 1: ask for campus + ID ----------
+    // ---------- step 1: ask for the ID ----------
 
     public function showRequest(): View
     {
-        $campuses = Campus::where('status', 'active')->orderBy('name')->get();
-
-        return view('auth.forgot-password', compact('campuses'));
+        return view('auth.forgot-password');
     }
 
     public function sendCode(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'campus_id' => ['required', 'exists:campuses,id'],
             'id_number' => ['required', 'string', 'max:60'],
         ]);
 
         $request->session()->forget('pw_reset');
-        $request->session()->put('pw_reset.campus_id', (int) $data['campus_id']);
         $request->session()->put('pw_reset.id_number', $data['id_number']);
 
         $user = $this->findUser($request);
         $request->session()->put('pw_reset.sent_at', now()->timestamp);
+
+        // HTE accounts keep the password the coordinator gave them.
+        if ($user && $user->isHteRepresentative()) {
+            $request->session()->forget('pw_reset');
+
+            return back()->withInput()->withErrors(['id_number' => 'HTE supervisor accounts cannot reset their password here. Ask your campus OJT Coordinator for your sign-in details.']);
+        }
 
         if ($user && $user->status === 'active') {
             $request->session()->put('pw_reset.masked_email', $this->maskEmail($user->email));
@@ -68,7 +71,7 @@ class ForgotPasswordController extends Controller
                 'Password reset requested for ID "'.AuditLogger::clean($data['id_number'], 60).'" - no active account',
                 null,
                 $request,
-                campusId: (int) $data['campus_id'],
+                campusId: AccountResolver::campusFromId($data['id_number'])?->id,
             );
         }
 
@@ -173,7 +176,7 @@ class ForgotPasswordController extends Controller
     {
         $user = $this->verifiedUser($request);
 
-        if (! $user) {
+        if (! $user || $user->isHteRepresentative()) {
             return redirect()->route('password.forgot')->withErrors(['id_number' => 'Your reset session expired. Please start again.']);
         }
 
@@ -203,9 +206,7 @@ class ForgotPasswordController extends Controller
 
     private function findUser(Request $request): ?User
     {
-        return User::where('campus_id', $request->session()->get('pw_reset.campus_id'))
-            ->where('id_number', $request->session()->get('pw_reset.id_number'))
-            ->first();
+        return AccountResolver::findUser((string) $request->session()->get('pw_reset.id_number'));
     }
 
     private function verifiedUser(Request $request): ?User

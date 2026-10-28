@@ -105,13 +105,18 @@ class PostDeploymentFormsByRoleTest extends TestCase
     {
         $page = $this->actingAs($this->studentUser)->get('/student/documents')->assertOk();
 
-        // their own forms are listed and actionable
-        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION'] as $code) {
-            $page->assertSee(route('student.documents.fill', $this->req($code)), false);
+        // their own forms are listed, and each is actionable when opened
+        // (the page shows one form at a time, like Document Review)
+        // (Forms 20 / 23c are on My HTE, not My Documents.)
+        foreach (['WEEKLY_REPORT' => 'log'] as $code => $action) {
+            $page->assertSee(route('student.documents', ['form' => $this->req($code)->id]), false);
+            $this->actingAs($this->studentUser)->get(route('student.documents', ['form' => $this->req($code)->id]))
+                ->assertSee(route('student.documents.'.$action, $this->req($code)), false);
         }
-        $page->assertSee(route('student.documents.log', $this->req('INTERNSHIP_TIME_FRAME')), false);
-        $page->assertSee(route('student.documents.log', $this->req('WEEKLY_REPORT')), false);
         $page->assertSee('Narrative Report');
+        $this->actingAs($this->studentUser)->get(route('student.hte'))->assertOk()
+            ->assertSee(route('student.documents.fill', $this->req('STUDENT_FEEDBACK_FORM')), false)
+            ->assertSee(route('student.documents.fill', $this->req('STUDENT_HTE_EVALUATION')), false);
 
         // the HTE's and the instructor's forms are not on the student's list at all
         foreach (['Form 13 ', 'Form 21 ', 'Form 23a', 'Form 23b'] as $label) {
@@ -138,7 +143,7 @@ class PostDeploymentFormsByRoleTest extends TestCase
 
             $this->actingAs($this->studentUser)->get(route('student.documents.fill', $requirement))->assertOk();
             $this->actingAs($this->studentUser)->post(route('student.documents.fill.store', $requirement), $this->payload($requirement))
-                ->assertSessionHasNoErrors();
+                ->assertRedirect(route('student.hte').'#evaluate')->assertSessionHasNoErrors();
 
             $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status, $code);
         }
@@ -181,11 +186,12 @@ class PostDeploymentFormsByRoleTest extends TestCase
     public function test_hte_gets_forms_13_21_and_23b_but_not_the_students(): void
     {
         $page = $this->actingAs($this->hteUser)->get('/hte/evaluations')->assertOk();
-        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF'] as $code) {
+        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK'] as $code) {
             $page->assertSee(route('hte.forms.create', [$this->req($code), $this->deployment]), false);
         }
+        $page->assertSee(route('hte.self-evaluation.create'), false);   // Form 23b: once for the agency
 
-        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION', 'PARTNER_AGENCY_EVAL_INSTRUCTOR'] as $code) {
+        foreach (['STUDENT_FEEDBACK_FORM', 'STUDENT_HTE_EVALUATION', 'PARTNER_AGENCY_EVAL_INSTRUCTOR', 'PARTNER_AGENCY_EVAL_SELF'] as $code) {
             $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$this->req($code), $this->deployment]))->assertNotFound();
         }
     }
@@ -196,7 +202,7 @@ class PostDeploymentFormsByRoleTest extends TestCase
             ->assertOk()
             ->assertSee('Curiosity goes beyond immediate job procedures; eager to learn more; works hard.')   // D / 5
             ->assertSee('Generally not presentable: clothes dirty and not appropriate for the job')           // H / 1
-            ->assertSee('OJT GRADE');
+            ->assertDontSee('OJT GRADE');   // the instructor computes the grade
 
         $this->actingAs($this->hteUser)->get(route('hte.forms.create', [$this->req('TRAINING_SUPERVISOR_FEEDBACK'), $this->deployment]))
             ->assertOk()->assertSee('Strongly Agree')->assertSee('Strongly Disagree');
@@ -211,8 +217,8 @@ class PostDeploymentFormsByRoleTest extends TestCase
                 $payload['rater_type'] = 'Self Ratee';
             }
 
-            $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $payload)
-                ->assertSessionHasNoErrors();
+            $url = $code === 'PARTNER_AGENCY_EVAL_SELF' ? route('hte.self-evaluation.store') : route('hte.forms.store', [$requirement, $this->deployment]);
+            $this->actingAs($this->hteUser)->post($url, $payload)->assertRedirect(route('hte.evaluations'))->assertSessionHasNoErrors();
             $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status, $code);
         }
     }
@@ -229,42 +235,25 @@ class PostDeploymentFormsByRoleTest extends TestCase
     public function test_instructor_gets_form_23a_only(): void
     {
         $this->actingAs($this->instructorUser)->get('/instructor/evaluations')->assertOk()
-            ->assertSee(route('instructor.forms.create', [$this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR'), $this->deployment]), false);
-
-        foreach (['EVALUATION_FORM', 'TRAINING_SUPERVISOR_FEEDBACK', 'PARTNER_AGENCY_EVAL_SELF', 'STUDENT_HTE_EVALUATION'] as $code) {
-            $this->actingAs($this->instructorUser)->get(route('instructor.forms.create', [$this->req($code), $this->deployment]))->assertNotFound();
-        }
+            ->assertSee(route('instructor.agency-evaluations.create', $this->deployment->hte_id), false);
 
         $requirement = $this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR');
-        $this->actingAs($this->instructorUser)->post(route('instructor.forms.store', [$requirement, $this->deployment]), $this->payload($requirement))
-            ->assertSessionHasNoErrors();
+        $this->actingAs($this->instructorUser)->post(route('instructor.agency-evaluations.store', $this->deployment->hte_id), $this->payload($requirement))
+            ->assertRedirect(route('instructor.evaluations'))->assertSessionHasNoErrors();
         $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->firstOrFail()->status);
     }
 
     // ------------------------------------------------------- Form 13 grade/print
 
-    public function test_ojt_grade_formula_matches_the_official_form(): void
+    public function test_the_system_does_not_compute_an_ojt_grade(): void
     {
-        $all = fn (int $n) => array_fill_keys(array_keys(InternshipEvaluationForm::COMPETENCIES), $n);
-
-        $this->assertSame(100.0, InternshipEvaluationForm::grade($all(5)));
-        $this->assertSame(80.0, InternshipEvaluationForm::grade($all(3)));
-        $this->assertSame(60.0, InternshipEvaluationForm::grade($all(1)));
-        $this->assertSame(50.0, InternshipEvaluationForm::totalPoints($all(5)));
-        $this->assertNull(InternshipEvaluationForm::grade(['conduct' => 5]), 'not all competencies rated');
-
-        // weights from the official form add up to 100 and E (quality and accuracy) is the heaviest at 20
+        // The Subject Instructor computes the final grade outside the system.
+        $this->assertFalse(method_exists(InternshipEvaluationForm::class, 'grade'));
+        $this->assertNull(\App\Models\DocumentFieldDefinition::where('field_key', 'ojt_grade')->first(), 'the HTE has no OJT Grade box');
         $this->assertSame(100, array_sum(array_column(InternshipEvaluationForm::COMPETENCIES, 'weight')));
-        $this->assertSame(20, InternshipEvaluationForm::COMPETENCIES['quality_accuracy_work']['weight']);
-
-        // uneven ratings: A5 B4 C3 D2 E1 F5 G4 H3 -> sum(r*w)/100 = 5*.10+4*.15+3*.10+2*.10+1*.20+5*.10+4*.15+3*.10 = 3.2 -> 32 points -> 82
-        $this->assertSame(82.0, InternshipEvaluationForm::grade([
-            'ability_to_learn' => 5, 'work_attitude' => 4, 'conduct' => 3, 'motivation_initiative' => 2,
-            'quality_accuracy_work' => 1, 'quantity_of_work' => 5, 'safety_practices' => 4, 'appearance_hygiene' => 3,
-        ]));
     }
 
-    public function test_form_13_printout_shows_control_number_descriptor_and_the_real_grade(): void
+    public function test_form_13_printout_shows_control_number_and_descriptor_but_no_grade(): void
     {
         $requirement = $this->req('EVALUATION_FORM');
         $this->actingAs($this->hteUser)->post(route('hte.forms.store', [$requirement, $this->deployment]), $this->payload($requirement, 3))
@@ -277,8 +266,8 @@ class PostDeploymentFormsByRoleTest extends TestCase
         $this->assertStringContainsString('FM-AA-INT-13', $html);
         $this->assertStringContainsString('01-Feb-2017', $html);
         $this->assertStringContainsString('Asks questions; has adequate degree of knowledge', $html); // D / 3, verbatim
-        $this->assertStringContainsString('80.00', $html);       // all 3s -> OJT grade 80
-        $this->assertStringContainsString('30.00 / 50', $html);  // total points
+        $this->assertStringNotContainsString('80.00', $html);    // no computed OJT grade
+        $this->assertStringNotContainsString('/ 50', $html);     // no computed total points
     }
 
     public function test_form_21_printout_uses_the_likert_scale(): void

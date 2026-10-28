@@ -38,11 +38,17 @@
     <span class="il-page-date">{{ now()->format('F d, Y') }}</span>
 </div>
 
+@php
+    // The coordinator reviews only their own program's advisees: the "to do" numbers are that program's.
+    $me = auth()->user()->instructor;
+    $programCode = $me->program->code ?? '';
+    $ownProgram = $me->isCoordinator() && $me->program_id ? ['program_id' => $me->program_id] : [];
+@endphp
 <div class="il-hero mb-3">
     <p class="il-hero-title">Good morning, {{ auth()->user()->name }}!</p>
     <p class="il-hero-subtitle">
         You have {{ $counts['pending_review'] }} document{{ $counts['pending_review'] === 1 ? '' : 's' }} pending review
-        and {{ $counts['awaiting_approval'] }} student{{ $counts['awaiting_approval'] === 1 ? '' : 's' }} awaiting deployment approval.
+        and {{ $counts['awaiting_approval'] }} student{{ $counts['awaiting_approval'] === 1 ? '' : 's' }} placed at a partner agency but not yet started{{ $ownProgram ? ' in your program ('.$programCode.')' : '' }}.
     </p>
 </div>
 
@@ -54,7 +60,7 @@
                 <div class="il-stat-number">{{ $counts['advisees'] }}</div>
                 <span class="badge rounded-pill text-bg-success">Active</span>
             </div>
-            <div class="text-secondary small">My {{ auth()->user()->instructor->program->code ?? '' }} Students</div>
+            <div class="text-secondary small">{{ auth()->user()->isCoordinator() ? 'Campus Students' : 'My '.(auth()->user()->instructor->program->code ?? '').' Students' }}</div>
         </a>
     </div>
     <div class="col-md-3">
@@ -67,37 +73,58 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('instructor.documents') }}" class="il-card il-card-link">
+        <a href="{{ route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['pending_review'] }}</div>
                 <span class="badge rounded-pill text-bg-warning">Pending</span>
             </div>
-            <div class="text-secondary small">Docs For Review</div>
+            <div class="text-secondary small">Docs For Review{{ $ownProgram ? ' · '.$programCode : '' }}</div>
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('instructor.advisees', ['status' => 'pending']) }}" class="il-card il-card-link">
+        <a href="{{ route('instructor.advisees', $ownProgram + ['status' => 'pending']) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['awaiting_approval'] }}</div>
                 <span class="badge rounded-pill text-bg-danger">
                     <i class="ti ti-alert-triangle"></i> Action Needed
                 </span>
             </div>
-            <div class="text-secondary small">Awaiting Approval</div>
+            <div class="text-secondary small">Placed, Not Started{{ $ownProgram ? ' · '.$programCode : '' }}</div>
         </a>
     </div>
 </div>
 
+@if ($campus)
+    {{-- Coordinator only: campus-level items that need attention --}}
+    <div class="il-card mb-3">
+        <h2 class="h6 fw-bold mb-3">Campus attention</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <a href="{{ route('coordinator.programs.index') }}" class="il-row-link">
+                    <span class="small"><i class="ti ti-school text-danger"></i> Programs without an instructor</span>
+                    <span class="fw-bold">{{ $campus['uncovered_programs'] }}</span>
+                </a>
+            </div>
+            <div class="col-md-6">
+                <a href="{{ route('instructor.advisees', ['status' => 'not_deployed']) }}" class="il-row-link">
+                    <span class="small"><i class="ti ti-user-question text-secondary"></i> Students with no placement yet</span>
+                    <span class="fw-bold">{{ $campus['not_placed'] }}</span>
+                </a>
+            </div>
+        </div>
+    </div>
+@endif
+
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h6 fw-bold mb-0">Recent Submissions</h2>
-        <a href="{{ route('instructor.documents') }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
+        <h2 class="h6 fw-bold mb-0">Recent Submissions{{ $ownProgram ? ' · '.$programCode : '' }}</h2>
+        <a href="{{ route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
     </div>
 
     @forelse ($recentSubmissions as $document)
         @php
             $studentName = $document->internship->student->user->name;
-            $initials = collect(explode(' ', $studentName))->map(fn ($p) => $p[0] ?? '')->join('');
+            $initials = \App\Models\User::initialsOf($studentName);
         @endphp
         <a
             href="{{ route('instructor.documents', ['student' => $document->internship->student_id]) }}"

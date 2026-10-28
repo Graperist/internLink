@@ -24,7 +24,7 @@
 <div class="row g-3">
     <div class="col-lg-6">
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-3">My Account</h2>
+            <h2 class="h6 fw-bold mb-3 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-user-circle"></i></span> My Account</h2>
 
             <form method="POST" action="{{ route('instructor.profile.account') }}">
                 @csrf
@@ -54,11 +54,27 @@
                 <label class="form-label small fw-semibold">Campus</label>
                 <input type="text" class="form-control mb-3" value="{{ $instructor->campus->name ?? '—' }}" disabled>
 
-                <label class="form-label small fw-semibold">Program</label>
-                <input type="text" class="form-control mb-2" value="{{ $instructor->program->name ?? '—' }}" disabled>
-                <p class="small text-secondary mb-4">
-                    Your ID number, campus, and program are set by your OJT Coordinator and can't be changed here.
-                </p>
+                @if ($instructor->isCoordinator())
+                    <label class="form-label small fw-semibold" for="program_id">Program I teach</label>
+                    <select name="program_id" id="program_id" class="form-select mb-2">
+                        <option value="">— None —</option>
+                        @foreach ($programs as $program)
+                            <option value="{{ $program->id }}" @selected((string) old('program_id', $instructor->program_id) === (string) $program->id)>
+                                {{ $program->code }} - {{ $program->displayName() }}
+                            </option>
+                        @endforeach
+                    </select>
+                    <p class="small text-secondary mb-4">
+                        As OJT Coordinator you see every student on the campus. For students in this program you also act as
+                        their subject instructor: add interns, review documents and start deployments.
+                    </p>
+                @else
+                    <label class="form-label small fw-semibold">Program</label>
+                    <input type="text" class="form-control mb-2" value="{{ $instructor->program?->displayName() ?? '—' }}" disabled>
+                    <p class="small text-secondary mb-4">
+                        Your ID number, campus, and program are set by your OJT Coordinator and can't be changed here.
+                    </p>
+                @endif
 
                 <button type="submit" class="btn btn-primary">Save account details</button>
             </form>
@@ -71,7 +87,7 @@
         </div>
 
         <div class="il-card">
-            <h2 class="h6 fw-bold mb-2">Password</h2>
+            <h2 class="h6 fw-bold mb-2 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-lock"></i></span> Password</h2>
             <p class="small text-secondary mb-3">
                 Change the password you use to sign in.
             </p>

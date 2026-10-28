@@ -135,6 +135,11 @@
         .sig-line {
             border-bottom: 1px solid #000;
             height: 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 8.5px;
         }
 
         .sig-title {
@@ -149,7 +154,10 @@
             .no-print { display: none; }
             body { max-width: none; }
         }
+            /* Signatory names are printed in capital letters on every form. */
+        .sig-line { text-transform: uppercase; }
     </style>
+    @include('partials.a4-page')
 </head>
 <body>
 
@@ -193,6 +201,11 @@
 
     // Weeks start on the day the student first logged their DTR (7 days each).
     $weeks = \App\Support\TrainingWeeks::group($allEntries, \App\Support\TrainingWeeks::anchorFor($document));
+
+    // Download by week (?week=...): only that week's page.
+    if ($onlyWeek = \App\Support\TrainingWeeks::requested($document->internship)) {
+        $weeks = $weeks->filter(fn ($entries, $start) => $start === $onlyWeek->toDateString());
+    }
 
     /*
      * Keep the header fields if they exist from older Form 19 records.
@@ -348,7 +361,7 @@
                     <div class="sig-col">
                         <strong>PREPARED BY:</strong>
 
-                        <div class="sig-line"></div>
+                        <div class="sig-line">{{ $studentName }}</div>
 
                         <div class="sig-title">
                             Signature of Student-Intern
@@ -362,7 +375,8 @@
                     <div class="sig-col">
                         <strong>NOTED BY:</strong>
 
-                        <div class="sig-line"></div>
+                        {{-- On-site supervisor = the HTE's contact person on record --}}
+                        <div class="sig-line">{{ $deployment?->hte?->contact_person }}</div>
 
                         <div class="sig-title">
                             Signature over printed name of On-Site Supervisor
