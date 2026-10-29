@@ -52,7 +52,7 @@ class DashboardController extends Controller
                 fn ($q) => $q->where('status', 'pending')
             )->count(),
             'pending_review' => $documentScope()->whereIn('status', ['submitted', 'for_review'])->count(),
-            'reviewed_this_month' => DocumentReview::where('instructor_id', $instructor->id)
+            'reviewed_this_month' => DocumentReview::where('instructor_id', $instructor->id ?? 0)
                 ->whereMonth('reviewed_at', now()->month)
                 ->whereYear('reviewed_at', now()->year)
                 ->count(),

@@ -99,7 +99,7 @@ class AuditTrailController extends Controller
                 ->orWhereHas('user', fn ($u) => $u->where('name', 'like', '%'.$search.'%')->orWhere('id_number', 'like', '%'.$search.'%'))))
             ->when($date, fn ($q) => $q->whereDate('created_at', $date))
             ->orderByDesc('id')
-            ->paginate(30)
+            ->paginate(10)   // 10 per page; the pages below go further back
             ->withQueryString();
 
         return view('instructor.audit-trail', [

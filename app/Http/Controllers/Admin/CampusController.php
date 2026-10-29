@@ -20,18 +20,7 @@ class CampusController extends Controller
 {
     public function index(): View
     {
-        $coordinatorRoleId = Role::where('code', 'coordinator')->value('id');
-
-        $campuses = Campus::withCount([
-            'programs',
-            'students',
-            'users as coordinators_count' => fn ($q) => $q->where('role_id', $coordinatorRoleId),
-        ])->addSelect(['active_coordinator_id' => \App\Models\User::select('id')
-            ->whereColumn('campus_id', 'campuses.id')
-            ->where('role_id', $coordinatorRoleId)
-            ->where('status', 'active')
-            ->orderBy('id')->limit(1),
-        ])->orderBy('name')->get();
+        $campuses = Campus::withCount('programs')->orderBy('name')->get();
 
         return view('admin.campuses.index', compact('campuses'));
     }

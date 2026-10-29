@@ -55,9 +55,8 @@ class DeleteController extends Controller
      */
     public function campusAccount(Request $request, User $user): RedirectResponse
     {
-        $admin = CampusManager::superAdmin();
-        abort_unless($admin, 403);
-        abort_unless((int) $user->campus_id === (int) $request->user()->campus_id, 404);
+        abort_unless(CampusManager::active(), 403);
+        abort_unless((int) $user->campus_id === CampusManager::campusId(), 404);
         abort_unless(in_array($user->role?->code, ['instructor', 'hte_representative', 'student'], true), 404);
 
         return $this->deleteAccount($request, $user, $request->user(), url()->previous());

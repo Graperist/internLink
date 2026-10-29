@@ -3,7 +3,6 @@
 namespace App\Http\Middleware;
 
 use App\Support\AuditLogger;
-use App\Support\CampusManager;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,9 +20,10 @@ class EnsureCampusIsActive
     {
         $user = $request->user();
 
-        $status = $user?->campus_id ? \App\Models\Campus::whereKey($user->campus_id)->value('status') : null;
+        // The Super Admin is never closed out (they can still manage an inactive campus).
+        $status = $user?->campus_id && ! $user->isSuperAdmin() ? \App\Models\Campus::whereKey($user->campus_id)->value('status') : null;
 
-        if ($status !== null && $status !== 'active' && ! CampusManager::active()) {
+        if ($status !== null && $status !== 'active') {
             AuditLogger::record('auth.campus_inactive', 'Signed out - their campus is inactive', $user, $request);
             Auth::logout();
             $request->session()->invalidate();

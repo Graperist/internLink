@@ -3,6 +3,7 @@
 @section('title', 'Dashboard - PSU Intern-Link')
 
 @section('content')
+@php $isSuperAdminView = auth()->user()->isSuperAdmin(); @endphp
 <style>
     .il-card-link {
         display: block;
@@ -73,7 +74,7 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="il-card il-card-link">
+        <a href="{{ $isSuperAdminView ? route('coordinator.documents') : route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['pending_review'] }}</div>
                 <span class="badge rounded-pill text-bg-warning">Pending</span>
@@ -115,6 +116,7 @@
     </div>
 @endif
 
+@unless ($isSuperAdminView)
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">Recent Submissions{{ $ownProgram ? ' · '.$programCode : '' }}</h2>
@@ -150,4 +152,5 @@
         <p class="text-center text-secondary py-4 mb-0">Nothing waiting on you right now.</p>
     @endforelse
 </div>
+@endunless
 @endsection

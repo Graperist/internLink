@@ -22,7 +22,7 @@
     @endif
 </div>
 
-@if ($isCoordinator && $instructor->program_id === null)
+@if ($isCoordinator && $instructor->program_id === null && ! auth()->user()->isSuperAdmin())
     <div class="alert alert-warning small">
         You can see and enroll students of every program on the campus. To review documents for the program you teach,
         <a href="{{ route('instructor.profile') }}" class="alert-link">set your program in My Profile</a>.

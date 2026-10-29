@@ -25,7 +25,7 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">Dashboard</h1>
-        <p class="text-secondary small mb-0">All campuses at a glance. <strong>Manage</strong> opens a campus as its OJT Coordinator.</p>
+        <p class="text-secondary small mb-0">All campuses at a glance. <strong>Manage</strong> gives you the OJT Coordinator's access to a campus.</p>
     </div>
     <span class="text-secondary small">{{ now()->format('F j, Y') }}</span>
 </div>
@@ -91,12 +91,10 @@
                             @endif
                         </td>
                         <td class="text-end text-nowrap">
-                            @if ($row->coordinator)
-                                <form method="POST" action="{{ route('admin.campuses.manage', $campus) }}" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-door-enter"></i> Manage</button>
-                                </form>
-                            @endif
+                            <form method="POST" action="{{ route('admin.campuses.manage', $campus) }}" class="d-inline">
+                                @csrf
+                                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-door-enter"></i> Manage</button>
+                            </form>
                         </td>
                     </tr>
                 @empty

@@ -52,56 +52,45 @@
         </div>
     </form>
 
-    <div class="table-responsive">
-        <table class="table align-middle mb-0">
-            <thead>
-                <tr class="text-secondary" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .03em;">
-                    <th>Coordinator</th><th>Campus</th><th>Email</th><th>Program</th><th>Status</th><th class="text-end"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($coordinators as $coordinator)
-                    @php $active = $coordinator->status === 'active'; @endphp
-                    <tr>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="il-row-avatar">{{ \App\Models\User::initialsOf($coordinator->name) }}</span>
-                                <span>
-                                    <span class="fw-semibold d-block">{{ $coordinator->name }}</span>
-                                    <span class="text-secondary" style="font-size:.78rem;">{{ $coordinator->id_number }}</span>
-                                </span>
-                            </div>
-                        </td>
-                        <td><span class="badge rounded-pill text-bg-light border fw-bold">{{ $coordinator->campus?->code ?? '—' }}</span> <span class="small">{{ $coordinator->campus?->name }}</span></td>
-                        <td class="small">{{ $coordinator->email }}</td>
-                        <td class="small">{{ $coordinator->instructor?->program?->code ?? '—' }}</td>
-                        <td><span class="badge rounded-pill {{ $active ? 'text-bg-primary' : 'text-bg-secondary' }}">{{ $active ? 'Active' : 'Deactivated' }}</span></td>
-                        <td class="text-end text-nowrap">
-                            <form method="POST" action="{{ route('admin.coordinators.reset-password', $coordinator) }}" class="d-inline"
-                                  onsubmit="return confirm('Give {{ addslashes($coordinator->name) }} a new temporary password? It will be emailed to {{ addslashes($coordinator->email) }}.')">
-                                @csrf
-                                <button type="submit" class="il-icon-btn" title="Reset password"><i class="ti ti-key"></i><span class="visually-hidden">Reset password</span></button>
-                            </form>
-                            <form method="POST" action="{{ route('admin.coordinators.status', $coordinator) }}" class="d-inline"
-                                  onsubmit="return confirm('{{ $active ? 'Deactivate '.addslashes($coordinator->name).'? They will no longer be able to sign in.' : 'Reactivate '.addslashes($coordinator->name).'?' }}')">
-                                @csrf
-                                <button type="submit" class="il-icon-btn" title="{{ $active ? 'Deactivate' : 'Reactivate' }}">
-                                    <i class="ti {{ $active ? 'ti-user-off' : 'ti-user-check' }}"></i><span class="visually-hidden">{{ $active ? 'Deactivate' : 'Reactivate' }}</span>
-                                </button>
-                            </form>
-                            @include('partials.admin-delete-button', [
-                                'action' => route('admin.coordinators.destroy', $coordinator),
-                                'message' => "Delete the OJT Coordinator account of {$coordinator->name} ({$coordinator->id_number})? They will no longer be able to sign in. The campus and its records are kept. This cannot be undone.",
-                            ])
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="6" class="text-center text-secondary py-5">
-                        {{ request()->hasAny(['search', 'campus_id']) ? 'No coordinators match this search or filter.' : 'No coordinator accounts yet.' }}
-                    </td></tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+    @php $searching = request()->hasAny(['search', 'campus_id']); @endphp
+    @forelse ($groups as $year => $coordinators)
+        {{-- Closed until clicked; opened when searching so the matches show. --}}
+        <details class="ay-group" @if ($searching) open @endif>
+            <summary>
+                <i class="ti ti-chevron-right ay-chev"></i>
+                <span class="fw-bold">A.Y. {{ $year }}</span>
+                @if ($year === $currentYear)<span class="badge rounded-pill text-bg-primary ms-1">Current</span>@endif
+                <span class="text-secondary small ms-auto">{{ $coordinators->count() }} {{ \Illuminate\Support\Str::plural('coordinator', $coordinators->count()) }}</span>
+            </summary>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr class="text-secondary" style="font-size: .75rem; text-transform: uppercase; letter-spacing: .03em;">
+                            <th>Coordinator</th><th>Campus</th><th>Email</th><th>Program</th><th>Status</th><th class="text-end"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($coordinators as $coordinator)
+                            @include('admin.coordinators._row')
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    @empty
+        <p class="text-center text-secondary py-5 mb-0">
+            {{ $searching ? 'No coordinators match this search or filter.' : 'No coordinator accounts yet.' }}
+        </p>
+    @endforelse
+    <style>
+        .ay-group { border: 1px solid #e6eaf0; border-radius: 10px; margin-bottom: .6rem; background: #fff; }
+        .ay-group > summary { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; cursor: pointer; list-style: none; }
+        .ay-group > summary::-webkit-details-marker { display: none; }
+        .ay-group > summary:hover { background: #f6f8fb; border-radius: 10px; }
+        .ay-group[open] > summary { border-bottom: 1px solid #e6eaf0; border-radius: 10px 10px 0 0; }
+        .ay-chev { display: inline-block; transition: transform .15s; color: #5d6b80; }
+        .ay-group[open] .ay-chev { transform: rotate(90deg); }
+        .ay-group .table-responsive { padding: 0 .5rem .25rem; }
+    </style>
 </div>
 @endsection

@@ -153,40 +153,61 @@ class SuperAdminTest extends TestCase
         $this->assertSame(1, DB::table('users')->where('id_number', 'PSU-ADMIN-001')->count());
     }
 
-    public function test_the_super_admin_manages_a_campus_as_its_coordinator_and_comes_back(): void
+    public function test_the_super_admin_manages_a_campus_with_the_coordinators_access_under_their_own_account(): void
     {
         $coordinator = $this->staff('coordinator', 'ACC-COORD-001');
-        $coordinator->update(['must_change_password' => true]);   // not asked of the Super Admin
         $other = Campus::forceCreate(['code' => 'BC', 'name' => 'PSU - Bayambang Campus', 'status' => 'active']);
 
+        // every campus can be managed - no coordinator account needed
         $this->actingAs($this->admin)->get(route('admin.campuses.index'))->assertOk()
             ->assertSee(route('admin.campuses.manage', $this->acc), false)
-            ->assertDontSee(route('admin.campuses.manage', $other), false);   // no coordinator yet
+            ->assertSee(route('admin.campuses.manage', $other), false)
+            ->assertDontSee('>Coordinator<', false)->assertDontSee('>Students<', false)->assertDontSee('>Status<', false);
 
         $this->actingAs($this->admin)->post(route('admin.campuses.manage', $this->acc))->assertRedirect(route('instructor.dashboard'));
-        $this->assertSame($coordinator->id, auth()->id());
+        // still the Super Admin's own account - the coordinator's is never used
+        $this->assertSame($this->admin->id, auth()->id());
 
-        // every coordinator page of that campus, with the banner
         $this->get(route('instructor.dashboard'))->assertOk()
-            ->assertSee("you're managing", false)->assertSee('PSU - Alaminos City Campus')->assertSee('Back to Super Admin');
-        foreach (['coordinator.programs.index', 'coordinator.instructors.index', 'coordinator.hte-accounts.index', 'coordinator.documents', 'coordinator.settings', 'coordinator.campus-settings.edit'] as $name) {
+            // still the Super Admin's portal: their sidebar, with the campus's modules in it
+            ->assertSee(route('admin.dashboard'), false)->assertSee(route('admin.campuses.index'), false)
+            ->assertSee('Managing')->assertSee('Close campus')->assertSee('Campus Dashboard')
+            ->assertSee(route('coordinator.programs.index'), false)->assertSee(route('coordinator.instructors.index'), false)
+            ->assertDontSee('Coordinator Portal')->assertDontSee('Test OJT Coordinator')->assertDontSee(route('instructor.profile'), false);
+        // the Super Admin's own pages keep the campus open in the sidebar
+        $this->get(route('admin.campuses.index'))->assertOk()->assertSee('Close campus')->assertSee(route('coordinator.programs.index'), false);
+        foreach (['coordinator.programs.index', 'coordinator.instructors.index', 'coordinator.hte-accounts.index', 'coordinator.documents', 'coordinator.settings', 'coordinator.campus-settings.edit', 'instructor.advisees', 'instructor.monitoring', 'instructor.htes', 'instructor.reports', 'instructor.audit-trail'] as $name) {
             $this->get(route($name))->assertOk();
         }
+        // no document review, evaluations or announcements for the Super Admin
+        $this->get(route('instructor.dashboard'))->assertDontSee(route('instructor.documents'), false)
+            ->assertDontSee(route('instructor.evaluations'), false)->assertDontSee(route('instructor.announcements'), false)
+            ->assertDontSee('Recent Submissions');
+        foreach (['instructor.documents', 'instructor.evaluations', 'instructor.announcements'] as $name) {
+            $this->get(route($name))->assertForbidden();
+        }
+        $this->post(route('instructor.announcements.store'), ['title' => 'Hi', 'body' => 'x'])->assertForbidden();
+        $this->get(route('instructor.profile'))->assertRedirect(route('admin.account'));
 
-        // the audit trail names the Super Admin
+        // what they do is recorded as the Super Admin, on that campus
         $this->post(route('coordinator.programs.store'), ['code' => 'BSCS', 'name' => 'BS Computer Science', 'required_hours' => 486]);
         $this->assertTrue(\App\Models\Program::where('campus_id', $this->acc->id)->where('code', 'BSCS')->exists());
-        $this->get(route('coordinator.programs.index'));
-        $this->assertTrue(\App\Models\ActivityLog::where('user_id', $coordinator->id)->where('description', 'like', '%(by Super Admin Super Admin)%')->exists());
+        $log = \App\Models\ActivityLog::where('action', 'program.created')->latest('id')->first();
+        $this->assertSame([$this->admin->id, 'super_admin', $this->acc->id], [$log->user_id, $log->role_code, $log->campus_id]);
 
-        // back to the Super Admin portal
+        // nothing about the campus was saved to their account
+        $this->assertNull($this->admin->fresh()->campus_id);
+        $this->assertSame(0, \App\Models\Instructor::where('user_id', $this->admin->id)->count());
+
+        // switch campus
         $this->post(route('admin.campuses.leave'))->assertRedirect(route('admin.dashboard'));
-        $this->assertSame($this->admin->id, auth()->id());
         $this->get(route('admin.campuses.index'))->assertOk();
         $this->get(route('instructor.dashboard'))->assertForbidden();
+        $this->post(route('admin.campuses.manage', $other));
+        $this->get(route('coordinator.programs.index'))->assertOk()->assertDontSee('BSCS');
+        $this->post(route('admin.campuses.leave'));
 
-        // nobody else can use "back to Super Admin"
-        $coordinator->update(['must_change_password' => false]);
+        // nobody else can use these
         $this->actingAs($coordinator)->post(route('admin.campuses.leave'))->assertForbidden();
         $this->actingAs($coordinator)->post(route('admin.campuses.manage', $this->acc))->assertForbidden();
     }
@@ -263,7 +284,7 @@ class SuperAdminTest extends TestCase
         // the Super Admin still signs in and can still open the campus
         $this->post(route('login.attempt'), ['id_number' => 'PSU-ADMIN-001', 'password' => 'password'])->assertRedirect(route('admin.dashboard'));
         $this->post(route('admin.campuses.manage', $this->acc))->assertRedirect(route('instructor.dashboard'));
-        $this->get(route('instructor.dashboard'))->assertOk()->assertSee('Back to Super Admin');
+        $this->get(route('instructor.dashboard'))->assertOk()->assertSee('Close campus');
         $this->post(route('admin.campuses.leave'))->assertRedirect(route('admin.dashboard'));
 
         // active again: everyone gets back in
@@ -320,7 +341,7 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseMissing('documents', ['id' => $document->id]);
         \Illuminate\Support\Facades\Storage::assertMissing('documents/23-AC-0001.pdf');
 
-        // not the coordinator being used, and nothing from another campus
+        // coordinators are deleted from OJT Coordinators, not here
         $this->delete(route('admin.campus-accounts.destroy', $coordinator))->assertNotFound();
         $this->post(route('admin.campuses.leave'));
 
@@ -365,5 +386,36 @@ class SuperAdminTest extends TestCase
         $this->assertSame(0, \App\Models\Program::count() + \App\Models\Hte::count() + \App\Models\Internship::count() + \App\Models\Document::count());
         $this->assertDatabaseHas('campuses', ['id' => $other->id]);
         $this->assertDatabaseHas('users', ['id' => $this->admin->id]);
+    }
+
+    public function test_coordinators_are_grouped_by_academic_year_and_open_when_clicked(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29 12:00:00'));
+        $this->staff('coordinator', 'ACC-COORD-001');                      // A.Y. 2026-2027
+        $old = $this->staff('coordinator', 'ACC-COORD-000');
+        $old->forceFill(['created_at' => '2025-09-01 08:00:00'])->save();  // A.Y. 2025-2026
+
+        $html = $this->actingAs($this->admin)->get(route('admin.coordinators.index'))->assertOk()
+            ->assertSeeInOrder(['A.Y. 2026-2027', 'Current', 'ACC-COORD-001', 'A.Y. 2025-2026', 'ACC-COORD-000'])
+            ->getContent();
+        // closed until clicked
+        $this->assertSame(2, substr_count($html, '<details class="ay-group" >'));
+
+        // searching opens the groups so the matches show
+        $html = $this->actingAs($this->admin)->get(route('admin.coordinators.index', ['search' => 'COORD-000']))->assertOk()
+            ->assertSee('A.Y. 2025-2026')->assertDontSee('A.Y. 2026-2027')->getContent();
+        $this->assertStringContainsString('<details class="ay-group"  open >', $html);
+    }
+
+    public function test_the_audit_trail_shows_10_per_page(): void
+    {
+        foreach (range(1, 12) as $n) {
+            \App\Support\AuditLogger::record('test.entry', "Entry number {$n}.", $this->admin);
+        }
+
+        $this->actingAs($this->admin)->get(route('admin.audit-trail', ['kind' => 'action']))->assertOk()
+            ->assertSee('Entry number 12.')->assertSee('Entry number 3.')->assertDontSee('Entry number 2.');
+        $this->actingAs($this->admin)->get(route('admin.audit-trail', ['kind' => 'action', 'page' => 2]))->assertOk()
+            ->assertSee('Entry number 2.')->assertSee('Entry number 1.');
     }
 }

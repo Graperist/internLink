@@ -17,8 +17,6 @@ class EnsurePasswordIsChanged
             && $user->must_change_password
             // HTE accounts are given by the coordinator for evaluations only and keep their password.
             && ! $user->isHteRepresentative()
-            // The Super Admin managing a campus doesn't change the coordinator's password.
-            && ! \App\Support\CampusManager::active()
             && ! $request->routeIs('password.change', 'password.update', 'logout')
         ) {
             return redirect()->route('password.change');

@@ -48,7 +48,7 @@
 @if ($errors->has('listing'))
     <div class="alert alert-danger" role="alert">{{ $errors->first('listing') }}</div>
 @endif
-@if (! $hasProgram)
+@if (! $hasProgram && ! auth()->user()->isSuperAdmin())
     <div class="alert alert-warning small">
         To add partner agencies for the program you teach, <a href="{{ route('instructor.profile') }}" class="alert-link">set your program in My Profile</a>.
     </div>

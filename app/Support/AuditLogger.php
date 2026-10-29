@@ -31,16 +31,13 @@ class AuditLogger
         try {
             $request ??= request();
 
-            // A Super Admin working in a campus as its coordinator: say so.
-            $manager = CampusManager::superAdmin();
-            if ($manager && $user && $user->id !== $manager->id) {
-                $description .= " (by Super Admin {$manager->name})";
-            }
 
             return ActivityLog::create([
                 'user_id' => $user?->id,
                 'campus_id' => $user?->campus_id ?? $campusId,
-                'role_code' => $user?->role?->code,
+                // The Super Admin keeps their own role in the trail, even while
+                // working in a campus with the coordinator's tools.
+                'role_code' => $user?->isSuperAdmin() ? 'super_admin' : $user?->role?->code,
                 'action' => $action,
                 'subject_type' => $subject ? $subject::class : null,
                 'subject_id' => $subject?->getKey(),

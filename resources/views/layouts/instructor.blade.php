@@ -14,6 +14,10 @@
 <body class="il-shell-body il-staff">
     <div class="il-shell">
         @include('partials.mobile-nav')
+        @if (auth()->user()->isSuperAdmin())
+            {{-- The Super Admin stays in their own portal: the campus's modules are in their sidebar. --}}
+            @include('partials.admin-sidebar')
+        @else
         <aside class="il-sidebar">
             @php
                 // One sidebar for both roles. The OJT Coordinator is also a
@@ -22,16 +26,18 @@
                 $portalUser = auth()->user();
                 $isCoordinator = $portalUser->isCoordinator();
                 $programCode = $portalUser->instructor?->program?->code;
+                // The Super Admin working in a campus (with the coordinator's tools).
+                $isSuperAdmin = $portalUser->isSuperAdmin();
             @endphp
             <div class="il-sidebar-brand">
                 <img src="{{ asset('images/psu-logo.png') }}" alt="PSU logo">
                 <div>
                     <p class="il-brand-title">PSU Intern-Link</p>
-                    <p class="il-brand-subtitle">{{ $isCoordinator ? 'Coordinator Portal' : 'Instructor Portal' }}</p>
+                    <p class="il-brand-subtitle">{{ $isSuperAdmin ? 'Super Admin' : ($isCoordinator ? 'Coordinator Portal' : 'Instructor Portal') }}</p>
                 </div>
             </div>
 
-            <a href="{{ route('instructor.profile') }}" class="il-sidebar-user il-sidebar-user-link text-decoration-none" title="Edit my profile">
+            <a href="{{ $isSuperAdmin ? route('admin.account') : route('instructor.profile') }}" class="il-sidebar-user il-sidebar-user-link text-decoration-none" title="{{ $isSuperAdmin ? 'My account' : 'Edit my profile' }}">
                 @if ($portalUser->avatar_url)
                     <img src="{{ $portalUser->avatar_url }}" alt="{{ $portalUser->name }}" class="il-avatar-img">
                 @else
@@ -40,7 +46,11 @@
                 <div class="min-w-0">
                     <p class="il-user-name text-truncate">{{ $portalUser->name }}</p>
                     <p class="il-user-role text-truncate">
-                        {{ $isCoordinator ? 'OJT Coordinator' : 'Subject Instructor' }} - {{ $programCode ?? '—' }}
+                        @if ($isSuperAdmin)
+                            Super Admin - {{ $portalUser->campus?->code }}
+                        @else
+                            {{ $isCoordinator ? 'OJT Coordinator' : 'Subject Instructor' }} - {{ $programCode ?? '—' }}
+                        @endif
                     </p>
                 </div>
                 <i class="ti ti-chevron-right ms-auto text-secondary"></i>
@@ -59,22 +69,28 @@
                 <a href="{{ route('instructor.advisees') }}" class="il-nav-link {{ request()->routeIs('instructor.advisees*', 'instructor.interns.*') ? 'active' : '' }}">
                     <i class="ti ti-users"></i> {{ $isCoordinator ? 'Students' : 'My Students' }}
                 </a>
+                @unless ($isSuperAdmin)
                 <a href="{{ route('instructor.documents') }}" class="il-nav-link {{ request()->routeIs('instructor.documents*') && empty($inTracking) ? 'active' : '' }}">
                     <i class="ti ti-file-text"></i> Document Review
                 </a>
+                @endunless
                 <a href="{{ route('instructor.monitoring') }}" class="il-nav-link {{ request()->routeIs('instructor.monitoring*') ? 'active' : '' }}">
                     <i class="ti ti-clock"></i> Time Frame
                 </a>
                 {{-- Evaluations of the person's own program (the coordinator handles a program too). --}}
+                @unless ($isSuperAdmin)
                 <a href="{{ route('instructor.evaluations') }}" class="il-nav-link {{ request()->routeIs('instructor.evaluations*', 'instructor.agency-evaluations.*') ? 'active' : '' }}">
                     <i class="ti ti-star"></i> Evaluations
                 </a>
+                @endunless
                 <a href="{{ route('instructor.reports') }}" class="il-nav-link {{ request()->routeIs('instructor.reports*', 'coordinator.reports*') ? 'active' : '' }}">
                     <i class="ti ti-report"></i> Generate Reports
                 </a>
+                @unless ($isSuperAdmin)
                 <a href="{{ route('instructor.announcements') }}" class="il-nav-link {{ request()->routeIs('instructor.announcements*') ? 'active' : '' }}">
                     <i class="ti ti-speakerphone"></i> Announcements
                 </a>
+                @endunless
 
                 @if ($isCoordinator)
                     <p class="il-nav-label">Campus Administration</p>
@@ -93,9 +109,11 @@
                 @endif
 
                 <p class="il-nav-label">Account</p>
+                @unless ($isSuperAdmin)
                 <a href="{{ route('instructor.profile') }}" class="il-nav-link {{ request()->routeIs('instructor.profile') ? 'active' : '' }}">
                     <i class="ti ti-user-cog"></i> My Profile
                 </a>
+                @endunless
                 @if ($isCoordinator)
                     {{-- OJT Coordinator only: Campus Settings and Audit Trail are inside. --}}
                     <a href="{{ route('coordinator.settings') }}" class="il-nav-link {{ request()->routeIs('coordinator.settings', 'coordinator.campus-settings.*', 'instructor.audit-trail') ? 'active' : '' }}">
@@ -109,9 +127,9 @@
                 <button type="submit" class="il-signout-btn">Sign out</button>
             </form>
         </aside>
+        @endif
 
         <main class="il-main">
-            @include('partials.managing-campus-bar')
             @yield('content')
         </main>
     </div>

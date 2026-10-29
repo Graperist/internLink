@@ -100,10 +100,16 @@ class User extends Authenticatable
         return $this->role && $this->role->code === $code;
     }
 
+    /**
+     * Set (in memory only) while the Super Admin works in a campus with the
+     * coordinator's tools - see App\Support\CampusManager.
+     */
+    public ?string $realRoleCode = null;
+
     /** University-wide: adds campuses and their coordinators, manages the login photos. */
     public function isSuperAdmin(): bool
     {
-        return $this->hasRole('super_admin');
+        return ($this->realRoleCode ?? $this->role?->code) === 'super_admin';
     }
 
     public function isCoordinator(): bool

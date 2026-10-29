@@ -15,7 +15,8 @@ class Form19DeadlineController extends Controller
 {
     public function update(Request $request): RedirectResponse
     {
-        $instructor = auth()->user()->instructor()->with('program')->first();
+        $instructor = auth()->user()->instructor;
+        $instructor?->loadMissing('program');
         abort_unless($instructor, 403);
         abort_unless($instructor->program, 422, 'Your account has no program yet - ask your coordinator.');
 

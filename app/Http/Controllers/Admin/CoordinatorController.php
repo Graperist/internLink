@@ -39,10 +39,16 @@ class CoordinatorController extends Controller
                 ->orWhere('email', 'like', "%{$search}%"));
         }
 
-        $coordinators = $query->get()->sortBy(fn ($u) => ($u->campus?->name ?? '').'|'.$u->name)->values();
+        // Grouped by academic year (the year the account was added), newest
+        // first, so the list stays short as accounts pile up over the years.
+        $groups = $query->get()
+            ->sortBy(fn ($u) => ($u->campus?->name ?? '').'|'.$u->name)
+            ->groupBy(fn ($u) => \App\Support\Term::forDate($u->created_at)[0])
+            ->sortKeysDesc();
         $campuses = Campus::orderBy('name')->get();
+        $currentYear = \App\Support\Term::current()[0];
 
-        return view('admin.coordinators.index', compact('coordinators', 'campuses'));
+        return view('admin.coordinators.index', compact('groups', 'campuses', 'currentYear'));
     }
 
     public function create(Request $request): View

@@ -23,7 +23,8 @@ class AnnouncementController extends Controller
 
         // Announcements go to the interns of the sender's own program - the
         // coordinator's too (they are also a program instructor).
-        $instructor = $user->instructor()->with('program')->first();
+        $instructor = $user->instructor;   // (the Super Admin's comes from CampusManager)
+        $instructor?->loadMissing('program');
 
         // The OJT Coordinator can send to one program or to every program.
         $programs = $instructor->isCoordinator()

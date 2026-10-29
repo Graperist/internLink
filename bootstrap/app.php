@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Audit trail: records page views, downloads, form actions and denied
         // access for every signed-in user. See LogUserActivity + config/audit.php.
+        // The Super Admin working in a campus gets the coordinator's access (CampusManager).
+        $middleware->appendToGroup('web', \App\Http\Middleware\ApplySuperAdminCampus::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\LogUserActivity::class);
 
         // Sends the Form 19 weekly-report reminders automatically (8:00 PM /
