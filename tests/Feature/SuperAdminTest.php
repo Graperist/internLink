@@ -258,10 +258,13 @@ class SuperAdminTest extends TestCase
 
         $html = $this->actingAs($this->admin)->get(route('admin.dashboard'))->assertOk()
             ->assertSee('Active campuses')->assertSee('Documents waiting for review')
-            ->assertSeeInOrder(['PSU - Alaminos City Campus', 'Add coordinator', '3', '1', '1', '33%'])
+            ->assertSeeInOrder(['3', 'Student interns', '1', 'Deployed now', '1', 'Completed', '1', 'Documents waiting for review'])
+            ->assertSeeInOrder(['PSU - Alaminos City Campus', 'Add coordinator'])
             ->assertSee('PSU - Bayambang Campus')
             ->getContent();
-        $this->assertStringContainsString('text-bg-warning">1</span>', $html);   // one document waiting at ACC
+        // the By campus table is Campus, Coordinator and Manage only
+        $this->assertStringNotContainsString('Docs waiting', $html);
+        $this->assertStringNotContainsString('>Progress<', $html);
         $this->actingAs($this->staff('coordinator', 'ACC-COORD-001'))->get(route('admin.dashboard'))->assertForbidden();
     }
 

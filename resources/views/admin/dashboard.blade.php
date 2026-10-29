@@ -51,16 +51,12 @@
         <table class="table align-middle mb-0 ad-table">
             <thead>
                 <tr>
-                    <th>Campus</th><th>Coordinator</th><th class="text-end">Students</th><th class="text-end">Deployed</th>
-                    <th class="text-end">Completed</th><th>Progress</th><th class="text-end">Docs waiting</th><th class="text-end"></th>
+                    <th>Campus</th><th>Coordinator</th><th class="text-end"></th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($campuses as $row)
-                    @php
-                        $campus = $row->campus;
-                        $done = $row->students ? (int) round($row->completed / $row->students * 100) : 0;
-                    @endphp
+                    @php $campus = $row->campus; @endphp
                     <tr class="{{ $campus->status === 'active' ? '' : 'ad-inactive' }}">
                         <td>
                             <span class="badge rounded-pill text-bg-light border fw-bold me-1">{{ $campus->code }}</span>
@@ -74,22 +70,6 @@
                                 <a href="{{ route('admin.coordinators.create', ['campus_id' => $campus->id]) }}" class="text-decoration-none">Add coordinator</a>
                             @endif
                         </td>
-                        <td class="text-end ad-num">{{ $row->students }}</td>
-                        <td class="text-end ad-num">{{ $row->deployed }}</td>
-                        <td class="text-end ad-num">{{ $row->completed }}</td>
-                        <td>
-                            <div class="d-flex align-items-center gap-2" title="{{ $done }}% of students completed">
-                                <div class="ad-bar flex-grow-1"><span style="width: {{ $done }}%"></span></div>
-                                <span class="small text-secondary">{{ $done }}%</span>
-                            </div>
-                        </td>
-                        <td class="text-end">
-                            @if ($row->waiting)
-                                <span class="badge rounded-pill text-bg-warning">{{ $row->waiting }}</span>
-                            @else
-                                <span class="text-secondary">0</span>
-                            @endif
-                        </td>
                         <td class="text-end text-nowrap">
                             <form method="POST" action="{{ route('admin.campuses.manage', $campus) }}" class="d-inline">
                                 @csrf
@@ -98,22 +78,9 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="8" class="text-center text-secondary py-5">No campuses yet. <a href="{{ route('admin.campuses.create') }}">Add one</a>.</td></tr>
+                    <tr><td colspan="3" class="text-center text-secondary py-5">No campuses yet. <a href="{{ route('admin.campuses.create') }}">Add one</a>.</td></tr>
                 @endforelse
             </tbody>
-            @if ($campuses->count() > 1)
-                <tfoot>
-                    <tr class="fw-bold">
-                        <td colspan="2">All campuses</td>
-                        <td class="text-end ad-num">{{ $totals['students'] }}</td>
-                        <td class="text-end ad-num">{{ $totals['deployed'] }}</td>
-                        <td class="text-end ad-num">{{ $totals['completed'] }}</td>
-                        <td></td>
-                        <td class="text-end ad-num">{{ $totals['waiting'] }}</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            @endif
         </table>
     </div>
 </div>
