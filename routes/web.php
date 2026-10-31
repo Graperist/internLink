@@ -189,8 +189,9 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/coordinators/create', [\App\Http\Controllers\Admin\CoordinatorController::class, 'create'])->name('coordinators.create');
         Route::post('/coordinators', [\App\Http\Controllers\Admin\CoordinatorController::class, 'store'])->name('coordinators.store');
         Route::post('/coordinators/{user}/reset-password', [\App\Http\Controllers\Admin\CoordinatorController::class, 'resetPassword'])->name('coordinators.reset-password');
-        Route::post('/coordinators/{user}/status', [\App\Http\Controllers\Admin\CoordinatorController::class, 'toggleStatus'])->name('coordinators.status');
-        Route::delete('/coordinators/{user}', [\App\Http\Controllers\Admin\DeleteController::class, 'coordinator'])->name('coordinators.destroy');
+        // Coordinators are archived, never deleted (like campuses).
+        Route::post('/coordinators/{user}/archive', [\App\Http\Controllers\Admin\CoordinatorController::class, 'archive'])->name('coordinators.archive');
+        Route::post('/coordinators/{user}/restore', [\App\Http\Controllers\Admin\CoordinatorController::class, 'restore'])->name('coordinators.restore');
 
         Route::get('/login-photos', [\App\Http\Controllers\Admin\LoginPhotoController::class, 'index'])->name('login-photos');
         Route::get('/login-photos/preview', [LoginController::class, 'preview'])->name('login-photos.preview');

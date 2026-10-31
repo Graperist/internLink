@@ -40,14 +40,17 @@ class CoordinatorController extends Controller
 
         // Grouped by academic year (the year the account was added), newest
         // first, so the list stays short as accounts pile up over the years.
-        $groups = $query->get()
+        $all = $query->get();
+        // Archived coordinators (never deleted) are listed apart, with Restore.
+        $archived = $all->where('status', '!=', 'active')->sortBy('name')->values();
+        $groups = $all->where('status', 'active')
             ->sortBy(fn ($u) => ($u->campus?->name ?? '').'|'.$u->name)
             ->groupBy(fn ($u) => \App\Support\Term::forDate($u->created_at)[0])
             ->sortKeysDesc();
         $campuses = Campus::orderBy('name')->get();
         $currentYear = \App\Support\Term::current()[0];
 
-        return view('admin.coordinators.index', compact('groups', 'campuses', 'currentYear'));
+        return view('admin.coordinators.index', compact('groups', 'campuses', 'currentYear', 'archived'));
     }
 
     public function create(Request $request): View
@@ -115,19 +118,28 @@ class CoordinatorController extends Controller
         ]);
     }
 
-    /** Deactivate (can't sign in) or reactivate a coordinator, e.g. when the coordinator changes. */
-    public function toggleStatus(Request $request, User $user): RedirectResponse
+    /**
+     * Archive instead of delete (like campuses): the account and everything
+     * it did are kept; it just can't sign in. Restore brings it back.
+     */
+    public function archive(Request $request, User $user): RedirectResponse
     {
         abort_unless((int) $user->role_id === $this->roleId(), 404);
 
-        $user->update(['status' => $user->status === 'active' ? 'inactive' : 'active']);
-        $active = $user->status === 'active';
-        AuditLogger::record($active ? 'admin.coordinator_activated' : 'admin.coordinator_deactivated',
-            ($active ? 'Reactivated' : 'Deactivated')." OJT Coordinator {$user->name}.", auth()->user(), $request, campusId: $user->campus_id);
+        $user->update(['status' => 'archived']);
+        AuditLogger::record('admin.coordinator_archived', "Archived OJT Coordinator {$user->name} ({$user->id_number}).", auth()->user(), $request, campusId: $user->campus_id);
 
-        return back()->with('status', $active
-            ? "{$user->name} can sign in again."
-            : "{$user->name} is deactivated and can no longer sign in.");
+        return back()->with('status', "{$user->name} was archived and can no longer sign in. Their records are kept; restore them from Archived coordinators.");
+    }
+
+    public function restore(Request $request, User $user): RedirectResponse
+    {
+        abort_unless((int) $user->role_id === $this->roleId(), 404);
+
+        $user->update(['status' => 'active']);
+        AuditLogger::record('admin.coordinator_restored', "Restored OJT Coordinator {$user->name} ({$user->id_number}).", auth()->user(), $request, campusId: $user->campus_id);
+
+        return back()->with('status', "{$user->name} was restored and can sign in again.");
     }
 
     private function email(User $user, string $password, bool $isReset): bool

@@ -141,12 +141,17 @@ class SuperAdminTest extends TestCase
         $this->assertTrue(Hash::check($password, $coordinator->fresh()->password));
         Mail::assertSent(StaffAccountMail::class, fn ($m) => $m->isReset && $m->hasTo($coordinator->email));
 
-        $this->actingAs($this->admin)->post(route('admin.coordinators.status', $coordinator));
-        $this->assertSame('inactive', $coordinator->fresh()->status);
+        // archived, not deleted (there is no delete for coordinators)
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('admin.coordinators.destroy'));
+        $this->actingAs($this->admin)->get(route('admin.coordinators.index'))->assertSee(route('admin.coordinators.archive', $coordinator), false);
+        $this->actingAs($this->admin)->post(route('admin.coordinators.archive', $coordinator));
+        $this->assertSame('archived', $coordinator->fresh()->status);
+        $this->actingAs($this->admin)->get(route('admin.coordinators.index'))->assertOk()
+            ->assertSee('Archived coordinators')->assertSee(route('admin.coordinators.restore', $coordinator), false);
         auth()->logout();
         $this->post(route('login.attempt'), ['id_number' => 'ACC-COORD-001', 'password' => $password])->assertSessionHasErrors('id_number');
 
-        $this->actingAs($this->admin)->post(route('admin.coordinators.status', $coordinator));
+        $this->actingAs($this->admin)->post(route('admin.coordinators.restore', $coordinator));
         $this->assertSame('active', $coordinator->fresh()->status);
 
         // only coordinator accounts
@@ -364,10 +369,8 @@ class SuperAdminTest extends TestCase
         $this->delete(route('admin.campus-accounts.destroy', $coordinator))->assertNotFound();
         $this->post(route('admin.campuses.leave'));
 
-        // coordinators from OJT Coordinators
-        $this->get(route('admin.coordinators.index'))->assertSee(route('admin.coordinators.destroy', $spare), false);
-        $this->delete(route('admin.coordinators.destroy', $spare))->assertRedirect(route('admin.coordinators.index'));
-        $this->assertDatabaseMissing('users', ['id' => $spare->id]);
+        // coordinators are archived, never deleted
+        $this->assertDatabaseHas('users', ['id' => $spare->id]);
         $this->assertDatabaseHas('campuses', ['id' => $this->acc->id]);
     }
 

@@ -90,7 +90,9 @@ class LoginController extends Controller
             AuditLogger::record('auth.login_failed', 'Sign-in blocked - account is not active', $user, $request);
 
             throw ValidationException::withMessages([
-                'id_number' => 'This account is not active. Please contact your OJT Coordinator.',
+                'id_number' => $user->isCoordinator()
+                    ? 'This account is archived. Please contact the PSU Intern-Link Super Admin.'
+                    : 'This account is not active. Please contact your OJT Coordinator.',
             ]);
         }
 

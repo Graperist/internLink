@@ -82,6 +82,39 @@
             {{ $searching ? 'No coordinators match this search or filter.' : 'No coordinator accounts yet.' }}
         </p>
     @endforelse
+
+    @if ($archived->isNotEmpty())
+        <details class="ay-group mt-3" @if ($searching) open @endif>
+            <summary>
+                <i class="ti ti-chevron-right ay-chev"></i>
+                <span class="fw-bold"><i class="ti ti-archive text-secondary"></i> Archived coordinators</span>
+                <span class="text-secondary small ms-auto">{{ $archived->count() }} archived</span>
+            </summary>
+            <p class="text-secondary small px-3 pt-2 mb-1">Kept with all their records. They can't sign in until restored.</p>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <tbody>
+                        @foreach ($archived as $coordinator)
+                            <tr>
+                                <td>
+                                    <span class="fw-semibold d-block text-secondary">{{ $coordinator->name }}</span>
+                                    <span class="text-secondary" style="font-size:.78rem;">{{ $coordinator->id_number }}</span>
+                                </td>
+                                <td><span class="badge rounded-pill text-bg-light border fw-bold">{{ $coordinator->campus?->code ?? '—' }}</span> <span class="small text-secondary">{{ $coordinator->campus?->name }}</span></td>
+                                <td class="text-end">
+                                    <form method="POST" action="{{ route('admin.coordinators.restore', $coordinator) }}" class="d-inline"
+                                          onsubmit="return confirm('Restore {{ addslashes($coordinator->name) }}? They will be able to sign in again.')">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-restore"></i> Restore</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    @endif
     <style>
         .ay-group { border: 1px solid #e6eaf0; border-radius: 10px; margin-bottom: .6rem; background: #fff; }
         .ay-group > summary { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; cursor: pointer; list-style: none; }

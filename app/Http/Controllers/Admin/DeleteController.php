@@ -11,8 +11,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Super Admin only: delete an account (coordinator, instructor, HTE,
- * student). Campuses are archived instead, never deleted.
+ * Super Admin only (while managing a campus): delete an instructor, HTE or
+ * student account. Campuses and coordinators are archived, never deleted.
  */
 class DeleteController extends Controller
 {
@@ -22,14 +22,6 @@ class DeleteController extends Controller
         'hte_representative' => 'HTE account',
         'student' => 'Student Intern',
     ];
-
-    /** From OJT Coordinators (Super Admin portal). */
-    public function coordinator(Request $request, User $user): RedirectResponse
-    {
-        abort_unless($user->isCoordinator(), 404);
-
-        return $this->deleteAccount($request, $user, $request->user(), route('admin.coordinators.index'));
-    }
 
     /**
      * From a campus the Super Admin opened with Manage: an instructor,
