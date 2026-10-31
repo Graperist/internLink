@@ -44,7 +44,7 @@ class DashboardController extends Controller
         $coordinators = User::where('role_id', $coordinatorRoleId)->where('status', 'active')
             ->orderBy('id')->get(['id', 'campus_id', 'name'])->groupBy('campus_id');
 
-        $campuses = Campus::orderBy('name')->get()->map(fn (Campus $campus) => (object) [
+        $campuses = Campus::where('status', 'active')->orderBy('name')->get()->map(fn (Campus $campus) => (object) [
             'campus' => $campus,
             'students' => (int) ($students[$campus->id] ?? 0),
             'deployed' => (int) ($deployed[$campus->id] ?? 0),

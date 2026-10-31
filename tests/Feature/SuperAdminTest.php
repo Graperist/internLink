@@ -62,23 +62,32 @@ class SuperAdminTest extends TestCase
 
     public function test_adding_and_editing_a_campus(): void
     {
-        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'bmc', 'name' => 'PSU - Binmaley Campus', 'address' => 'Binmaley, Pangasinan', 'status' => 'active'])
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'bmc', 'name' => 'PSU - Binmaley Campus', 'address' => 'Binmaley, Pangasinan'])
             ->assertRedirect(route('admin.campuses.index'));
         $bmc = Campus::where('code', 'BMC')->firstOrFail();
         $this->assertSame('PSU - Binmaley Campus', $bmc->name);
 
         // codes are letters only and unique
-        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'ACC', 'name' => 'Other', 'status' => 'active'])->assertSessionHasErrors('code');
-        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'B-1', 'name' => 'Other', 'status' => 'active'])->assertSessionHasErrors('code');
+        $this->assertSame('active', $bmc->status);
+
+        // codes are 2-3 letters and unique; names are unique too
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'ACC', 'name' => 'Other'])->assertSessionHasErrors('code');
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'B-1', 'name' => 'Other'])->assertSessionHasErrors('code');
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'ABCD', 'name' => 'Other'])->assertSessionHasErrors('code');
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'XYZ', 'name' => ' psu - binmaley campus '])->assertSessionHasErrors('name');
+        // the form warns before sending
+        $this->actingAs($this->admin)->get(route('admin.campuses.create'))->assertOk()
+            ->assertSee('maxlength="3"', false)->assertSee('"ACC"', false)->assertSee('This campus already exists', false)
+            ->assertDontSee('name="status"', false)->assertSee('>Add</button>', false);
 
         // no accounts yet: the code can still change
-        $this->actingAs($this->admin)->put(route('admin.campuses.update', $bmc), ['code' => 'BIN', 'name' => 'PSU - Binmaley Campus', 'status' => 'active']);
+        $this->actingAs($this->admin)->put(route('admin.campuses.update', $bmc), ['code' => 'BIN', 'name' => 'PSU - Binmaley Campus']);
         $this->assertSame('BIN', $bmc->fresh()->code);
 
         // ACC has accounts: its code stays, the rest changes
         $this->staff('coordinator', 'ACC-COORD-001');
-        $this->actingAs($this->admin)->put(route('admin.campuses.update', $this->acc), ['code' => 'XYZ', 'name' => 'PSU - Alaminos', 'status' => 'inactive']);
-        $this->assertSame(['ACC', 'PSU - Alaminos', 'inactive'], [$this->acc->fresh()->code, $this->acc->fresh()->name, $this->acc->fresh()->status]);
+        $this->actingAs($this->admin)->put(route('admin.campuses.update', $this->acc), ['code' => 'XYZ', 'name' => 'PSU - Alaminos']);
+        $this->assertSame(['ACC', 'PSU - Alaminos', 'active'], [$this->acc->fresh()->code, $this->acc->fresh()->name, $this->acc->fresh()->status]);
     }
 
     public function test_adding_a_coordinator_emails_the_details_and_asks_for_a_new_password(): void
@@ -275,7 +284,7 @@ class SuperAdminTest extends TestCase
 
         // signed in when the campus is closed: signed out on the next page
         $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk();
-        $this->acc->update(['status' => 'inactive']);
+        $this->acc->update(['status' => 'archived']);
         $this->get(route('instructor.dashboard'))->assertRedirect(route('login'))->assertSessionHasErrors('id_number');
         $this->assertGuest();
 
@@ -284,11 +293,9 @@ class SuperAdminTest extends TestCase
             ->assertSessionHasErrors(['id_number' => \App\Http\Middleware\EnsureCampusIsActive::MESSAGE]);
         $this->assertGuest();
 
-        // the Super Admin still signs in and can still open the campus
+        // the Super Admin still signs in (they restore the campus to work in it again)
         $this->post(route('login.attempt'), ['id_number' => 'PSU-ADMIN-001', 'password' => 'password'])->assertRedirect(route('admin.dashboard'));
-        $this->post(route('admin.campuses.manage', $this->acc))->assertRedirect(route('instructor.dashboard'));
-        $this->get(route('instructor.dashboard'))->assertOk()->assertSee('Close campus');
-        $this->post(route('admin.campuses.leave'))->assertRedirect(route('admin.dashboard'));
+        $this->post(route('admin.campuses.manage', $this->acc))->assertNotFound();
 
         // active again: everyone gets back in
         $this->acc->update(['status' => 'active']);
@@ -363,32 +370,39 @@ class SuperAdminTest extends TestCase
         // the coordinator sees no trash icon and can't use the routes
         $this->actingAs($coordinator)->get(route('instructor.advisees'))->assertOk()->assertDontSee(route('admin.campus-accounts.destroy', $studentUser), false);
         $this->actingAs($coordinator)->delete(route('admin.campus-accounts.destroy', $studentUser))->assertForbidden();
-        $this->actingAs($coordinator)->delete(route('admin.campuses.destroy', $this->acc), ['confirm_code' => 'ACC'])->assertForbidden();
+        $this->actingAs($coordinator)->post(route('admin.campuses.archive', $this->acc))->assertForbidden();
         $this->assertDatabaseHas('users', ['id' => $studentUser->id]);
     }
 
-    public function test_deleting_a_campus_needs_its_code_and_removes_everything_on_it(): void
+    public function test_a_campus_is_archived_not_deleted_and_can_be_restored(): void
     {
-        $instructorUser = $this->staff('instructor', 'ACC-INST-001');
-        $instructor = \App\Models\Instructor::forceCreate(['user_id' => $instructorUser->id, 'campus_id' => $this->acc->id]);
-        [$studentUser] = $this->studentWithRecords('23-AC-0001', $instructor);
-        $hteUser = $this->staff('hte_representative', 'ACC-HTE-001');
-        \App\Models\HteRepresentative::forceCreate(['user_id' => $hteUser->id, 'hte_id' => \App\Models\Hte::first()->id]);
+        [$studentUser] = $this->studentWithRecords('23-AC-0001');
         $coordinator = $this->staff('coordinator', 'ACC-COORD-001');
-        $other = Campus::forceCreate(['code' => 'BC', 'name' => 'PSU - Bayambang Campus', 'status' => 'active']);
+        $coordinator->update(['password' => Hash::make('secret')]);
 
-        $this->actingAs($this->admin)->get(route('admin.campuses.index'))->assertSee(route('admin.campuses.destroy', $this->acc), false)->assertSee('data-confirm-code="ACC"', false);
-        $this->actingAs($this->admin)->delete(route('admin.campuses.destroy', $this->acc), ['confirm_code' => 'WRONG'])->assertSessionHasErrors('confirm_code');
-        $this->assertDatabaseHas('campuses', ['id' => $this->acc->id]);
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('admin.campuses.destroy'));
+        $this->actingAs($this->admin)->get(route('admin.campuses.index'))->assertOk()
+            ->assertSee(route('admin.campuses.archive', $this->acc), false)->assertDontSee('Archived campuses');
 
-        $this->actingAs($this->admin)->delete(route('admin.campuses.destroy', $this->acc), ['confirm_code' => 'acc'])->assertRedirect(route('admin.campuses.index'));
-        $this->assertDatabaseMissing('campuses', ['id' => $this->acc->id]);
-        foreach ([$instructorUser, $studentUser, $hteUser, $coordinator] as $user) {
-            $this->assertDatabaseMissing('users', ['id' => $user->id]);
-        }
-        $this->assertSame(0, \App\Models\Program::count() + \App\Models\Hte::count() + \App\Models\Internship::count() + \App\Models\Document::count());
-        $this->assertDatabaseHas('campuses', ['id' => $other->id]);
-        $this->assertDatabaseHas('users', ['id' => $this->admin->id]);
+        $this->actingAs($this->admin)->post(route('admin.campuses.archive', $this->acc))->assertRedirect(route('admin.campuses.index'));
+        $this->assertSame('archived', $this->acc->fresh()->status);
+        // everything is kept
+        $this->assertDatabaseHas('users', ['id' => $studentUser->id]);
+        $this->assertSame(1, \App\Models\Document::count());
+        // listed under Archived campuses, with Restore; no Manage for it
+        $this->actingAs($this->admin)->get(route('admin.campuses.index'))->assertOk()
+            ->assertSee('Archived campuses')->assertSee(route('admin.campuses.restore', $this->acc), false)
+            ->assertDontSee(route('admin.campuses.manage', $this->acc), false);
+        $this->actingAs($this->admin)->post(route('admin.campuses.manage', $this->acc))->assertNotFound();
+        // its accounts can't sign in
+        auth()->logout();
+        $this->post(route('login.attempt'), ['id_number' => 'ACC-COORD-001', 'password' => 'secret'])->assertSessionHasErrors('id_number');
+        $this->assertGuest();
+
+        $this->actingAs($this->admin)->post(route('admin.campuses.restore', $this->acc))->assertRedirect(route('admin.campuses.index'));
+        $this->assertSame('active', $this->acc->fresh()->status);
+        auth()->logout();
+        $this->post(route('login.attempt'), ['id_number' => 'ACC-COORD-001', 'password' => 'secret'])->assertSessionHasNoErrors();
     }
 
     public function test_coordinators_are_grouped_by_academic_year_and_open_when_clicked(): void

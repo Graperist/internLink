@@ -6,7 +6,7 @@
 @php
     $portalUser = auth()->user();
     $managedCampus = \App\Support\CampusManager::campus();
-    $allCampuses = $managedCampus ? \App\Models\Campus::orderBy('name')->get(['id', 'code', 'name']) : collect();
+    $allCampuses = $managedCampus ? \App\Models\Campus::where('status', 'active')->orderBy('name')->get(['id', 'code', 'name']) : collect();
     $campusModules = [
         ['instructor.dashboard', ['instructor.dashboard'], 'ti-layout-dashboard', 'Campus Dashboard'],
         ['instructor.htes', ['instructor.htes*'], 'ti-building', 'Partner Agencies'],

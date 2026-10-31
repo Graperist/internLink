@@ -179,7 +179,9 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/campuses', [\App\Http\Controllers\Admin\CampusController::class, 'store'])->name('campuses.store');
         Route::get('/campuses/{campus}/edit', [\App\Http\Controllers\Admin\CampusController::class, 'edit'])->name('campuses.edit');
         Route::put('/campuses/{campus}', [\App\Http\Controllers\Admin\CampusController::class, 'update'])->name('campuses.update');
-        Route::delete('/campuses/{campus}', [\App\Http\Controllers\Admin\DeleteController::class, 'campus'])->name('campuses.destroy');
+        // Campuses are archived, never deleted.
+        Route::post('/campuses/{campus}/archive', [\App\Http\Controllers\Admin\CampusController::class, 'archive'])->name('campuses.archive');
+        Route::post('/campuses/{campus}/restore', [\App\Http\Controllers\Admin\CampusController::class, 'restore'])->name('campuses.restore');
 
         Route::get('/coordinators', [\App\Http\Controllers\Admin\CoordinatorController::class, 'index'])->name('coordinators.index');
         Route::get('/coordinators/create', [\App\Http\Controllers\Admin\CoordinatorController::class, 'create'])->name('coordinators.create');

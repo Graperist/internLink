@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\Campus;
 use App\Models\Document;
 use App\Models\DocumentAttachment;
 use App\Models\Internship;
@@ -11,7 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Super Admin deletions: a whole campus, or one account (coordinator,
+ * Super Admin deletions: one account (coordinator,
  * instructor, HTE or student) with what belongs only to it.
  *
  *  - Student: their internships with every document, deployment, time
@@ -19,8 +18,6 @@ use Illuminate\Support\Facades\Storage;
  *  - Instructor / coordinator: the account. The reviews they made stay on
  *    the students' documents, without the reviewer.
  *  - HTE: the account. Evaluations they filed stay, without the account.
- *  - Campus: all of the above for every account on it, then the campus
- *    with its programs, partner agencies and forms.
  */
 class AccountDeleter
 {
@@ -34,23 +31,6 @@ class AccountDeleter
     {
         $deleter = new self;
         DB::transaction(fn () => $deleter->deleteUser($user));
-        $deleter->removeFiles();
-    }
-
-    public static function campus(Campus $campus): void
-    {
-        $deleter = new self;
-        DB::transaction(function () use ($deleter, $campus) {
-            foreach (User::where('campus_id', $campus->id)->with('role')->get() as $user) {
-                $deleter->deleteUser($user);
-            }
-            // Internships left without a student account (shouldn't happen, but
-            // the campus's programs and forms can't go while any remain).
-            foreach (Internship::where('campus_id', $campus->id)->get() as $internship) {
-                $deleter->deleteInternship($internship);
-            }
-            $campus->delete();   // programs, partner agencies, forms, settings
-        });
         $deleter->removeFiles();
     }
 

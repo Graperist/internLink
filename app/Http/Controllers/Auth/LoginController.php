@@ -77,7 +77,7 @@ class LoginController extends Controller
         }
 
         if ($user->campus && $user->campus->status !== 'active') {
-            AuditLogger::record('auth.login_failed', 'Sign-in blocked - their campus is inactive', $user, $request);
+            AuditLogger::record('auth.login_failed', 'Sign-in blocked - their campus is archived', $user, $request);
 
             throw ValidationException::withMessages([
                 'id_number' => \App\Http\Middleware\EnsureCampusIsActive::MESSAGE,

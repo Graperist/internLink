@@ -17,6 +17,8 @@ class ManageCampusController extends Controller
 {
     public function start(Request $request, Campus $campus): RedirectResponse
     {
+        abort_unless($campus->status === 'active', 404);   // restore an archived campus first
+
         $request->session()->put(CampusManager::SESSION_KEY, $campus->id);
         AuditLogger::record('admin.campus_opened', "Started managing {$campus->name}.", $request->user(), $request, campusId: $campus->id);
 

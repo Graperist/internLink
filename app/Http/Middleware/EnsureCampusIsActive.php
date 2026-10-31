@@ -9,10 +9,10 @@ use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * A campus set to Inactive by the Super Admin is closed: its accounts can't
+ * A campus archived by the Super Admin is closed: its accounts can't
  * sign in, and anyone still signed in is signed out on their next page.
  * The Super Admin (no campus) is never affected, and can still open an
- * inactive campus with Manage.
+ * archived campus by restoring it.
  */
 class EnsureCampusIsActive
 {
@@ -20,11 +20,11 @@ class EnsureCampusIsActive
     {
         $user = $request->user();
 
-        // The Super Admin is never closed out (they can still manage an inactive campus).
+        // The Super Admin is never closed out (they restore archived campuses).
         $status = $user?->campus_id && ! $user->isSuperAdmin() ? \App\Models\Campus::whereKey($user->campus_id)->value('status') : null;
 
         if ($status !== null && $status !== 'active') {
-            AuditLogger::record('auth.campus_inactive', 'Signed out - their campus is inactive', $user, $request);
+            AuditLogger::record('auth.campus_inactive', 'Signed out - their campus is archived', $user, $request);
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
@@ -35,5 +35,5 @@ class EnsureCampusIsActive
         return $next($request);
     }
 
-    public const MESSAGE = 'Your campus is not active on PSU Intern-Link right now. Please contact the PSU Intern-Link Super Admin.';
+    public const MESSAGE = 'Your campus is archived on PSU Intern-Link right now. Please contact the PSU Intern-Link Super Admin.';
 }

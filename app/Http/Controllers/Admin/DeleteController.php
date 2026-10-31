@@ -3,19 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Campus;
 use App\Models\User;
 use App\Support\AccountDeleter;
 use App\Support\AuditLogger;
 use App\Support\CampusManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 /**
- * Super Admin only: delete a campus, or an account (coordinator,
- * instructor, HTE, student). Deleting can't be undone, so a campus needs
- * its code typed to confirm.
+ * Super Admin only: delete an account (coordinator, instructor, HTE,
+ * student). Campuses are archived instead, never deleted.
  */
 class DeleteController extends Controller
 {
@@ -25,20 +22,6 @@ class DeleteController extends Controller
         'hte_representative' => 'HTE account',
         'student' => 'Student Intern',
     ];
-
-    public function campus(Request $request, Campus $campus): RedirectResponse
-    {
-        if (strtoupper(trim((string) $request->input('confirm_code'))) !== strtoupper($campus->code)) {
-            throw ValidationException::withMessages(['confirm_code' => "To delete {$campus->name}, type its code {$campus->code} to confirm."]);
-        }
-
-        $name = $campus->name;
-        $accounts = $campus->users()->count();
-        AccountDeleter::campus($campus);
-        AuditLogger::record('admin.campus_deleted', "Deleted campus {$campus->code} - {$name} with its {$accounts} ".\Illuminate\Support\Str::plural('account', $accounts).' and all its records.', $request->user(), $request);
-
-        return redirect()->route('admin.campuses.index')->with('status', "{$name} and everything on it were deleted.");
-    }
 
     /** From OJT Coordinators (Super Admin portal). */
     public function coordinator(Request $request, User $user): RedirectResponse
