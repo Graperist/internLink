@@ -824,4 +824,21 @@ class SharedPortalTest extends TestCase
         $outsider = $this->teacher('instructor', 'ACC-INST-002', $this->bshm);
         $this->actingAs($outsider)->get(route('instructor.documents.show', $doc))->assertForbidden();
     }
+
+    public function test_missing_and_returned_lists_each_form(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $document = $this->submittedApplication($student, $this->hte->name);
+        $document->update(['status' => 'returned']);
+
+        $html = $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => 'missing']))->assertOk()
+            ->assertSee('Returned to student')->assertSee($document->requirement->name)
+            ->assertSee(e(route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id])), false)
+            ->assertSee('Remind selected about missing forms')
+            ->assertDontSee('Needs review')
+            ->getContent();
+        // returned forms come first
+        $this->assertLessThan(strpos($html, 'Not yet submitted') ?: PHP_INT_MAX, strpos($html, 'Returned to student'));
+    }
 }

@@ -9,9 +9,8 @@
     $isCoordinator = false;
     $tabs = [
         'queue' => 'To review',
-        'all' => 'All students',
-        'review' => 'Needs review',
         'missing' => 'Missing / returned',
+        'all' => 'All students',
         'complete' => 'All approved',
     ];
 @endphp
@@ -19,7 +18,7 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">Document review</h1>
-        <p class="text-secondary small mb-0">{{ $tab === 'queue' ? 'The forms waiting on you, oldest first. Review opens the form.' : 'Pick a student to open their forms.' }}</p>
+        <p class="text-secondary small mb-0">{{ match ($tab) { 'queue' => 'The forms waiting on you, oldest first. Review opens the form.', 'missing' => 'Forms still to come in: returned first, then not yet submitted.', default => 'Pick a student to open their forms.' } }}</p>
     </div>
     @include('instructor.documents._form19-deadline')
 </div>
@@ -121,6 +120,65 @@
                 </tbody>
             </table>
         </div>
+    @elseif ($tab === 'missing')
+        <form method="POST" action="{{ route('instructor.documents.remind') }}" id="bulkForm">
+            @csrf
+            <div class="d-flex align-items-center gap-2 mb-2 small" id="bulkBar">
+                <span class="text-secondary" id="selectedCount">0 selected</span>
+                <button type="submit" class="btn btn-sm btn-outline-primary" id="remindButton" disabled>
+                    <i class="ti ti-bell-ringing"></i> Remind selected about missing forms
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0 il-review-list">
+                    <thead>
+                        <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
+                            <th style="width: 36px;"><input type="checkbox" class="form-check-input" id="selectAll" aria-label="Select all"></th>
+                            <th>Student</th><th>Form</th><th>Status</th><th>Returned</th><th class="text-end"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($rows as $item)
+                            @php
+                                $student = $item->student;
+                                $formUrl = route('instructor.documents', array_filter(['student' => $student->id, 'form' => $item->requirement?->id]));
+                            @endphp
+                            <tr>
+                                <td>
+                                    @if ($item->can_act)
+                                        <input type="checkbox" class="form-check-input row-check" name="student_ids[]" value="{{ $student->id }}" aria-label="Select {{ $student->user->name }}">
+                                    @endif
+                                </td>
+                                <td>
+                                    <a href="{{ $formUrl }}" class="d-flex align-items-center gap-2 text-decoration-none text-reset">
+                                        <span class="il-row-avatar">{{ \App\Models\User::initialsOf($student->user->name) }}</span>
+                                        <span>
+                                            <span class="fw-semibold d-block">{{ $student->user->name }}</span>
+                                            <span class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</span>
+                                        </span>
+                                    </a>
+                                </td>
+                                <td class="small">{{ $item->requirement?->name ?? 'Form' }}</td>
+                                <td>
+                                    @if ($item->state === 'returned')
+                                        <span class="text-danger small fw-semibold"><i class="ti ti-arrow-back-up"></i> Returned to student</span>
+                                    @else
+                                        <span class="text-secondary small"><i class="ti ti-clock"></i> Not yet submitted</span>
+                                    @endif
+                                </td>
+                                <td class="text-secondary small text-nowrap">{{ $item->date?->format('M d, Y') ?? '—' }}</td>
+                                <td class="text-end"><a href="{{ $formUrl }}" class="btn btn-sm btn-outline-secondary">View</a></td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="text-center text-secondary py-5">
+                                <i class="ti ti-circle-check fs-2 d-block mb-1 text-success"></i>
+                                {{ request()->hasAny(['search', 'hte_id']) ? 'No missing forms match this search.' : 'No missing or returned forms.' }}
+                            </td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </form>
     @else
     <form method="POST" action="{{ route('instructor.documents.remind') }}" id="bulkForm">
         @csrf
