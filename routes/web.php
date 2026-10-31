@@ -35,6 +35,8 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('guest')->group(function () {
     Route::get('/', [LoginController::class, 'show'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->name('login.attempt');
+    // The campus of the account being typed in (from the account, not the ID's letters).
+    Route::get('/login/campus', [LoginController::class, 'campusLookup'])->middleware('throttle:40,1')->name('login.campus');
 
     // Forgot password: ID -> emailed 6-digit code -> new password.
     Route::get('/forgot-password', [ForgotPasswordController::class, 'showRequest'])->name('password.forgot');

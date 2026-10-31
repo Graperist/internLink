@@ -15,16 +15,34 @@ class LoginController extends Controller
 {
     public function show()
     {
-        // Codes that identify a campus inside an ID (ACC, BC, AC, ...) so the
-        // page can show the detected campus as the user types. This only
-        // reveals campus names, never whether an account exists.
-        $campusCodes = AccountResolver::campusCodeMap()
-            ->map(fn ($campus) => $this->shortCampusName($campus->name));
-        // In a student number (23-AC-0092) these codes win: "AC" = Alaminos City there.
-        $studentCodes = AccountResolver::studentCodeMap()
-            ->map(fn ($campus) => $this->shortCampusName($campus->name));
+        return view('auth.login');
+    }
 
-        return view('auth.login', compact('campusCodes', 'studentCodes'));
+    /**
+     * The campus shown under the ID box as the user types. It comes from the
+     * account itself - the campus the student was enrolled in (or the staff
+     * member was added to) - not from the letters in the ID, so a student
+     * number like 23-AC-0093 shows the campus they actually belong to.
+     * Rate-limited, and it only ever returns a campus name and role label.
+     */
+    public function campusLookup(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $id = trim((string) $request->query('id', ''));
+        $user = mb_strlen($id) >= 4 ? AccountResolver::findUser($id) : null;
+        $campus = $user?->campus;
+
+        return response()->json([
+            'campus' => $campus && $campus->status === 'active' ? $this->shortCampusName($campus->name) : null,
+            'kind' => match ($user?->role?->code) {
+                'student' => 'Student Intern',
+                'coordinator' => 'OJT Coordinator',
+                'instructor' => 'Subject Instructor',
+                'hte_representative' => 'HTE Supervisor',
+                'super_admin' => 'Super Admin',
+                default => null,
+            },
+            'all' => $user && $user->isSuperAdmin(),
+        ])->header('Cache-Control', 'no-store');
     }
 
     /**

@@ -16,7 +16,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -70,14 +69,9 @@ class CoordinatorController extends Controller
             'send_email' => ['nullable', 'boolean'],
         ], ['id_number.unique' => 'Another account already uses this ID number.']);
 
+        // Any ID works (e.g. the real employee number): the campus comes from
+        // the account itself, not from letters in the ID.
         $campus = Campus::findOrFail($data['campus_id']);
-        // Sign-in finds the campus from the code inside the ID.
-        $segments = preg_split('/[^A-Z0-9]+/', $data['id_number']);
-        if (! in_array(strtoupper($campus->code), $segments, true)) {
-            throw ValidationException::withMessages([
-                'id_number' => "The ID must include the campus code {$campus->code}, e.g. {$campus->code}-COORD-001.",
-            ]);
-        }
 
         $password = Str::password(10, symbols: false);
         $user = DB::transaction(function () use ($data, $campus, $password) {

@@ -114,12 +114,21 @@ class SuperAdminTest extends TestCase
         $this->get(route('instructor.dashboard'))->assertRedirect(route('password.change'));
     }
 
-    public function test_the_coordinator_id_must_carry_the_campus_code(): void
+    public function test_a_coordinator_id_can_be_any_employee_number(): void
     {
+        Mail::fake();
         $this->actingAs($this->admin)->post(route('admin.coordinators.store'), [
-            'campus_id' => $this->acc->id, 'id_number' => 'SMC-COORD-001', 'name' => 'X', 'email' => 'x@psu.test',
+            'campus_id' => $this->acc->id, 'id_number' => '2019-04512', 'name' => 'X', 'email' => 'x@psu.test',
+        ])->assertSessionHasNoErrors()->assertRedirect(route('admin.coordinators.index'));
+        $user = User::where('id_number', '2019-04512')->firstOrFail();
+        $this->assertSame($this->acc->id, $user->campus_id);
+        // the login page shows their campus from the account
+        auth()->logout();
+        $this->getJson(route('login.campus', ['id' => '2019-04512']))->assertJson(['campus' => 'Alaminos City Campus', 'kind' => 'OJT Coordinator']);
+        // still unique across all accounts
+        $this->actingAs($this->admin)->post(route('admin.coordinators.store'), [
+            'campus_id' => $this->acc->id, 'id_number' => '2019-04512', 'name' => 'Y', 'email' => 'y@psu.test',
         ])->assertSessionHasErrors('id_number');
-        $this->assertFalse(User::where('id_number', 'SMC-COORD-001')->exists());
     }
 
     public function test_reset_password_and_deactivate(): void

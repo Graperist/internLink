@@ -138,7 +138,30 @@ class IdOnlyLoginTest extends TestCase
         $this->assertSame($asingan->id, AccountResolver::campusFromId('AC-COORD-001')?->id);
         $this->assertSame($this->acc->id, AccountResolver::campusFromId('ACC-COORD-001')?->id);
 
-        // The login page hint knows the same rule.
-        $this->get('/')->assertOk()->assertSee('var studentCodes = {"AC":"Alaminos City Campus"}', false);
+    }
+
+    public function test_the_campus_shown_comes_from_where_the_account_is_enrolled(): void
+    {
+        $asingan = Campus::forceCreate(['code' => 'AC', 'name' => 'Pangasinan State University - Asingan City Campus', 'status' => 'active']);
+        // Same "AC" letters, but each student is enrolled in a different campus.
+        $this->makeUser('student', $this->acc, '23-AC-0093');
+        $this->makeUser('student', $asingan, '23-AC-0500');
+        // A student number whose letters match no campus code at all.
+        $this->makeUser('student', $this->bc, '24-XY-0001');
+        $this->makeUser('coordinator', $asingan, 'AC-COORD-001');
+
+        $this->getJson(route('login.campus', ['id' => '23-ac-0093']))->assertOk()->assertJson(['campus' => 'Alaminos City Campus', 'kind' => 'Student Intern']);
+        $this->getJson(route('login.campus', ['id' => '23-AC-0500']))->assertOk()->assertJson(['campus' => 'Asingan City Campus', 'kind' => 'Student Intern']);
+        $this->getJson(route('login.campus', ['id' => '24-XY-0001']))->assertOk()->assertJson(['campus' => 'Bayambang Campus']);
+        $this->getJson(route('login.campus', ['id' => 'AC-COORD-001']))->assertOk()->assertJson(['campus' => 'Asingan City Campus', 'kind' => 'OJT Coordinator']);
+        $this->getJson(route('login.campus', ['id' => '99-ZZ-9999']))->assertOk()->assertJson(['campus' => null, 'kind' => null]);
+
+        // and each signs in to their own campus
+        $this->post(route('login.attempt'), ['id_number' => '23-AC-0500', 'password' => 'secret-pass']);
+        $this->assertSame($asingan->id, auth()->user()->campus_id);
+
+        // the page no longer guesses from the letters
+        auth()->logout();
+        $this->get('/')->assertOk()->assertDontSee('studentCodes', false)->assertSee(json_encode(route('login.campus')), false);
     }
 }

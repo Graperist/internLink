@@ -30,8 +30,8 @@
 
         <div class="mb-3">
             <label class="il-form-label" for="id_number">Employee ID number</label>
-            <input type="text" class="form-control text-uppercase" id="id_number" name="id_number" value="{{ old('id_number') }}" placeholder="e.g. BMC-COORD-001" required>
-            <p class="il-form-hint" id="idHint">Must include the campus code, so sign-in knows the campus.</p>
+            <input type="text" class="form-control text-uppercase" id="id_number" name="id_number" value="{{ old('id_number') }}" placeholder="e.g. the coordinator's employee number" required>
+            <p class="il-form-hint">Any ID, such as their employee number. It must not be used by another account. Sign-in uses this ID.</p>
         </div>
 
         <div class="mb-3">
@@ -56,22 +56,6 @@
             <a href="{{ route('admin.coordinators.index') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>
-    <script>
-        // Suggest an ID with the chosen campus's code, e.g. BMC-COORD-001.
-        (function () {
-            const campus = document.getElementById('campus_id');
-            const id = document.getElementById('id_number');
-            const hint = document.getElementById('idHint');
-            const update = () => {
-                const code = campus.selectedOptions[0]?.dataset.code;
-                if (!code) return;
-                id.placeholder = 'e.g. ' + code + '-COORD-001';
-                hint.textContent = 'Must include the campus code ' + code + ', e.g. ' + code + '-COORD-001.';
-            };
-            campus.addEventListener('change', update);
-            update();
-        })();
-    </script>
     @endif
 </div>
 @endsection

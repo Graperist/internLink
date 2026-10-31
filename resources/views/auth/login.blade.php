@@ -110,7 +110,7 @@
                            aria-describedby="id-detect" required autofocus @class(['is-invalid' => $errors->has('id_number')])>
                 </div>
                 <div id="id-detect" class="lx-detect" aria-live="polite">
-                    <span class="login-detect-idle">Your campus is detected from your ID.</span>
+                    <span class="login-detect-idle">Your campus shows here once your ID is recognized.</span>
                 </div>
 
                 <label class="lx-label" for="password">Password</label>
@@ -156,11 +156,9 @@
 })();
 
 (function () {
-    // Codes that identify a campus inside an ID, e.g. { "ACC": "Alaminos City Campus", "AC": "Alaminos City Campus" }.
-    // Detection here is only a hint; the server works out the real campus and role at sign-in.
-    var campusCodes = @json($campusCodes);
-    // In a student number these win: "AC" in 23-AC-0092 is Alaminos City, not the Asingan code.
-    var studentCodes = @json($studentCodes ?? []);
+    // The campus comes from the account itself: where the student was
+    // enrolled (or the staff member was added), whatever letters the ID has.
+    var lookupUrl = @json(route('login.campus'));
 
     var input = document.getElementById('id_number');
     var out = document.getElementById('id-detect');
@@ -172,41 +170,29 @@
         });
     }
 
-    function detect() {
-        var raw = input.value.trim().toUpperCase();
-        if (raw.length < 2) { out.innerHTML = idleHtml; return; }
+    var timer = null, seq = 0;
+    var pin = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg>';
 
-        var segments = raw.split(/[^A-Z0-9]+/);
-        var campus = null;
-        var student = raw.match(/^\d{2,4}-([A-Z]+)-\d+$/);
-        if (student && Object.prototype.hasOwnProperty.call(studentCodes, student[1])) {
-            campus = studentCodes[student[1]];
-        }
-        for (var i = 0; ! campus && i < segments.length; i++) {
-            if (segments[i] && Object.prototype.hasOwnProperty.call(campusCodes, segments[i])) {
-                campus = campusCodes[segments[i]];
-                break;
-            }
-        }
-
-        // Student numbers start with the enrollment year (23-AC-0092); employee IDs start with the campus code.
-        // Employee IDs that carry a role tag (ACC-COORD-001, ACC-INST-001, ACC-HTE-001) get a more specific label.
-        var kind = /^\d{2,4}-/.test(raw) ? 'Student Intern'
-            : segments.indexOf('COORD') > -1 ? 'OJT Coordinator'
-            : segments.indexOf('INST') > -1 ? 'Subject Instructor'
-            : segments.indexOf('HTE') > -1 ? 'HTE Supervisor'
-            : 'Employee';
-
-        if (campus) {
-            out.innerHTML =
-                '<span class="login-detect-chip">' +
-                    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg>' +
-                    escapeHtml(campus) +
-                '</span>' +
-                '<span class="login-detect-kind">' + kind + '</span>';
+    function show(data) {
+        if (data && (data.campus || data.all)) {
+            out.innerHTML = '<span class="login-detect-chip">' + pin + escapeHtml(data.all ? 'All campuses' : data.campus) + '</span>' +
+                (data.kind ? '<span class="login-detect-kind">' + escapeHtml(data.kind) + '</span>' : '');
         } else {
             out.innerHTML = '<span class="login-detect-idle">Keep typing &mdash; your campus will show here.</span>';
         }
+    }
+
+    function detect() {
+        var raw = input.value.trim();
+        clearTimeout(timer);
+        if (raw.length < 4) { out.innerHTML = idleHtml; return; }
+        var mine = ++seq;
+        timer = setTimeout(function () {
+            fetch(lookupUrl + '?id=' + encodeURIComponent(raw), { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) { if (mine === seq) show(data); })
+                .catch(function () {});
+        }, 350);
     }
 
     input.addEventListener('input', detect);
