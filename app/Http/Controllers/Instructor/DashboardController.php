@@ -51,7 +51,9 @@ class DashboardController extends Controller
                 'currentInternship.deployment',
                 fn ($q) => $q->where('status', 'pending')
             )->count(),
-            'pending_review' => $documentScope()->whereIn('status', ['submitted', 'for_review'])->count(),
+            // Forms to review, and signed copies whose signatures need confirming.
+            'pending_review' => $documentScope()->where(fn ($q) => $q->whereIn('status', ['submitted', 'for_review'])
+                ->orWhere(fn ($c) => $c->where('status', 'completed')->whereNotNull('file_path')))->count(),
             'reviewed_this_month' => DocumentReview::where('instructor_id', $instructor->id ?? 0)
                 ->whereMonth('reviewed_at', now()->month)
                 ->whereYear('reviewed_at', now()->year)
@@ -64,8 +66,9 @@ class DashboardController extends Controller
 
         $recentSubmissions = $documentScope()
             ->with(['requirement', 'internship.student.user', 'internship.student.program'])
-            ->whereIn('status', ['submitted', 'for_review'])
-            ->latest('submitted_at')
+            ->where(fn ($q) => $q->whereIn('status', ['submitted', 'for_review'])
+                ->orWhere(fn ($c) => $c->where('status', 'completed')->whereNotNull('file_path')))
+            ->orderByRaw('COALESCE(completed_at, submitted_at) DESC')
             ->take(5)
             ->get();
 

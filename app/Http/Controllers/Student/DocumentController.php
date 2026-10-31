@@ -1085,9 +1085,6 @@ class DocumentController extends Controller
                 // instructor then approves (or returns) the signed copy.
                 abort_unless(in_array($locked->status, ['printed', 'completed'], true), 403, 'Your instructor has to approve this form for printing first.');
                 abort_if($locked->file_path !== null, 422, 'A signed copy has already been uploaded and is waiting for your instructor.');
-                // The upload opens only after the instructor checked the
-                // signatures on the physical form the student brought back.
-                abort_unless($locked->signedUploadOpen(), 403, 'Bring the signed form to your instructor first. The upload opens once they confirm the signatures.');
 
                 $locked->update([
                     'file_path' => $path,
@@ -1109,12 +1106,12 @@ class DocumentController extends Controller
                 'user_id' => $instructor->user_id,
                 'type' => 'document_status',
                 'title' => "{$student->user->name} uploaded the signed {$document->requirement->name}",
-                'message' => 'Check the signed copy and approve it.',
+                'message' => 'Confirm the signatures on the uploaded copy, then approve the form.',
                 'url' => route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id], false),
                 'resolve_key' => 'document:'.$document->id,
             ]));
 
-        return back()->with('status', 'Signed copy uploaded. Your instructor will check and approve it.');
+        return back()->with('status', 'Signed copy uploaded. Your instructor has been told to confirm the signatures and approve the form.');
     }
 
     /**

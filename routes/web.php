@@ -36,7 +36,7 @@ Route::middleware('guest')->group(function () {
     Route::get('/', [LoginController::class, 'show'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->name('login.attempt');
     // The campus of the account being typed in (from the account, not the ID's letters).
-    Route::get('/login/campus', [LoginController::class, 'campusLookup'])->middleware('throttle:40,1')->name('login.campus');
+    Route::get('/login/campus', [LoginController::class, 'campusLookup'])->middleware('throttle:40,1')->middleware(\App\Http\Middleware\DontSaveSession::class)->name('login.campus');
 
     // Forgot password: ID -> emailed 6-digit code -> new password.
     Route::get('/forgot-password', [ForgotPasswordController::class, 'showRequest'])->name('password.forgot');
@@ -71,10 +71,10 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
     //           everyone else is refused here, not just hidden in the UI.
     Route::post('/audit/click', [AuditTrailController::class, 'click'])
         ->middleware('throttle:120,1')
-        ->name('audit.click');
+        ->middleware(\App\Http\Middleware\DontSaveSession::class)->name('audit.click');
     Route::get('/audit/feed', [AuditTrailController::class, 'feed'])
         ->middleware(['role:coordinator', 'throttle:120,1'])
-        ->name('audit.feed');
+        ->middleware(\App\Http\Middleware\DontSaveSession::class)->name('audit.feed');
 
     // Clicking any notification (every portal) opens the page it is about.
     Route::get('/notifications/{notification}/open', \App\Http\Controllers\NotificationOpenController::class)->name('notifications.open');
@@ -120,7 +120,6 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/documents/{document}/review', [DocumentReviewController::class, 'review'])->name('documents.review');
         Route::post('/documents/{document}/print', [DocumentReviewController::class, 'printForSigning'])->name('documents.print');
         Route::get('/documents/{document}/printable', [DocumentReviewController::class, 'printable'])->name('documents.printable');
-        Route::post('/documents/{document}/confirm-signatures', [DocumentReviewController::class, 'confirmSignatures'])->name('documents.confirm-signatures');
         Route::post('/documents/{document}/complete', [DocumentReviewController::class, 'markCompleted'])->name('documents.complete');
         Route::get('/documents/{document}/view', [DocumentReviewController::class, 'view'])->name('documents.view');
         Route::get('/documents/{document}/download', [DocumentReviewController::class, 'download'])->name('documents.download');

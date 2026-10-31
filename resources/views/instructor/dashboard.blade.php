@@ -143,10 +143,10 @@
             <div class="text-secondary small d-none d-md-block">{{ $document->requirement->name }}</div>
 
             <div class="text-secondary small d-none d-md-block" style="font-size: 0.78rem;">
-                {{ $document->submitted_at?->format('M d, Y') ?? '—' }}
+                {{ ($document->status === 'completed' ? $document->completed_at : $document->submitted_at)?->format('M d, Y') ?? '—' }}
             </div>
 
-            <span class="small fw-semibold">Review</span>
+            <span class="small fw-semibold">{{ $document->status === 'completed' ? 'Confirm signatures' : 'Review' }}</span>
         </a>
     @empty
         <p class="text-center text-secondary py-4 mb-0">Nothing waiting on you right now.</p>

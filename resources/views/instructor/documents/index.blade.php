@@ -338,7 +338,7 @@
                                 $f19Anchor = $internship ? \App\Support\TrainingWeeks::anchorForInternship($internship) : null;
                                 $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => $f19Anchor
                                     ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7)->format('Y-m') : 'all');
-                                $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path) || ($p->status === 'printed' && ! $p->signatures_confirmed_at);
+                                $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path);
                             @endphp
                             <div class="small text-secondary mb-2">
                                 Each week is checked on its own as soon as the student submits it.
@@ -442,11 +442,7 @@
                                                     @if (in_array($packetStatus, ['submitted', 'for_review']))
                                                         @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
                                                     @elseif ($packetStatus === 'printed')
-                                                        @if ($packet->signatures_confirmed_at)
-                                                            <span class="text-secondary small"><i class="ti ti-circle-check text-success"></i> Signatures confirmed &middot; waiting for the upload.</span>
-                                                        @else
-                                                            @if ($canAct)@include('partials.approve-button', ['step' => 'signatures', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
-                                                        @endif
+                                                        <span class="text-secondary small">With the student to print, sign and upload.</span>
                                                     @elseif ($packetStatus === 'completed')
                                                         @if ($packet->file_path)
                                                             <a href="{{ route('instructor.documents.view', $packet) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">Signed copy</a>
@@ -554,14 +550,7 @@
                                                     View Printable
                                                 </a>
                                                 <a href="{{ route('instructor.documents.printable', ['document' => $document, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-download"></i> Download</a>
-                                                @if ($document->signatures_confirmed_at)
-                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d') }} &middot; waiting for the student's upload.</span>
-                                                @else
-                                                    @if ($canAct)
-                                                        @include('partials.approve-button', ['step' => 'signatures', 'document' => $document, 'name' => $requirement->name])
-                                                    @endif
-                                                    <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student for printing and signatures. When they bring the signed form back, confirm the signatures to open their upload.</span>
-                                                @endif
+                                                <span class="text-secondary align-self-center" style="font-size: 0.78rem;">With the student to print, have signed and upload. You'll be notified to confirm the signatures.</span>
                                             @elseif ($status === 'completed')
                                                 @if ($document->file_path)
                                                     <a href="{{ route('instructor.documents.view', $document) }}" target="_blank" class="btn btn-sm btn-outline-secondary">

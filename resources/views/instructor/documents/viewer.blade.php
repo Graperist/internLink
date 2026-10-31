@@ -26,8 +26,8 @@
     $statusText = match ($status) {
         'submitted', 'for_review' => 'Turned in - for review',
         'returned' => 'Returned to student',
-        'printed' => $document->signatures_confirmed_at ? 'Signatures confirmed - waiting for upload' : 'Approved for printing - with student',
-        'completed' => $hasFile ? 'Signed copy uploaded - for approval' : 'Waiting for signed copy',
+        'printed' => 'Approved for printing - with student',
+        'completed' => $hasFile ? 'Signed copy uploaded - confirm signatures' : 'Waiting for signed copy',
         'approved' => 'Approved',
         default => ucfirst((string) $status),
     };
@@ -196,14 +196,11 @@
                     @include('partials.approve-button', ['step' => 'print', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
                 @elseif ($awaiting)
                     @include('partials.approve-button', ['step' => 'approve', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
-                @elseif ($status === 'printed' && $document->signatures_confirmed_at)
-                    <p class="small text-secondary mb-0"><i class="ti ti-circle-check text-success"></i> Signatures confirmed {{ $document->signatures_confirmed_at->format('M d, Y') }}. Waiting for the student to upload the signed copy.</p>
                 @elseif ($status === 'printed')
-                    @include('partials.approve-button', ['step' => 'signatures', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
-                    <p class="small text-secondary mt-2 mb-0">With the student: they print the form and have it signed, then bring it to you. Confirm the signatures to open their upload of the signed copy.</p>
+                    <p class="small text-secondary mb-0">With the student: they download and print the form, have it signed and upload the signed copy. You'll be notified to confirm the signatures.</p>
                 @elseif ($status === 'completed' && $hasFile)
                     @include('partials.approve-button', ['step' => 'signed', 'document' => $document, 'name' => $requirement->name, 'returnTo' => 'viewer', 'class' => 'btn btn-primary w-100'])
-                    <p class="small text-secondary mt-2 mb-0">Returning it clears the uploaded copy so the student can upload a new one.</p>
+                    <p class="small text-secondary mt-2 mb-0">Check the signatures on the uploaded copy. Returning it clears the copy so the student can upload a new one.</p>
                 @endif
             @else
                 <p class="small text-secondary mb-0">

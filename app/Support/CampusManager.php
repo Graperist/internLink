@@ -31,7 +31,6 @@ class CampusManager
         'instructor.documents',
         'instructor.documents.review',
         'instructor.documents.complete',
-        'instructor.documents.confirm-signatures',
         'instructor.documents.print',
         'instructor.documents.remind',
         'instructor.documents.deadline',

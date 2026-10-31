@@ -103,7 +103,7 @@
                             <td class="small">{{ $item->requirement?->name ?? 'Form' }}</td>
                             <td>
                                 @if ($document->status === 'completed')
-                                    <span class="text-primary small fw-semibold"><i class="ti ti-signature"></i> Signed copy to confirm</span>
+                                    <span class="text-primary small fw-semibold"><i class="ti ti-signature"></i> Signed copy uploaded &middot; confirm signatures</span>
                                 @else
                                     <span class="text-warning-emphasis small fw-semibold"><i class="ti ti-alert-circle"></i> Awaiting your review</span>
                                 @endif

@@ -98,13 +98,14 @@ class Document extends Model
     }
 
     /**
-     * Print-and-sign: the student may upload the signed copy only after the
-     * instructor confirmed the signatures on the physical form. (A form left
-     * "completed" without a file by the older flow stays open too.)
+     * Print-and-sign: once the instructor approved the form for printing,
+     * the student prints it, has it signed and uploads the signed copy
+     * (the instructor confirms the signatures on that upload). A form left
+     * "completed" without a file by an older flow stays open too.
      */
     public function signedUploadOpen(): bool
     {
-        return ($this->status === 'printed' && $this->signatures_confirmed_at !== null)
+        return $this->status === 'printed'
             || ($this->status === 'completed' && blank($this->file_path));
     }
 }

@@ -298,6 +298,7 @@ class DocumentReviewController extends Controller
             // The forms waiting on the reviewer, for the "To review" queue.
             $pendingDocs = $instructor->canActOn($student)
                 ? $docs->whereIn('status', ['submitted', 'for_review', 'completed'])
+                    ->reject(fn ($d) => $d->status === 'completed' && blank($d->file_path)) // still waiting for the upload
                     ->reject(fn ($d) => in_array($applicable->firstWhere('id', $d->document_requirement_id)?->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true))
                     ->values()
                 : collect();
@@ -663,7 +664,7 @@ class DocumentReviewController extends Controller
 
 
         $this->notifyStudent($document, "{$document->requirement->name} approved for printing",
-            "Your {$document->requirement->name} looks good. Print it from My Documents, have it signed by the signatories, then upload the signed copy.", true);
+            "Your {$document->requirement->name} looks good. Download and print it from My Documents, have it signed by the signatories, then upload the signed copy.", true);
 
         return redirect()
             ->to($this->backUrl($document))
@@ -775,30 +776,6 @@ class DocumentReviewController extends Controller
                 return view()->exists($view) ? $view : 'instructor.documents.printable';
     }
 
-    /**
-     * The student brought the printed form back with the physical
-     * signatures; the instructor checked them, which opens the student's
-     * upload of the scanned signed copy.
-     */
-    public function confirmSignatures(Document $document): RedirectResponse
-    {
-        $instructor = auth()->user()->instructor;
-        $this->authorizeInstructor($document, $instructor);
-        abort_unless($document->requirement->workflow_mode === 'print_sign', 403);
-        abort_unless($document->status === 'printed', 422, 'Only a form that is out for signing can be confirmed.');
-        abort_if($document->signatures_confirmed_at !== null, 422, 'The signatures are already confirmed; the upload is open for the student.');
-
-        $document->update(['signatures_confirmed_at' => now()]);
-
-        $name = $document->requirement->name.($document->packet_number ? ' (Week '.$document->packet_number.')' : '');
-        $this->notifyStudent($document, "Upload your signed {$name}",
-            "Your subject instructor confirmed the signatures on your {$name}. Upload a scan of the signed copy now.", true);
-
-        return redirect()
-            ->to($this->backUrl($document))
-            ->with('status', 'Signatures confirmed. The student can now upload the signed copy.');
-    }
-
     public function markCompleted(Document $document): RedirectResponse
     {
         $instructor = auth()->user()->instructor;
@@ -807,7 +784,8 @@ class DocumentReviewController extends Controller
         abort_unless($document->status === 'completed' && $document->file_path, 422, 'Waiting for the student to upload the signed copy.');
 
         // Final step of print-and-sign: the student printed the form, had it
-        // signed and uploaded the scan; the instructor approves that copy.
+        // signed and uploaded the scan; the instructor confirms the
+        // signatures on that copy and approves the form.
         // This does NOT complete the student's internship/deployment.
         DocumentReview::create([
             'document_id' => $document->id,
@@ -816,7 +794,7 @@ class DocumentReviewController extends Controller
             'remarks' => null,
             'reviewed_at' => now(),
         ]);
-        $document->update(['status' => 'approved']);
+        $document->update(['status' => 'approved', 'signatures_confirmed_at' => now()]);
 
         \App\Support\PreDeployment::notifyCoordinatorsIfComplete($document->internship);
 
@@ -825,7 +803,7 @@ class DocumentReviewController extends Controller
 
         return redirect()
             ->to($this->backUrl($document))
-            ->with('status', 'Signed copy approved. Internship completion is unchanged.');
+            ->with('status', 'Signatures confirmed and the form approved. Internship completion is unchanged.');
     }
 
     public function download(Document $document): StreamedResponse

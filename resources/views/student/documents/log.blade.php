@@ -15,7 +15,7 @@
         $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->format('Y-m'), true);
         $status = fn ($doc) => match ($doc?->status) {
             'submitted', 'for_review' => ['With your instructor', 'text-bg-warning'],
-            'printed' => [$doc->signatures_confirmed_at ? 'Upload the signed copy' : 'Approved for printing', 'text-bg-info'],
+            'printed' => ['Print, sign & upload', 'text-bg-info'],
             'completed' => [filled($doc->file_path) ? 'Signed copy uploaded' : 'Upload the signed copy', 'text-bg-primary'],
             'approved' => ['Approved', 'text-bg-success'],
             'returned' => ['Returned', 'text-bg-danger'],
@@ -165,16 +165,12 @@
                                         @endif
                                         @if ($doc && in_array($doc->status, ['printed', 'completed'], true) && ! filled($doc->file_path))
                                             <div class="small m-2 mb-0 p-2 rounded" style="background:#f4f6f9;">
-                                                @if ($doc->signedUploadOpen())
                                                     <form method="POST" action="{{ route('student.documents.upload-signed', $doc) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-center flex-wrap">
                                                         @csrf
-                                                        <span>Your instructor confirmed the signatures. Upload the signed copy:</span>
+                                                        <span>Download and print this week, have it signed, then upload the signed copy:</span>
                                                         <input type="file" name="file" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png" required style="max-width:250px">
                                                         <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-upload"></i> Upload signed copy</button>
                                                     </form>
-                                                @else
-                                                    <i class="ti ti-lock"></i> Download and print this week, have it signed, then bring it to your instructor. The upload opens once they confirm the signatures.
-                                                @endif
                                             </div>
                                         @endif
                                         <div class="table-responsive">
