@@ -321,6 +321,13 @@ class DocumentReviewController extends Controller
                     ])->values()
                     ->concat($applicable->reject(fn ($r) => $docs->pluck('document_requirement_id')->contains($r->id))
                         ->map(fn ($r) => (object) ['requirement' => $r, 'state' => 'missing', 'date' => null])->values()),
+                // Approved forms, in form order.
+                'approved_items' => $docs->where('status', 'approved')->unique('document_requirement_id')
+                    ->map(fn ($d) => (object) [
+                        'requirement' => $applicable->firstWhere('id', $d->document_requirement_id),
+                        'date' => $d->completed_at ?? $d->updated_at,
+                    ])
+                    ->sortBy(fn ($a) => (int) $a->requirement?->display_order)->values(),
             ];
         });
 
@@ -346,29 +353,40 @@ class DocumentReviewController extends Controller
             'requirement' => $requirements->firstWhere('id', $d->document_requirement_id),
         ]))->sortBy(fn ($q) => $q->document->submitted_at?->timestamp ?? PHP_INT_MAX)->values();
 
-        // "Missing / returned": one row per form still to come in.
-        $missingList = $rows->flatMap(fn ($r) => $r->missing_items->map(fn ($m) => (object) [
-            'student' => $r->student,
-            'requirement' => $m->requirement,
-            'state' => $m->state,
-            'date' => $m->date,
-            'can_act' => $r->can_act,
-        ]))->sortBy(fn ($m) => sprintf('%d|%s|%05d', $m->state === 'returned' ? 0 : 1, mb_strtolower($m->student->user->name), (int) $m->requirement?->display_order))->values();
+        // "Missing / returned": one row per student, listing each form still
+        // to come in (returned first, then not yet submitted).
+        $missingList = $rows->filter(fn ($r) => $r->missing_items->isNotEmpty())
+            ->map(fn ($r) => (object) [
+                'student' => $r->student,
+                'can_act' => $r->can_act,
+                'items' => $r->missing_items->sortBy(fn ($m) => sprintf('%d|%05d', $m->state === 'returned' ? 0 : 1, (int) $m->requirement?->display_order))->values(),
+                'returned' => $r->missing_items->where('state', 'returned')->count(),
+                'missing' => $r->missing_items->where('state', 'missing')->count(),
+            ])
+            ->sortBy(fn ($m) => sprintf('%d|%s', $m->returned > 0 ? 0 : 1, mb_strtolower($m->student->user->name)))->values();
+
+        // "Approved": one row per student with approved forms, listing them.
+        $approvedList = $rows->filter(fn ($r) => $r->approved_items->isNotEmpty())
+            ->map(fn ($r) => (object) [
+                'student' => $r->student,
+                'items' => $r->approved_items,
+                'approved' => $r->approved,
+                'required' => $r->required,
+            ])
+            ->sortBy(fn ($a) => mb_strtolower($a->student->user->name))->values();
 
         $counts = [
             'queue' => $queue->count(),
             'all' => $rows->count(),
-            'review' => $rows->filter(fn ($r) => $r->to_review > 0)->count(),
             'missing' => $missingList->count(),
-            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required)->count(),
+            'approved' => $approvedList->count(),
         ];
 
         // "Needs review" was the same as "To review": old links open To review.
-        $tab = in_array($request->query('tab'), ['all', 'missing', 'complete'], true) ? $request->query('tab') : 'queue';
+        // "All approved" became "Approved": old links open it.
+        $tab = $request->query('tab') === 'complete' ? 'approved' : $request->query('tab');
+        $tab = in_array($tab, ['all', 'missing', 'approved'], true) ? $tab : 'queue';
         $rows = match ($tab) {
-            'review' => $rows->filter(fn ($r) => $r->to_review > 0),
-            'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0),
-            'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required),
             default => $rows,
         };
 
@@ -377,7 +395,7 @@ class DocumentReviewController extends Controller
 
         $page = max(1, (int) $request->query('page', 1));
         $perPage = 25;
-        $listed = match ($tab) { 'queue' => $queue, 'missing' => $missingList, default => $rows };
+        $listed = match ($tab) { 'queue' => $queue, 'missing' => $missingList, 'approved' => $approvedList, default => $rows };
         $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
             $listed->forPage($page, $perPage)->values(), $listed->count(), $perPage, $page,
             ['path' => $request->url(), 'query' => $request->query()]

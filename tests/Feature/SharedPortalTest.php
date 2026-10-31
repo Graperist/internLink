@@ -825,7 +825,7 @@ class SharedPortalTest extends TestCase
         $this->actingAs($outsider)->get(route('instructor.documents.show', $doc))->assertForbidden();
     }
 
-    public function test_missing_and_returned_lists_each_form(): void
+    public function test_missing_and_returned_groups_forms_by_student(): void
     {
         $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
         $student = $this->student('23-AC-0001', $this->bsit);
@@ -833,12 +833,30 @@ class SharedPortalTest extends TestCase
         $document->update(['status' => 'returned']);
 
         $html = $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => 'missing']))->assertOk()
-            ->assertSee('Returned to student')->assertSee($document->requirement->name)
+            ->assertSee('1 returned')->assertSee($document->requirement->name)
             ->assertSee(e(route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id])), false)
             ->assertSee('Remind selected about missing forms')
             ->assertDontSee('Needs review')
             ->getContent();
-        // returned forms come first
-        $this->assertLessThan(strpos($html, 'Not yet submitted') ?: PHP_INT_MAX, strpos($html, 'Returned to student'));
+        // one row for the student, the returned form listed first
+        $this->assertSame(1, substr_count($html, 'name="student_ids[]" value="'.$student->id.'"'));
+        $this->assertLessThan(strpos($html, 'ti ti-clock text-secondary') ?: PHP_INT_MAX, strpos($html, 'ti ti-arrow-back-up text-danger'));
+    }
+
+    public function test_approved_tab_lists_each_students_approved_forms(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+        $other = $this->student('23-AC-0002', $this->bsit);
+        $document = $this->submittedApplication($student, $this->hte->name);
+        $document->update(['status' => 'approved']);
+
+        foreach (['approved', 'complete'] as $tab) {
+            $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => $tab]))->assertOk()
+                ->assertSee('Approved forms')
+                ->assertSee($student->user->name)->assertDontSee($other->user->name)
+                ->assertSee($document->requirement->name)
+                ->assertSee(e(route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id])), false);
+        }
     }
 }
