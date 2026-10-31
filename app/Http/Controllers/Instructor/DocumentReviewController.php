@@ -277,7 +277,7 @@ class DocumentReviewController extends Controller
             ->where('is_active', true)
             ->whereIn('audience', ['student', 'coordinator'])
             ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes())
-            ->get(['id', 'stage']);
+            ->get(['id', 'stage', 'code', 'name', 'form_number']);
 
         $advisees->load('currentInternship.documents', 'currentInternship.deployment.hte');
 
@@ -295,6 +295,13 @@ class DocumentReviewController extends Controller
             $docs = $internship ? $internship->documents->whereIn('document_requirement_id', $applicable->pluck('id')) : collect();
             $byStatus = fn (array $statuses) => $docs->whereIn('status', $statuses)->pluck('document_requirement_id')->unique()->count();
 
+            // The forms waiting on the reviewer, for the "To review" queue.
+            $pendingDocs = $instructor->canActOn($student)
+                ? $docs->whereIn('status', ['submitted', 'for_review', 'completed'])
+                    ->reject(fn ($d) => in_array($applicable->firstWhere('id', $d->document_requirement_id)?->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true))
+                    ->values()
+                : collect();
+
             return (object) [
                 'student' => $student,
                 'required' => $applicable->count(),
@@ -305,6 +312,7 @@ class DocumentReviewController extends Controller
                 'missing' => max($applicable->count() - $docs->pluck('document_requirement_id')->unique()->count(), 0),
                 'last_submitted' => $docs->max('submitted_at'),
                 'can_act' => $instructor->canActOn($student),
+                'pending_docs' => $pendingDocs,
             ];
         });
 
@@ -322,14 +330,23 @@ class DocumentReviewController extends Controller
                 : (int) $r->student->currentInternship?->deployment?->hte_id === (int) $hteId);
         }
 
+        // "To review": every form waiting on the reviewer, oldest first, each
+        // opening straight to that form.
+        $queue = $rows->flatMap(fn ($r) => $r->pending_docs->map(fn ($d) => (object) [
+            'student' => $r->student,
+            'document' => $d,
+            'requirement' => $requirements->firstWhere('id', $d->document_requirement_id),
+        ]))->sortBy(fn ($q) => $q->document->submitted_at?->timestamp ?? PHP_INT_MAX)->values();
+
         $counts = [
+            'queue' => $queue->count(),
             'all' => $rows->count(),
             'review' => $rows->filter(fn ($r) => $r->to_review > 0)->count(),
             'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0)->count(),
             'complete' => $rows->filter(fn ($r) => $r->required > 0 && $r->approved >= $r->required)->count(),
         ];
 
-        $tab = in_array($request->query('tab'), ['review', 'missing', 'complete'], true) ? $request->query('tab') : 'all';
+        $tab = in_array($request->query('tab'), ['all', 'review', 'missing', 'complete'], true) ? $request->query('tab') : 'queue';
         $rows = match ($tab) {
             'review' => $rows->filter(fn ($r) => $r->to_review > 0),
             'missing' => $rows->filter(fn ($r) => $r->missing > 0 || $r->returned > 0),
@@ -342,8 +359,9 @@ class DocumentReviewController extends Controller
 
         $page = max(1, (int) $request->query('page', 1));
         $perPage = 25;
+        $listed = $tab === 'queue' ? $queue : $rows;
         $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
-            $rows->forPage($page, $perPage)->values(), $rows->count(), $perPage, $page,
+            $listed->forPage($page, $perPage)->values(), $listed->count(), $perPage, $page,
             ['path' => $request->url(), 'query' => $request->query()]
         );
 

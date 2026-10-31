@@ -126,7 +126,7 @@ class SharedPortalTest extends TestCase
         $other = $this->student('23-AC-0002', $this->bshm);
         $this->submittedApplication($other, 'Hundred Islands Resort');
 
-        $this->actingAs($coordinator)->get(route('instructor.documents'))->assertOk()
+        $this->actingAs($coordinator)->get(route('instructor.documents', ['tab' => 'all']))->assertOk()
             ->assertSee('student 23-AC-0001')->assertDontSee('student 23-AC-0002')
             ->assertDontSee('All programs');
 
@@ -223,7 +223,7 @@ class SharedPortalTest extends TestCase
             ->assertSee('You have 0 documents pending review')
             ->assertSee('Docs For Review · BSIT')->assertSee('Nothing waiting on you right now.')
             ->assertDontSee('student 23-AC-0001')
-            ->assertSee(e(route('instructor.documents', ['program_id' => $this->bsit->id, 'tab' => 'review'])), false);
+            ->assertSee(e(route('instructor.documents', ['program_id' => $this->bsit->id])), false);
 
         $this->submittedApplication($this->student('23-AC-0003', $this->bsit), 'Hundred Islands Resort');     // their program
         $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk()
@@ -276,8 +276,7 @@ class SharedPortalTest extends TestCase
         // Coordinator's list has a Program column, with other programs marked view only.
         $this->actingAs($coordinator)->get(route('instructor.advisees'))
             ->assertSee('<th>Program</th>', false)
-            ->assertSee('Your program')
-            ->assertSee('BSHM instructor handles this student');
+            ->assertSee('View only');
         $this->actingAs($instructor)->get(route('instructor.advisees'))->assertDontSee('<th>Program</th>', false);
 
         // Coordinator can filter the campus list by program.
@@ -685,14 +684,21 @@ class SharedPortalTest extends TestCase
 
     // ---------- Document Review layout (Teams-style) ----------
 
-    public function test_document_review_opens_on_the_student_list(): void
+    public function test_document_review_opens_on_the_forms_to_review(): void
     {
         $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
         $waiting = $this->student('23-AC-0001', $this->bsit);
         $this->student('23-AC-0002', $this->bsit);
-        $this->submittedApplication($waiting, $this->hte->name);
+        $document = $this->submittedApplication($waiting, $this->hte->name);
 
+        // Default: the queue of forms waiting on the reviewer, each opening that form.
         $this->actingAs($instructor)->get(route('instructor.documents'))->assertOk()
+            ->assertSee('The forms waiting on you')->assertSee('Awaiting your review')
+            ->assertSee('23-AC-0001')->assertDontSee('23-AC-0002')
+            ->assertSee(e(route('instructor.documents', ['student' => $waiting->id, 'form' => $document->document_requirement_id])), false);
+
+        // The student list is still a tab.
+        $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => 'all']))->assertOk()
             ->assertSee('Pick a student to open their forms')
             ->assertSee('23-AC-0001')->assertSee('23-AC-0002')
             ->assertSee('1 to review')

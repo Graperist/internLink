@@ -137,7 +137,7 @@ class InstructorCompletionConfirmationTest extends TestCase
         $this->day($deployment, '2026-10-06', 4);
 
         $this->actingAs($instructorUser)->get(route('instructor.advisees'))->assertOk()
-            ->assertSee('Rendered: 10 / 10 hrs')->assertSee('Confirm completion');
+            ->assertSee('10 / 10 hrs rendered')->assertSee('Confirm completion');
         $this->actingAs($instructorUser)->post(route('instructor.advisees.confirm-completion', $deployment))
             ->assertRedirect()->assertSessionHasNoErrors();
 
@@ -154,8 +154,8 @@ class InstructorCompletionConfirmationTest extends TestCase
         $this->day($deployment, '2026-10-02', 7.5);
 
         $this->actingAs($instructorUser)->get(route('instructor.advisees'))->assertOk()
-            ->assertSee('Rendered: 7.5 / 10 hrs')->assertDontSee('>Confirm completion<', false)
-            ->assertSee('Completion unlocks once the student');
+            ->assertSee('7.5 / 10 hrs rendered')->assertDontSee('>Confirm completion<', false)
+            ->assertSee('Completion unlocks once the required hours are rendered.');
         $this->actingAs($instructorUser)->post(route('instructor.advisees.confirm-completion', $deployment))
             ->assertSessionHasErrors('completion');
 

@@ -74,7 +74,7 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ $isSuperAdminView ? route('coordinator.documents') : route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="il-card il-card-link">
+        <a href="{{ $isSuperAdminView ? route('coordinator.documents') : route('instructor.documents', $ownProgram) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['pending_review'] }}</div>
                 <span class="badge rounded-pill text-bg-warning">Pending</span>
@@ -120,7 +120,7 @@
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">Recent Submissions{{ $ownProgram ? ' · '.$programCode : '' }}</h2>
-        <a href="{{ route('instructor.documents', $ownProgram + ['tab' => 'review']) }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
+        <a href="{{ route('instructor.documents', $ownProgram) }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
     </div>
 
     @forelse ($recentSubmissions as $document)
@@ -129,7 +129,7 @@
             $initials = \App\Models\User::initialsOf($studentName);
         @endphp
         <a
-            href="{{ route('instructor.documents', ['student' => $document->internship->student_id]) }}"
+            href="{{ route('instructor.documents', ['student' => $document->internship->student_id, 'form' => $document->document_requirement_id]) }}"
             class="il-row-link {{ ! $loop->last ? 'border-bottom' : '' }}"
         >
             <div class="d-flex align-items-center gap-3">

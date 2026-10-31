@@ -151,31 +151,25 @@
         </div>
     </form>
 
-    <table class="table align-middle mb-0">
+    <div class="table-responsive">
+    <table class="table align-middle mb-0 il-review-list">
         <thead>
             <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">
-                <th>Student</th>
+                <th>Name</th>
                 @if ($isCoordinator)<th>Program</th>@endif
-                <th>Required hours</th>
-                <th>HTE assignment</th>
-                <th>Doc status</th>
-                <th>Deployment status</th>
-                <th>Action</th>
+                <th>Status</th>
+                <th>Requirements</th>
+                <th>Partner agency</th>
+                <th class="text-end"></th>
             </tr>
         </thead>
         <tbody>
             @php
-                $deploymentColors = [
-                    'pending' => 'text-bg-warning',
-                    'active' => 'text-bg-primary',
-                    'completed' => 'text-bg-secondary',
-                    'terminated' => 'text-bg-danger',
-                ];
-                $deploymentLabels = [
-                    'pending' => 'Placed - Not Started',
-                    'active' => 'Deployed',
-                    'completed' => 'Completed',
-                    'terminated' => 'Terminated',
+                $deploymentStatus = [
+                    'pending' => ['ti-hourglass', 'text-warning-emphasis', 'Placed, not started'],
+                    'active' => ['ti-briefcase', 'text-primary', 'Deployed'],
+                    'completed' => ['ti-circle-check', 'text-success', 'Completed'],
+                    'terminated' => ['ti-circle-x', 'text-danger', 'Terminated'],
                 ];
             @endphp
             @forelse ($advisees as $student)
@@ -186,6 +180,7 @@
                     $canAct = $instructor->canActOn($student);
                     $approved = $student->approved_documents_count;
                     $missing = max($requiredDocsCount - $approved, 0);
+                    $docPercent = $requiredDocsCount > 0 ? (int) round(min($approved, $requiredDocsCount) / $requiredDocsCount * 100) : 0;
                     // Completion goes by hours: the hours entered in Time Frame against the required hours.
                     $verifiedHours = $deployment ? (float) $deployment->dtrs->sum(fn ($dtr) => $dtr->countedHours()) : 0;
                     $completionReady = $deployment
@@ -194,55 +189,42 @@
                         && $internship->status === 'deployed'
                         && $requiredHours > 0
                         && $verifiedHours >= $requiredHours;
+                    [$stIcon, $stColor, $stLabel] = $deployment ? ($deploymentStatus[$deployment->status] ?? ['ti-point', 'text-secondary', ucfirst($deployment->status)]) : ['ti-clock', 'text-secondary', 'Not deployed'];
+                    $docsUrl = route($canAct ? 'instructor.documents' : 'coordinator.documents.student', $canAct ? ['student' => $student->id] : $student);
                 @endphp
                 <tr>
                     <td>
-                        @php $initials = \App\Models\User::initialsOf($student->user->name); @endphp
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="il-avatar-sm">{{ $initials }}</span>
-                            <div>
-                                <div class="fw-semibold">{{ $student->user->name }}</div>
-                                <div class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</div>
-                            </div>
-                        </div>
+                        <a href="{{ $docsUrl }}" class="d-flex align-items-center gap-2 text-decoration-none text-reset">
+                            <span class="il-row-avatar">{{ \App\Models\User::initialsOf($student->user->name) }}</span>
+                            <span>
+                                <span class="fw-semibold d-block">{{ $student->user->name }}</span>
+                                <span class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</span>
+                            </span>
+                        </a>
                     </td>
                     @if ($isCoordinator)
-                        <td>
-                            <span class="badge rounded-pill {{ $canAct ? 'text-bg-primary' : 'text-bg-light text-secondary border' }}">{{ $student->program->code ?? '—' }}</span>
-                            @if ($canAct)
-                                <div class="text-secondary" style="font-size: 0.72rem;">Your program</div>
-                            @endif
-                        </td>
+                        <td><span class="badge rounded-pill {{ $canAct ? 'text-bg-primary' : 'text-bg-light text-secondary border' }}">{{ $student->program->code ?? '—' }}</span></td>
                     @endif
-                    <td>{!! $requiredHours ? e($requiredHours).' hrs' : '<span class="text-danger small">Not set</span>' !!}</td>
+                    <td>
+                        <span class="{{ $stColor }} fw-semibold small"><i class="ti {{ $stIcon }}"></i> {{ $stLabel }}</span>
+                        @if ($deployment && $deployment->status === 'active')
+                            @php $renderedPct = $requiredHours > 0 ? min(100, (int) round($verifiedHours / $requiredHours * 100)) : 0; @endphp
+                            <div class="text-secondary" style="font-size: 0.72rem;">{{ \App\Support\TimeFrame::format($verifiedHours) }} / {{ \App\Support\TimeFrame::format((float) $requiredHours) }} hrs rendered</div>
+                            <div class="progress mt-1" style="height: 4px; max-width: 160px;"><div class="progress-bar {{ $renderedPct >= 100 ? 'bg-success' : '' }}" style="width: {{ $renderedPct }}%"></div></div>
+                        @else
+                            <div class="text-secondary" style="font-size: 0.72rem;">{!! $requiredHours ? e($requiredHours).' hrs required' : '<span class="text-danger">Required hours not set</span>' !!}</div>
+                        @endif
+                    </td>
+                    <td style="min-width: 140px;">
+                        <div class="small fw-semibold">{{ min($approved, $requiredDocsCount) }} / {{ $requiredDocsCount }}</div>
+                        <div class="progress" style="height: 5px;" role="progressbar" aria-valuenow="{{ $docPercent }}" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar {{ $docPercent === 100 ? 'bg-success' : '' }}" style="width: {{ $docPercent }}%"></div>
+                        </div>
+                        <div class="text-secondary" style="font-size: 0.72rem;">{{ $missing === 0 ? 'All pre-OJT forms approved' : $missing.' pre-OJT '.\Illuminate\Support\Str::plural('form', $missing).' to go' }}</div>
+                    </td>
                     <td class="small">@if ($deployment?->hte)<i class="ti ti-building text-secondary"></i> {{ $deployment->hte->name }}@else <span class="text-secondary">&mdash;</span> @endif</td>
-                    <td>
-                        @if ($missing === 0)
-                            <span class="badge rounded-pill text-bg-primary">All Complete</span>
-                        @else
-                            <span class="badge rounded-pill text-bg-danger">{{ $missing }} Missing</span>
-                        @endif
-                    </td>
-                    <td>
-                        @if ($deployment)
-                            <span class="badge rounded-pill {{ $deploymentColors[$deployment->status] ?? 'text-bg-light' }}">
-                                {{ $deploymentLabels[$deployment->status] ?? ucfirst($deployment->status) }}
-                            </span>
-                        @else
-                            <span class="badge rounded-pill text-bg-light text-secondary">Not Deployed</span>
-                        @endif
-                    </td>
-                    <td>
-                        <div class="d-flex align-items-center gap-1 flex-wrap">
-                            @if ($missing > 0 && $canAct)
-                                <a href="{{ route('instructor.documents', ['student' => $student->id]) }}" class="btn btn-sm btn-outline-primary">
-                                    <i class="ti ti-file-search"></i> Review Docs
-                                </a>
-                            @else
-                                <a href="{{ route($canAct ? 'instructor.documents' : 'coordinator.documents.student', $canAct ? ['student' => $student->id] : $student) }}" class="btn btn-sm btn-outline-secondary">
-                                    <i class="ti ti-eye"></i> View
-                                </a>
-                            @endif
+                    <td class="text-end">
+                        <div class="d-flex align-items-center justify-content-end gap-1 flex-wrap">
                             @if ($canAct)
                                 <form method="POST" action="{{ route('instructor.interns.reset-password', $student) }}" class="d-inline"
                                       onsubmit="return confirm('Generate a new temporary password for {{ addslashes($student->user->name) }}?');">
@@ -257,47 +239,36 @@
                                     'message' => "Delete the student {$student->user->name} ({$student->user->id_number})? This deletes their account, internship, documents, uploaded files, time frame and evaluations. This cannot be undone.",
                                 ])
                             @endif
-                        </div>
-                        @if ($canAct && $deployment && $deployment->status === 'pending')
-                            @if ($missing === 0)
-                                <div class="mt-2">
-                                    <button type="button" class="btn btn-sm btn-primary"
-                                            data-bs-toggle="modal" data-bs-target="#activateModal"
-                                            data-action="{{ route('instructor.advisees.activate', $deployment) }}"
-                                            data-student="{{ $student->user->name }}"
-                                            data-hte="{{ $deployment->hte?->name }}">
-                                        Start deployment
-                                    </button>
-                                </div>
-                            @else
-                                <div class="small text-secondary mt-1">Start deployment unlocks once all pre-OJT requirements are approved.</div>
-                            @endif
-                        @elseif ($canAct && ! $deployment && $internship)
-                            <div class="small text-secondary mt-1">Placement is created when you accept the Application for OJT.</div>
-                        @elseif (! $canAct)
-                            <div class="mt-2"><span class="il-viewonly"><i class="ti ti-eye"></i> View only</span></div>
-                            <div class="text-secondary mt-1" style="font-size:.74rem;">{{ $student->program->code ?? 'Their' }} instructor handles this student</div>
-                        @endif
-                        @if ($deployment && $deployment->status === 'active')
-                            @php $renderedPct = $requiredHours > 0 ? min(100, (int) round($verifiedHours / $requiredHours * 100)) : 0; @endphp
-                            <div class="mt-2 small text-secondary text-nowrap">Rendered: {{ \App\Support\TimeFrame::format($verifiedHours) }} / {{ \App\Support\TimeFrame::format((float) $requiredHours) }} hrs</div>
-                            <div class="progress mt-1" style="height:4px; max-width:180px;"><div class="progress-bar {{ $renderedPct >= 100 ? 'bg-success' : '' }}" style="width: {{ $renderedPct }}%"></div></div>
-                            @if (! $canAct)
-                                {{-- another program's student: the coordinator only views --}}
-                            @elseif ($completionReady)
-                                <form method="POST" action="{{ route('instructor.advisees.confirm-completion', $deployment) }}" class="mt-2" onsubmit="return confirm('Confirm that this student has completed their required hours? This ends the internship and unlocks the post-OJT requirements.');">
+                            @if ($canAct && $deployment && $deployment->status === 'pending' && $missing === 0)
+                                <button type="button" class="btn btn-sm btn-primary"
+                                        data-bs-toggle="modal" data-bs-target="#activateModal"
+                                        data-action="{{ route('instructor.advisees.activate', $deployment) }}"
+                                        data-student="{{ $student->user->name }}"
+                                        data-hte="{{ $deployment->hte?->name }}">
+                                    Start deployment
+                                </button>
+                            @elseif ($canAct && $completionReady)
+                                <form method="POST" action="{{ route('instructor.advisees.confirm-completion', $deployment) }}" class="d-inline" onsubmit="return confirm('Confirm that this student has completed their required hours? This ends the internship and unlocks the post-OJT requirements.');">
                                     @csrf
                                     <button type="submit" class="btn btn-sm btn-success">Confirm completion</button>
                                 </form>
-                            @else
-                                <div class="small text-secondary mt-1">Completion unlocks once the student's rendered hours reach the required hours.</div>
                             @endif
+                            <a href="{{ $docsUrl }}" class="btn btn-sm btn-outline-secondary">View</a>
+                        </div>
+                        @if ($canAct && $deployment && $deployment->status === 'pending' && $missing > 0)
+                            <div class="text-secondary mt-1" style="font-size: 0.72rem;">Start deployment unlocks once all pre-OJT forms are approved.</div>
+                        @elseif ($canAct && ! $deployment && $internship)
+                            <div class="text-secondary mt-1" style="font-size: 0.72rem;">Placement is created when you accept the Application for OJT.</div>
+                        @elseif ($canAct && $deployment && $deployment->status === 'active' && ! $completionReady)
+                            <div class="text-secondary mt-1" style="font-size: 0.72rem;">Completion unlocks once the required hours are rendered.</div>
+                        @elseif (! $canAct)
+                            <div class="mt-1"><span class="il-viewonly"><i class="ti ti-eye"></i> View only</span></div>
                         @endif
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="{{ $isCoordinator ? 7 : 6 }}" class="text-center text-secondary py-4">
+                    <td colspan="{{ $isCoordinator ? 6 : 5 }}" class="text-center text-secondary py-5">
                         @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
                             No students match this search or filter.
                         @else
@@ -308,7 +279,11 @@
             @endforelse
         </tbody>
     </table>
+    </div>
 </div>
+<style>
+    .il-review-list tbody tr:hover { background: rgba(28, 63, 102, 0.035); }
+</style>
 
 <div class="mt-3">
     {{ $advisees->links() }}

@@ -57,17 +57,17 @@ class PartnerAgencyFilterTest extends TestCase
 
     public function test_document_review_filters_by_partner_agency(): void
     {
-        $this->actingAs($this->instructor)->get(route('instructor.documents'))->assertOk()
+        $this->actingAs($this->instructor)->get(route('instructor.documents', ['tab' => 'all']))->assertOk()
             ->assertSee('All partner agencies')
             ->assertSee('Fareheaven Boarding House')->assertSee('Alaminos City Hall')
             // only agencies their students are placed at
             ->assertDontSee('Nobody Placed Here')
             ->assertSee('Ana Fare')->assertSee('Ben City')->assertSee('Cora None');
 
-        $this->actingAs($this->instructor)->get(route('instructor.documents', ['hte_id' => $this->fareheaven->id]))->assertOk()
+        $this->actingAs($this->instructor)->get(route('instructor.documents', ['tab' => 'all', 'hte_id' => $this->fareheaven->id]))->assertOk()
             ->assertSee('Ana Fare')->assertDontSee('Ben City')->assertDontSee('Cora None');
 
-        $this->actingAs($this->instructor)->get(route('instructor.documents', ['hte_id' => 'none']))->assertOk()
+        $this->actingAs($this->instructor)->get(route('instructor.documents', ['tab' => 'all', 'hte_id' => 'none']))->assertOk()
             ->assertSee('Cora None')->assertDontSee('Ana Fare')->assertDontSee('Ben City');
     }
 
