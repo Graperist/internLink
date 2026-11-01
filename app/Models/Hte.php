@@ -67,6 +67,36 @@ class Hte extends Model
         }
     }
 
+    /**
+     * The other account that already uses this agency's contact email (so
+     * the HTE account can't take it and keeps its old address), or null.
+     */
+    public function contactEmailTakenBy(): ?User
+    {
+        $email = trim((string) $this->contact_email);
+        if ($email === '') {
+            return null;
+        }
+        $repUserIds = $this->representatives()->pluck('user_id');
+
+        return User::with('role')->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
+            ->whereNotIn('id', $repUserIds)->first();
+    }
+
+    /** A plain sentence for the coordinator when the contact email is taken. */
+    public function contactEmailWarning(): ?string
+    {
+        $owner = $this->contactEmailTakenBy();
+        if (! $owner || ! $this->representatives()->exists()) {
+            return null;
+        }
+        $current = $this->representatives()->with('user')->first()?->user?->email;
+
+        return "{$this->contact_email} is already used by another PSU Intern-Link account ({$owner->name}, "
+            .($owner->role?->name ?? 'another role').'), so the HTE account can\'t use it'
+            .($current ? " and still sends to {$current}" : '').'. Give the agency an email no other account uses.';
+    }
+
     public function campus()
     {
         return $this->belongsTo(Campus::class);

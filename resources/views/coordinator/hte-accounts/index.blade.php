@@ -21,9 +21,12 @@
         @if (($acct['emailed'] ?? null) === true)
             <span class="d-block mt-1"><i class="ti ti-mail-check"></i> The sign-in details were emailed to <strong>{{ $acct['email'] }}</strong>.</span>
         @elseif (($acct['emailed'] ?? null) === false)
-            <span class="d-block mt-1 text-danger"><i class="ti ti-mail-off"></i> The email to {{ $acct['email'] }} couldn't be sent. Share these sign-in details with the HTE representative yourself.</span>
+            <span class="d-block mt-1 text-danger"><i class="ti ti-mail-off"></i> The email to {{ $acct['email'] }} couldn't be sent{{ filled($acct['mail_error'] ?? null) ? ': '.$acct['mail_error'] : '.' }} Share these sign-in details with the HTE representative yourself.</span>
         @else
             Share these sign-in details with the HTE representative.
+        @endif
+        @if (filled($acct['email_warning'] ?? null))
+            <span class="d-block mt-1 text-danger"><i class="ti ti-alert-triangle"></i> {{ $acct['email_warning'] }}</span>
         @endif
         HTE accounts are for evaluating the interns only and keep this password (they can't change it).
         It is shown once; use "new password" below if it gets lost.
@@ -84,6 +87,10 @@
                             <div>
                                 <div class="fw-semibold">{{ $account->user->name }}</div>
                                 <div class="text-secondary" style="font-size: 0.78rem;">{{ $account->user->id_number }}</div>
+                                <div class="text-secondary" style="font-size: 0.78rem;"><i class="ti ti-mail"></i> {{ $account->user->email ?: 'No email' }}</div>
+                                @if ($account->hte && filled($account->hte->contact_email) && strcasecmp($account->hte->contact_email, (string) $account->user->email) !== 0)
+                                    <div class="text-danger" style="font-size: 0.75rem;"><i class="ti ti-alert-triangle"></i> Not the agency's email ({{ $account->hte->contact_email }}) - that address is used by another account.</div>
+                                @endif
                             </div>
                         </div>
                     </td>

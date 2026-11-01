@@ -143,6 +143,8 @@ class HteAccountController extends Controller
                 'hte_name' => $representative->hte->name,
                 'email' => $representative->user->email,
                 'emailed' => $emailed,
+                'mail_error' => $this->mailError,
+                'email_warning' => $representative->hte->contactEmailWarning(),
                 'reset' => false,
             ]);
     }
@@ -150,11 +152,23 @@ class HteAccountController extends Controller
     /**
      * Sends the sign-in details to the representative's email. Returns
      * false when it couldn't be sent (mail not set up, bad address), so
-     * the page can say to share them by hand; the error goes to the log.
+     * the page can say to share them by hand; the reason is kept in
+     * $mailError for the page and the error goes to the log.
      */
+    private ?string $mailError = null;
+
     private function emailDetails(HteRepresentative $representative, string $password, bool $isReset): bool
     {
         if (blank($representative->user->email)) {
+            $this->mailError = 'The account has no email address.';
+
+            return false;
+        }
+
+        // The "log" mailer only writes the email to the log file - nothing is sent.
+        if (config('mail.default') === 'log') {
+            $this->mailError = 'Email sending is not set up on this server (MAIL_MAILER is "log"). Set the MAIL_ settings and redeploy.';
+
             return false;
         }
 
@@ -170,6 +184,7 @@ class HteAccountController extends Controller
             return true;
         } catch (\Throwable $e) {
             report($e); // storage/logs/laravel.log
+            $this->mailError = \Illuminate\Support\Str::limit(trim(strtok($e->getMessage(), "\n")), 220);
 
             return false;
         }
@@ -212,6 +227,8 @@ class HteAccountController extends Controller
                 'hte_name' => $representative->hte->name,
                 'email' => $representative->user->email,
                 'emailed' => $emailed,
+                'mail_error' => $this->mailError,
+                'email_warning' => $representative->hte->contactEmailWarning(),
                 'reset' => true,
             ]);
     }

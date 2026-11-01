@@ -128,4 +128,28 @@ class HteAccountEmailTest extends TestCase
             ->assertSee('emailed to virgie.new@gmail.test', false);
         $this->assertSame('virgie.new@gmail.test', User::where('id_number', 'ACC-HTE-001')->value('email'));
     }
+
+    public function test_an_agency_email_used_by_another_account_is_flagged(): void
+    {
+        Mail::fake();
+        $this->create();
+        // the coordinator's own address entered as the agency's email
+        $this->hte->update(['contact_email' => 'coord@t.local']);
+        $representative = HteRepresentative::first();
+        $this->assertSame('virgie@fareheaven.test', $representative->user->fresh()->email);
+
+        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.reset-password', $representative));
+        $this->assertStringContainsString('coord@t.local is already used by another PSU Intern-Link account (Coordinator', session('provisioned_account')['email_warning']);
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
+            ->assertSee('already used by another PSU Intern-Link account', false)
+            ->assertSee("Not the agency's email (coord@t.local)", false);
+    }
+
+    public function test_the_log_mailer_is_reported_as_not_sent(): void
+    {
+        config(['mail.default' => 'log']);
+        $this->create();
+        $this->assertFalse(session('provisioned_account')['emailed']);
+        $this->assertStringContainsString('MAIL_MAILER is "log"', session('provisioned_account')['mail_error']);
+    }
 }

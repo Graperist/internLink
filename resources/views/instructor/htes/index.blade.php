@@ -45,6 +45,9 @@
 @if (session('status'))
     <div class="alert alert-success" role="status">{{ session('status') }}</div>
 @endif
+@if (session('warning'))
+    <div class="alert alert-warning" role="alert"><i class="ti ti-mail-off"></i> {{ session('warning') }}</div>
+@endif
 @if ($errors->has('listing'))
     <div class="alert alert-danger" role="alert">{{ $errors->first('listing') }}</div>
 @endif

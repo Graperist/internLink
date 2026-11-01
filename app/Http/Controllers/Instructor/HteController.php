@@ -231,7 +231,8 @@ class HteController extends Controller
 
         return redirect()
             ->route('instructor.htes', ['academic_year' => $listing->academic_year, 'semester' => $listing->semester])
-            ->with('status', "{$listing->hte->name} was updated.");
+            ->with('status', "{$listing->hte->name} was updated.")
+            ->with('warning', $listing->hte->fresh()->contactEmailWarning());
     }
 
     /** Remove from this program's list for this term. The HTE record stays. */
