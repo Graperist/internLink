@@ -131,11 +131,22 @@
                             <div class="small text-secondary">Attached to {{ $selected['parent'] }}</div>
                         @endif
                     </div>
-                    <div class="d-flex gap-2">
-                        @if ($selected['previewable'])
-                            <a href="{{ $selected['view_url'] }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-external-link"></i> Open in new tab</a>
+                    @php
+                        $showFilled = $show === 'filled';
+                        $frameUrl = $showFilled ? $selected['printable_url'] : $selected['view_url'];
+                        $downloadUrl = $showFilled ? $selected['printable_download_url'] : $selected['download_url'];
+                    @endphp
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        @if (! empty($selected['printable_url']))
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Show">
+                                <a href="{{ request()->fullUrlWithQuery(['show' => 'signed']) }}" class="btn {{ $showFilled ? 'btn-outline-secondary' : 'btn-secondary' }}"><i class="ti ti-signature"></i> Signed copy</a>
+                                <a href="{{ request()->fullUrlWithQuery(['show' => 'filled']) }}" class="btn {{ $showFilled ? 'btn-secondary' : 'btn-outline-secondary' }}"><i class="ti ti-file-text"></i> Filled form</a>
+                            </div>
                         @endif
-                        <a href="{{ $selected['download_url'] }}" class="btn btn-sm btn-primary"><i class="ti ti-download"></i> Download</a>
+                        @if ($selected['previewable'] || $showFilled)
+                            <a href="{{ $frameUrl }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="ti ti-external-link"></i> Open in new tab</a>
+                        @endif
+                        <a href="{{ $downloadUrl }}" @if ($showFilled) target="_blank" @endif class="btn btn-sm btn-primary"><i class="ti ti-download"></i> Download</a>
                     </div>
                 </div>
                 <div class="d-flex flex-wrap gap-3 small text-secondary">
@@ -145,8 +156,19 @@
                 </div>
             </div>
 
+            @if ($signedMissing)
+                <div class="alert alert-warning small">
+                    <i class="ti ti-alert-triangle"></i> The uploaded signed copy is no longer on the server.
+                    @if (! empty($selected['printable_url']))
+                        Showing the filled form from the student's saved answers instead.
+                    @endif
+                    Ask the student to upload the signed copy again if it's needed.
+                </div>
+            @endif
             <div class="il-card p-0 overflow-hidden" style="min-height: 70vh;">
-                @if ($selected['previewable'])
+                @if ($showFilled)
+                    <iframe src="{{ $frameUrl }}" title="{{ $selected['title'] }} (filled form)" style="width: 100%; height: 75vh; border: 0; background: #fff;"></iframe>
+                @elseif ($selected['previewable'])
                     <iframe src="{{ $selected['view_url'] }}" title="{{ $selected['title'] }}" style="width: 100%; height: 75vh; border: 0; background: #f4f6f9;"></iframe>
                 @else
                     <div class="d-flex flex-column align-items-center justify-content-center text-center p-5" style="min-height: 70vh;">

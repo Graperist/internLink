@@ -816,7 +816,7 @@ class DocumentReviewController extends Controller
 
         $this->authorizeViewer($document, $instructor);
 
-        abort_unless($document->file_path && Storage::exists($document->file_path), 404);
+        throw_unless($document->file_path && Storage::exists($document->file_path), \App\Exceptions\FileMissing::class);
 
 
 
@@ -844,7 +844,7 @@ class DocumentReviewController extends Controller
 
         $this->authorizeViewer($document, $instructor);
 
-        abort_unless($document->file_path && Storage::exists($document->file_path), 404);
+        throw_unless($document->file_path && Storage::exists($document->file_path), \App\Exceptions\FileMissing::class);
 
 
 
@@ -862,7 +862,7 @@ class DocumentReviewController extends Controller
     {
         $instructor = auth()->user()->instructor;
         $this->authorizeViewer($attachment->document, $instructor);
-        abort_unless(Storage::exists($attachment->file_path), 404);
+        throw_unless(Storage::exists($attachment->file_path), \App\Exceptions\FileMissing::class);
 
         return Storage::response($attachment->file_path, $attachment->original_filename, [], $attachment->isPreviewable() ? 'inline' : 'attachment');
     }

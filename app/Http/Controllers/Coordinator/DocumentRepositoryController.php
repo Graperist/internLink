@@ -71,6 +71,14 @@ class DocumentRepositoryController extends Controller
 
         $selected = $files->firstWhere('key', (string) $request->query('file')) ?? $files->first();
 
+        // Signed copy (the uploaded scan) or the filled form. If the scan
+        // is gone from the server, the filled form is shown instead.
+        $signedMissing = $selected && ! empty($selected['file_path']) && ! Storage::exists($selected['file_path']);
+        $show = 'signed';
+        if ($selected && ! empty($selected['printable_url'])) {
+            $show = $request->query('show') === 'filled' || ($signedMissing && $request->query('show') !== 'signed') ? 'filled' : 'signed';
+        }
+
         $stageTotals = self::stageTotals($campusId);
         $passedByStage = $files->where('kind', 'form')->where('required', true)->countBy('stage');
 
@@ -84,7 +92,7 @@ class DocumentRepositoryController extends Controller
             ->values();
 
         return view('coordinator.repository.student', compact(
-            'student', 'files', 'selected', 'prevStudent', 'nextStudent', 'position', 'stageTotals', 'passedByStage', 'jumpList'
+            'student', 'files', 'selected', 'prevStudent', 'nextStudent', 'position', 'stageTotals', 'passedByStage', 'jumpList', 'show', 'signedMissing'
         ));
     }
 
@@ -98,7 +106,7 @@ class DocumentRepositoryController extends Controller
     {
         $stageRank = ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3];
 
-        $documents = Document::with(['requirement', 'uploader.role', 'attachments', 'reviews' => fn ($q) => $q->latest('reviewed_at')])
+        $documents = Document::with(['requirement' => fn ($q) => $q->withCount('fieldDefinitions'), 'uploader.role', 'attachments', 'reviews' => fn ($q) => $q->latest('reviewed_at')])
             ->whereHas('internship', fn ($q) => $q->where('student_id', $student->id))
             ->whereHas('requirement', fn ($q) => $q->where('is_active', true))
             ->where('status', 'approved')
@@ -150,6 +158,11 @@ class DocumentRepositoryController extends Controller
                 'previewable' => $isPreviewable($document->original_filename ?: $document->file_path),
                 'view_url' => route('coordinator.repository.view', $document),
                 'download_url' => route('coordinator.repository.download', $document),
+                // A form filled in online can also be shown as the filled
+                // printable form (from the saved answers) - it is never lost.
+                'printable_url' => $this->hasPrintable($document) ? route('instructor.documents.printable', ['document' => $document, 'preview' => 1]) : null,
+                'printable_download_url' => $this->hasPrintable($document) ? route('instructor.documents.printable', ['document' => $document, 'download' => 1]) : null,
+                'file_path' => $document->file_path,
             ]);
             foreach ($document->attachments->sortBy('kind') as $attachment) {
                 $files->push([
@@ -170,6 +183,13 @@ class DocumentRepositoryController extends Controller
         }
 
         return $files->values();
+    }
+
+    /** Forms filled in online have a printable version (not the evaluations). */
+    private function hasPrintable(Document $document): bool
+    {
+        return ($document->requirement->field_definitions_count ?? 0) > 0
+            && ! isset(\App\Support\EvaluationRouting::FORMS[$document->requirement->code]);
     }
 
     /**
@@ -196,7 +216,7 @@ class DocumentRepositoryController extends Controller
     {
         abort_unless($document->internship->campus_id === auth()->user()->campus_id, 403);
         abort_if(blank($document->file_path), 404);
-        abort_unless(Storage::exists($document->file_path), 404);
+        throw_unless(Storage::exists($document->file_path), \App\Exceptions\FileMissing::class);
 
         return Storage::response($document->file_path, $document->original_filename, [], 'inline');
     }
@@ -205,7 +225,7 @@ class DocumentRepositoryController extends Controller
     public function attachment(Request $request, \App\Models\DocumentAttachment $attachment): StreamedResponse
     {
         abort_unless($attachment->document->internship->campus_id === auth()->user()->campus_id, 403);
-        abort_unless(Storage::exists($attachment->file_path), 404);
+        throw_unless(Storage::exists($attachment->file_path), \App\Exceptions\FileMissing::class);
 
         if ($request->boolean('download')) {
             return Storage::download($attachment->file_path, $attachment->original_filename);
@@ -340,7 +360,7 @@ class DocumentRepositoryController extends Controller
 
         abort_unless($document->internship->campus_id === $campusId, 403);
         abort_if(blank($document->file_path), 404, 'No file has been uploaded for this document yet.');
-        abort_unless(Storage::exists($document->file_path), 404);
+        throw_unless(Storage::exists($document->file_path), \App\Exceptions\FileMissing::class);
 
         return Storage::download($document->file_path, $document->original_filename);
     }

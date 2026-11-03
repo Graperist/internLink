@@ -193,4 +193,38 @@ class RepositoryLayoutTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('coordinator.documents', ['document_requirement_id' => $form1->id]))->assertOk()
             ->assertSee('Jasmine Bejerano')->assertDontSee('Lucy Ro');
     }
+
+    public function test_a_file_missing_from_the_server_says_so(): void
+    {
+        $student = $this->student('23-AC-0093', 'Jasmine Bejerano');
+        $document = $this->passed($student, $this->requirement('APPLICATION_FOR_OJT', 'Application for Internship', '1'), 'form1.pdf');
+        Storage::delete($document->file_path);   // e.g. wiped by a redeploy
+
+        $this->actingAs($this->coordinator)->get(route('coordinator.repository.view', $document))
+            ->assertNotFound()->assertSee('This file is no longer on the server');
+    }
+
+    public function test_a_form_filled_online_can_be_shown_as_the_filled_form(): void
+    {
+        $student = $this->student('23-AC-0093', 'Jasmine Bejerano');
+        $requirement = $this->requirement('OJT_RESUME', 'Internship Resume', '11');
+        \App\Models\DocumentFieldDefinition::forceCreate(['document_requirement_id' => $requirement->id, 'field_key' => 'address', 'label' => 'Address', 'field_type' => 'text', 'is_required' => false, 'sort_order' => 1]);
+        $document = $this->passed($student, $requirement, 'resume.pdf');
+        $page = route('coordinator.repository', ['student' => $student->id]);
+        $printable = route('instructor.documents.printable', ['document' => $document, 'preview' => 1]);
+
+        // the signed copy by default, with a switch to the filled form
+        $this->actingAs($this->coordinator)->get($page)->assertOk()
+            ->assertSee('<iframe src="'.route('coordinator.repository.view', $document).'"', false)
+            ->assertSee('Filled form');
+        $this->actingAs($this->coordinator)->get($page.'&show=filled')->assertSee('<iframe src="'.e($printable).'"', false);
+
+        // the scan is gone: the filled form is shown, with a note
+        Storage::delete($document->file_path);
+        $this->actingAs($this->coordinator)->get($page)
+            ->assertSee('no longer on the server')->assertSee('<iframe src="'.e($printable).'"', false);
+
+        // and the coordinator can open it
+        $this->actingAs($this->coordinator)->get($printable)->assertOk();
+    }
 }
