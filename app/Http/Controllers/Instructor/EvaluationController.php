@@ -33,7 +33,9 @@ class EvaluationController extends Controller
         $programs = $isCoordinator
             ? \App\Models\Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
             : collect();
-        $programId = $isCoordinator && $programs->contains('id', (int) $request->query('program_id')) ? (int) $request->query('program_id') : null;
+        // It opens on the program the coordinator handles; "All programs" shows every program.
+        $wanted = $request->has('program_id') ? (int) $request->query('program_id') : (int) $instructor->program_id;
+        $programId = $isCoordinator && $programs->contains('id', $wanted) ? $wanted : null;
 
         $agencies = AgencyEvaluations::agenciesFor($instructor, $programId);
 
@@ -120,8 +122,8 @@ class EvaluationController extends Controller
     public function editDays(\Illuminate\Http\Request $request): RedirectResponse
     {
         $instructor = $this->subjectInstructor()->load('program');
-        // Setting the deadline is the Subject Instructor's work, not the coordinator's.
-        abort_if($instructor->isCoordinator(), 403, 'The editing deadline is set by the Subject Instructor of the program.');
+        // Always the program on your own account: the coordinator sets it for
+        // the program they handle only, never for another program.
         abort_unless($instructor->program, 422, 'Your account has no program yet - ask your coordinator.');
         $days = (int) $request->validate([
             'evaluation_edit_days' => ['required', 'integer', 'min:0', 'max:90'],

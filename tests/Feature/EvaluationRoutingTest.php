@@ -379,12 +379,17 @@ class EvaluationRoutingTest extends TestCase
         $ownProgram = $this->studentUser->student->program_id;
 
         $this->actingAs($this->coordinatorUser)->get(route('instructor.dashboard'));   // clears the HTE's "submitted" message
+        // It opens on the program the coordinator handles (BSHM: no interns there yet) ...
         $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations'))->assertOk()
-            ->assertSee('name="program_id"', false)->assertSee($this->studentUser->name)->assertSee($this->hte->name);
+            ->assertSee('name="program_id"', false)->assertDontSee($this->studentUser->name)
+            ->assertSee('<option value="'.$otherProgram->id.'" selected', false);
+        // ... and "All programs" shows every program.
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations', ['program_id' => 'all']))->assertOk()
+            ->assertSee($this->studentUser->name)->assertSee($this->hte->name);
         $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations.show', $form13))->assertOk();
 
         // ... but evaluates (Form 23a) only the agencies of the program they handle (BSHM here).
-        $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations'))
+        $this->actingAs($this->coordinatorUser)->get(route('instructor.evaluations', ['program_id' => 'all']))
             ->assertSee('View only &middot; not your program', false)
             ->assertDontSee(route('instructor.agency-evaluations.create', $this->hte), false);
         $this->actingAs($this->coordinatorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertForbidden();

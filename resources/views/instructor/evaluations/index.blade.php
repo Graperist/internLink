@@ -35,7 +35,7 @@
         <form method="GET" action="{{ route('instructor.evaluations') }}" class="d-flex align-items-center gap-2">
             <label for="evalProgram" class="small fw-semibold text-secondary mb-0 text-nowrap"><i class="ti ti-filter"></i> Program</label>
             <select name="program_id" id="evalProgram" class="form-select form-select-sm" style="min-width:230px;" onchange="this.form.submit()">
-                <option value="">All programs</option>
+                <option value="all" @selected($programId === null)>All programs</option>
                 @foreach ($programs as $program)
                     <option value="{{ $program->id }}" @selected($programId === $program->id)>{{ $program->code }} &ndash; {{ $program->name }}</option>
                 @endforeach
@@ -72,14 +72,14 @@
     </div>
 </div>
 
-@if ($instructor->program && ! $isCoordinator)
-    {{-- The editing deadline: the Subject Instructor's, for their program (not the coordinator's). --}}
+@if ($instructor->program)
+    {{-- The editing deadline for the program you handle - the coordinator sets it for their own program only. --}}
     <form method="POST" action="{{ route('instructor.evaluations.edit-days') }}" class="il-card mb-3 py-3">
         @csrf @method('PUT')
         <div class="d-flex align-items-center flex-wrap gap-3">
             <span class="ev-icon gold"><i class="ti ti-clock-edit"></i></span>
             <div class="flex-grow-1" style="min-width: 260px;">
-                <div class="fw-bold small">Editing deadline &middot; {{ $instructor->program->code }}</div>
+                <div class="fw-bold small">Editing deadline &middot; {{ $instructor->program->code }}@if ($isCoordinator) <span class="badge rounded-pill text-bg-primary ms-1">Your program</span>@endif</div>
                 <div class="text-secondary" style="font-size:.78rem;">Students and HTEs can change a submitted evaluation until this many days after the internship ends. Lock one sooner with <i class="ti ti-lock-open"></i>.</div>
             </div>
             <div class="input-group input-group-sm" style="width: 120px;">
