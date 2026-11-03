@@ -250,7 +250,7 @@
                         <td class="text-end text-nowrap">
                             @if ($canManage)
                                 <span class="ev-acts">
-                                    @if ($rep = $hte->representatives->first())
+                                    @if (($rep = $hte->representatives->first()) && $rep->user?->status !== 'archived')
                                         @include('partials.hte-send-credentials', ['representative' => $rep, 'btnClass' => 'ev-act'])
                                     @endif
                                     <a href="{{ route('instructor.htes.edit', $listing) }}" class="ev-act" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>

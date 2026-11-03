@@ -28,6 +28,10 @@ class HteCredentialsController extends Controller
         abort_unless($instructor->isCoordinator()
             || HteListing::where('hte_id', $hte->id)->where('program_id', $instructor->program_id)->exists(), 403);
 
+        if ($representative->user->status === 'archived') {
+            return back()->withErrors(['send' => "{$hte->name}'s account is archived. Restore it on HTE Accounts first."]);
+        }
+
         $readiness = HteAccounts::readiness($hte);
         if (! $readiness['ready']) {
             return back()->withErrors(['send' => "Not sent yet - {$readiness['reason']} The sign-in details can be sent once every intern there has finished."]);

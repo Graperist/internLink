@@ -198,4 +198,69 @@ class HteCredentialsTest extends TestCase
         $this->actingAs($this->instructor)->post(route('instructor.hte-accounts.send', $account))->assertSessionHasNoErrors();
         Mail::assertSent(HteAccountMail::class);
     }
+
+    public function test_the_account_can_be_edited_and_the_agency_email_follows(): void
+    {
+        $account = $this->account();
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.edit', $account))->assertOk()
+            ->assertSee('value="ACC-HTE-001"', false)->assertSee('virgie@fareheaven.test');
+
+        $this->actingAs($this->coordinator)->put(route('coordinator.hte-accounts.update', $account), [
+            'id_number' => 'ACC-HTE-010', 'name' => 'Virgie O. Osorio', 'email' => 'virgie.new@fareheaven.test',
+        ])->assertRedirect(route('coordinator.hte-accounts.index'));
+
+        $user = $account->user->fresh();
+        $this->assertSame(['ACC-HTE-010', 'Virgie O. Osorio', 'virgie.new@fareheaven.test'], [$user->id_number, $user->name, $user->email]);
+        $this->assertSame('virgie.new@fareheaven.test', $this->hte->fresh()->contact_email);
+        // the list keeps it (the agency email no longer pulls it back)
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertSee('virgie.new@fareheaven.test')
+            ->assertDontSee("Not the agency's email", false);
+
+        // an email or ID another account uses is refused
+        $this->actingAs($this->coordinator)->put(route('coordinator.hte-accounts.update', $account), [
+            'id_number' => 'ACC-COORD-001', 'name' => 'x', 'email' => '23-ac-0001@t.local',
+        ])->assertSessionHasErrors(['id_number', 'email']);
+    }
+
+    public function test_accounts_are_archived_and_restored_never_deleted(): void
+    {
+        $account = $this->account();
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
+            ->assertSee(route('coordinator.hte-accounts.archive', $account), false)
+            ->assertDontSee('ti-trash', false);
+
+        $this->actingAs($this->coordinator)->from(route('coordinator.hte-accounts.index'))->post(route('coordinator.hte-accounts.archive', $account))->assertRedirect();
+        $this->assertSame('archived', $account->user->fresh()->status);
+        $this->assertDatabaseHas('hte_representatives', ['id' => $account->id]);
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
+            ->assertSee('Archived HTE accounts')->assertSee(route('coordinator.hte-accounts.restore', $account), false);
+
+        // it can't sign in, and the mail icon can't send to it
+        auth()->logout();
+        $this->post(route('login.attempt'), ['id_number' => 'ACC-HTE-001', 'password' => 'whatever'])->assertSessionHasErrors();
+        $this->deployment->update(['status' => 'completed']);
+        Mail::fake();
+        $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.send', $account))->assertSessionHasErrors('send');
+        Mail::assertNothingSent();
+
+        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.restore', $account))->assertRedirect();
+        $this->assertSame('active', $account->user->fresh()->status);
+    }
+
+    public function test_the_list_is_filtered_by_academic_year(): void
+    {
+        $this->account();   // Fareheaven: on the 2026-2027 list
+        $old = Hte::forceCreate(['campus_id' => $this->campus->id, 'name' => 'Old Partner Resort', 'contact_person' => 'Old Rep', 'contact_email' => 'old@resort.test']);
+        HteListing::forceCreate(['campus_id' => $this->campus->id, 'program_id' => $this->bsit->id, 'hte_id' => $old->id, 'academic_year' => '2023-2024', 'semester' => Term::SEMESTER, 'slots' => 2]);
+        $oldAccount = HteAccounts::create($old, 'ACC-HTE-050', 'Old Rep', 'old@resort.test');
+        $oldAccount->forceFill(['created_at' => '2024-01-10'])->save();
+
+        // current year by default
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
+            ->assertSee('AY 2026-2027 (current)')->assertSee('Fareheaven Boarding House')->assertDontSee('Old Partner Resort');
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index', ['academic_year' => '2023-2024']))
+            ->assertSee('Old Partner Resort')->assertDontSee('Fareheaven Boarding House');
+        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index', ['academic_year' => 'all']))
+            ->assertSee('Old Partner Resort')->assertSee('Fareheaven Boarding House');
+    }
 }

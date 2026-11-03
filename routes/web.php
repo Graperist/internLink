@@ -253,7 +253,11 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/hte-accounts/create', [HteAccountController::class, 'create'])->name('hte-accounts.create');
         Route::post('/hte-accounts', [HteAccountController::class, 'store'])->name('hte-accounts.store');
         Route::post('/hte-accounts/{representative}/reset-password', [HteAccountController::class, 'resetPassword'])->name('hte-accounts.reset-password');
-        Route::delete('/hte-accounts/{representative}', [HteAccountController::class, 'destroy'])->name('hte-accounts.destroy');
+        Route::get('/hte-accounts/{representative}/edit', [HteAccountController::class, 'edit'])->name('hte-accounts.edit');
+        Route::put('/hte-accounts/{representative}', [HteAccountController::class, 'update'])->name('hte-accounts.update');
+        // Archived, never deleted: restore brings the account back.
+        Route::post('/hte-accounts/{representative}/archive', [HteAccountController::class, 'archive'])->name('hte-accounts.archive');
+        Route::post('/hte-accounts/{representative}/restore', [HteAccountController::class, 'restore'])->name('hte-accounts.restore');
 
         // Repository - every intern's document status and passed files
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents');

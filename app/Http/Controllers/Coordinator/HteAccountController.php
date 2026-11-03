@@ -38,7 +38,29 @@ class HteAccountController extends Controller
             });
         }
 
-        $accounts = $query->latest('id')->paginate(20)->withQueryString();
+        // Academic year: accounts whose agency is on a partner list that
+        // year, or that were made during it. Defaults to the current year.
+        $currentYear = \App\Support\Term::current()[0];
+        $listedYears = \App\Models\HteListing::where('campus_id', $campusId)->distinct()->pluck('academic_year');
+        $madeYears = HteRepresentative::whereHas('hte', fn ($q) => $q->where('campus_id', $campusId))->pluck('created_at')
+            ->filter()->map(fn ($d) => \App\Support\Term::forDate($d)[0]);
+        $years = $listedYears->merge($madeYears)->push($currentYear)
+            ->filter(fn ($y) => \App\Support\Term::isValidAcademicYear($y))->unique()->sortDesc()->values();
+        $year = $request->query('academic_year', $currentYear);
+        if ($year !== 'all' && ! $years->contains($year)) {
+            $year = $currentYear;
+        }
+        if ($year !== 'all') {
+            [$from, $to] = \App\Support\Term::range($year);
+            $query->where(fn ($q) => $q
+                ->whereHas('hte.listings', fn ($l) => $l->where('academic_year', $year))
+                ->orWhereBetween('hte_representatives.created_at', [$from, $to]));
+        }
+
+        $archived = (clone $query)->whereHas('user', fn ($u) => $u->where('status', 'archived'))->get()
+            ->sortBy(fn ($a) => mb_strtolower($a->user->name))->values();
+        $accounts = $query->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))
+            ->latest('id')->paginate(20)->withQueryString();
 
         // Catch up accounts whose agency email was changed before emails
         // were kept in step, so Reset password shows (and uses) the new one.
@@ -50,7 +72,7 @@ class HteAccountController extends Controller
             }
         }
 
-        return view('coordinator.hte-accounts.index', compact('accounts'));
+        return view('coordinator.hte-accounts.index', compact('accounts', 'archived', 'years', 'year', 'currentYear'));
     }
 
     /**
@@ -104,7 +126,7 @@ class HteAccountController extends Controller
         if ($alreadyHasAccount) {
             return back()
                 ->withInput()
-                ->withErrors(['hte_id' => 'This HTE already has a portal account. Use the reset password action on the HTE Accounts page instead.']);
+                ->withErrors(['hte_id' => 'This HTE already has a portal account (it may be under Archived HTE accounts - restore it there). Use edit or reset password on the HTE Accounts page instead.']);
         }
 
         $hteRole = Role::where('code', 'hte_representative')->firstOrFail();
@@ -192,38 +214,70 @@ class HteAccountController extends Controller
             ]);
     }
 
-    /**
-     * Delete an HTE portal account, scoped to the coordinator's campus.
-     *
-     * The company (HTE) record itself is kept - only the representative's
-     * login is removed. Evaluations the representative already filed are
-     * kept too (the ratings are part of the student's record); they simply
-     * lose their link to the removed account. DTR verifications/flags are
-     * cleared automatically by the database (nullOnDelete).
-     */
-    public function destroy(HteRepresentative $representative): RedirectResponse
+    private function authorizeCampus(HteRepresentative $representative): void
     {
-        $coordinator = auth()->user();
         $representative->load(['user', 'hte']);
+        abort_unless($representative->hte && $representative->user
+            && $representative->hte->campus_id === auth()->user()->campus_id, 403);
+    }
 
-        abort_unless(
-            $representative->hte && $representative->hte->campus_id === $coordinator->campus_id,
-            403
-        );
+    /** Edit the account: name, ID number and email. */
+    public function edit(HteRepresentative $representative): View
+    {
+        $this->authorizeCampus($representative);
 
-        $name = $representative->user?->name ?? 'The representative';
-        $hteName = $representative->hte->name;
+        return view('coordinator.hte-accounts.edit', ['account' => $representative]);
+    }
 
-        DB::transaction(function () use ($representative) {
-            $user = $representative->user;
+    public function update(Request $request, HteRepresentative $representative): RedirectResponse
+    {
+        $this->authorizeCampus($representative);
+        $user = $representative->user;
 
-            $representative->evaluations()->update(['hte_representative_id' => null]);
-            $representative->delete();
-            $user?->delete(); // also removes their notifications (cascade)
+        $data = $request->validate([
+            'id_number' => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::unique('users', 'id_number')->ignore($user->id)],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id)],
+        ], [
+            'id_number.unique' => 'This ID number is already used by another account.',
+            'email.unique' => 'This email is already used by another PSU Intern-Link account.',
+        ]);
+
+        DB::transaction(function () use ($user, $representative, $data) {
+            $user->update($data);
+            // The account and the agency share one email: keep them in step
+            // (otherwise the agency's old email would be put back).
+            $representative->hte->updateQuietly(['contact_email' => $data['email']]);
         });
 
-        return redirect()
-            ->route('coordinator.hte-accounts.index')
-            ->with('status', "{$name}'s account for {$hteName} was deleted. You can now create a new account for this HTE.");
+        \App\Support\AuditLogger::record('hte_account.updated', "Edited the HTE account {$user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
+
+        return redirect()->route('coordinator.hte-accounts.index')
+            ->with('status', "{$user->name}'s account for {$representative->hte->name} was updated. The agency's contact email is now {$user->email}.");
+    }
+
+    /**
+     * Archive instead of delete (like the Super Admin's campuses and
+     * coordinators): the account and the evaluations it filed are kept;
+     * it just can't sign in until it is restored.
+     */
+    public function archive(Request $request, HteRepresentative $representative): RedirectResponse
+    {
+        $this->authorizeCampus($representative);
+        $representative->user->update(['status' => 'archived']);
+        \App\Support\AuditLogger::record('hte_account.archived', "Archived the HTE account {$representative->user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
+
+        return back()
+            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was archived and can no longer sign in. Its records are kept; restore it from Archived HTE accounts.");
+    }
+
+    public function restore(Request $request, HteRepresentative $representative): RedirectResponse
+    {
+        $this->authorizeCampus($representative);
+        $representative->user->update(['status' => 'active']);
+        \App\Support\AuditLogger::record('hte_account.restored', "Restored the HTE account {$representative->user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
+
+        return back()
+            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was restored and can sign in again.");
     }
 }
