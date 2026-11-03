@@ -448,4 +448,43 @@ class SuperAdminTest extends TestCase
         $this->actingAs($this->admin)->get(route('admin.audit-trail', ['kind' => 'action', 'page' => 2]))->assertOk()
             ->assertSee('Entry number 2.')->assertSee('Entry number 1.');
     }
+
+    public function test_the_same_campus_is_caught_however_it_is_typed(): void
+    {
+        Campus::forceCreate(['code' => 'BMC', 'name' => 'Pangasinan State University - Binmaley Campus', 'status' => 'active']);
+        foreach (['PSU Binmaley', 'binmaley campus', 'Pangasinan State University – BINMALEY'] as $name) {
+            $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'BIN', 'name' => $name])
+                ->assertSessionHasErrors(['name' => 'This campus already exists: Pangasinan State University - Binmaley Campus.']);
+        }
+        foreach (['A', 'B1', 'AB C', '12'] as $code) {
+            $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => $code, 'name' => 'PSU - Bolinao Campus'])->assertSessionHasErrors('code');
+        }
+        $this->actingAs($this->admin)->post(route('admin.campuses.store'), ['code' => 'bln', 'name' => 'PSU - Bolinao Campus'])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('campuses', ['code' => 'BLN']);
+        $this->actingAs($this->admin)->get(route('admin.campuses.create'))->assertSee('autocapitalize="characters"', false);
+    }
+
+    public function test_campuses_can_be_searched(): void
+    {
+        Campus::forceCreate(['code' => 'BMC', 'name' => 'PSU - Binmaley Campus', 'address' => 'Binmaley, Pangasinan', 'status' => 'active']);
+        $this->actingAs($this->admin)->get(route('admin.campuses.index', ['search' => 'binm']))->assertOk()
+            ->assertSee('PSU - Binmaley Campus')->assertDontSee('PSU - Alaminos City Campus');
+        $this->actingAs($this->admin)->get(route('admin.campuses.index', ['search' => 'acc']))
+            ->assertSee('PSU - Alaminos City Campus')->assertDontSee('PSU - Binmaley Campus');
+        $this->actingAs($this->admin)->get(route('admin.campuses.index', ['search' => 'zzz']))->assertSee('No campuses match this search.');
+    }
+
+    public function test_the_campus_dashboard_shows_the_super_admins_work(): void
+    {
+        $coordinator = $this->staff('coordinator', 'ACC-COORD-001');
+        \App\Models\Program::forceCreate(['campus_id' => $this->acc->id, 'code' => 'BSIT', 'name' => 'BSIT', 'required_hours' => 486]);
+        \App\Support\AuditLogger::record('admin.campus_updated', 'Updated campus ACC - test.', $this->admin, null, null, $this->acc->id);
+
+        $this->actingAs($this->admin)->post(route('admin.campuses.manage', $this->acc));
+        $this->get(route('instructor.dashboard'))->assertOk()
+            ->assertSee('Campus set-up and accounts')->assertSee($coordinator->name)
+            ->assertSee('BSIT</strong> has no Subject Instructor', false)
+            ->assertSee('Updated campus ACC - test.')
+            ->assertDontSee('pending review')->assertDontSee('Docs For Review');
+    }
 }

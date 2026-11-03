@@ -18,6 +18,12 @@ class DashboardController extends Controller
     {
         $instructor = auth()->user()->instructor;
 
+        // The Super Admin managing a campus sees the campus's administration
+        // (accounts, programs, partners, activity) - not the coordinator's to-do.
+        if (\App\Support\CampusManager::active()) {
+            return $this->superAdminCampus(\App\Support\CampusManager::campus());
+        }
+
         // Documents scoped through the internship's own campus_id/program_id
         // rather than internship.instructor_id - keeps review capability
         // tied to "who teaches this program right now," not to whichever
@@ -87,5 +93,36 @@ class DashboardController extends Controller
         }
 
         return view('instructor.dashboard', compact('counts', 'recentSubmissions', 'campus'));
+    }
+
+    /** Campus dashboard for the Super Admin: the campus's set-up and accounts. */
+    private function superAdminCampus(\App\Models\Campus $campus): View
+    {
+        $year = \App\Support\Term::current()[0];
+        $roleIds = \App\Models\Role::pluck('id', 'code');
+        $users = fn (string $role) => \App\Models\User::where('campus_id', $campus->id)->where('role_id', $roleIds[$role] ?? 0);
+
+        $programs = \App\Models\Program::where('campus_id', $campus->id)->orderBy('code')->get();
+        $teachingProgramIds = \App\Models\Instructor::where('campus_id', $campus->id)
+            ->whereHas('user', fn ($u) => $u->where('status', 'active'))->whereNotNull('program_id')->pluck('program_id');
+        $students = \App\Models\Student::where('campus_id', $campus->id);
+
+        $stats = [
+            'coordinators' => $users('coordinator')->where('status', 'active')->with('instructor.program')->get(),
+            'instructors' => $users('instructor')->where('status', 'active')->count(),
+            'programs' => $programs->count(),
+            'uncovered' => $programs->whereNotIn('id', $teachingProgramIds)->values(),
+            'students' => (clone $students)->where('academic_year', $year)->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))->count(),
+            'archived_students' => (clone $students)->whereHas('user', fn ($u) => $u->where('status', 'archived'))->count(),
+            'agencies' => \App\Models\HteListing::where('campus_id', $campus->id)->where('academic_year', $year)->distinct('hte_id')->count('hte_id'),
+            'hte_accounts' => $users('hte_representative')->where('status', 'active')->count(),
+        ];
+        $activity = \App\Models\ActivityLog::with('user')->where('campus_id', $campus->id)
+            ->whereNotNull('description')
+            ->whereNotIn('action', ['page.view', 'ui.click', 'action.download'])   // changes, not page visits
+            ->where('action', 'not like', 'auth.%')                                  // or sign-ins
+            ->latest('id')->take(6)->get();
+
+        return view('admin.campus-dashboard', compact('campus', 'year', 'stats', 'activity'));
     }
 }

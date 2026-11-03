@@ -18,9 +18,13 @@ use Illuminate\View\View;
  */
 class CampusController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $all = Campus::withCount('programs')->orderBy('name')->get();
+        if ($search = trim((string) $request->query('search'))) {
+            $needle = mb_strtolower($search);
+            $all = $all->filter(fn ($c) => str_contains(mb_strtolower($c->code.' '.$c->name.' '.$c->address), $needle))->values();
+        }
         $campuses = $all->where('status', 'active')->values();
         $archived = $all->where('status', '!=', 'active')->values();
 
@@ -91,7 +95,7 @@ class CampusController extends Controller
 
         return [
             'codes' => $others->pluck('code')->map(fn ($c) => strtoupper($c))->values()->all(),
-            'names' => $others->pluck('name')->map(fn ($n) => mb_strtolower(trim($n)))->values()->all(),
+            'names' => $others->pluck('name')->map(fn ($n) => self::placeKey($n))->values()->all(),
         ];
     }
 
@@ -105,16 +109,33 @@ class CampusController extends Controller
         return $request->validate([
             'code' => ['required', 'regex:/^[A-Z]{2,3}$/', Rule::unique('campuses', 'code')->ignore($campus?->id)],
             'name' => ['required', 'string', 'max:255', function ($attribute, $value, $fail) use ($campus) {
-                $exists = Campus::when($campus, fn ($q) => $q->whereKeyNot($campus->id))
-                    ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($value)])->exists();
-                if ($exists) {
-                    $fail('A campus with this name already exists.');
+                // "PSU Binmaley" and "Pangasinan State University - Binmaley
+                // Campus" are the same campus.
+                $same = Campus::when($campus, fn ($q) => $q->whereKeyNot($campus->id))->get(['name'])
+                    ->first(fn ($c) => self::placeKey($c->name) === self::placeKey($value));
+                if ($same) {
+                    $fail("This campus already exists: {$same->name}.");
                 }
             }],
             'address' => ['nullable', 'string', 'max:255'],
         ], [
-            'code.regex' => 'The campus code is 2 to 3 letters, e.g. ACC or BC. It is the code used inside employee IDs (ACC-COORD-001).',
+            'code.regex' => 'The campus code must be 2 to 3 capital letters only (A-Z), e.g. ACC or BC - no numbers, spaces or symbols.',
             'code.unique' => 'The campus code :input is already used by another campus.',
         ]);
+    }
+
+    /**
+     * A campus's place, for spotting the same campus typed differently:
+     * "Pangasinan State University - Binmaley Campus", "PSU Binmaley" and
+     * "binmaley campus" all give "binmaley".
+     */
+    public static function placeKey(string $name): string
+    {
+        $key = mb_strtolower($name);
+        $key = str_replace(['pangasinan state university', 'psu'], ' ', $key);
+        $key = preg_replace('/\b(campus|city|of|the)\b/u', ' ', $key);
+        $key = preg_replace('/[^a-z0-9]+/u', '', $key);
+
+        return $key !== '' ? $key : mb_strtolower(trim($name));
     }
 }

@@ -17,8 +17,18 @@
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">All Campuses</h2>
-        <span class="text-secondary small">{{ $campuses->count() }} total</span>
+        <span class="text-secondary small">{{ $campuses->count() }} {{ request()->filled('search') ? 'found' : 'total' }}</span>
     </div>
+    <form method="GET" class="d-flex gap-2 mb-3">
+        <div class="il-search flex-grow-1">
+            <i class="ti ti-search"></i>
+            <input type="text" name="search" class="form-control" placeholder="Search by code, campus name or address..." value="{{ request('search') }}">
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-search"></i> Search</button>
+        @if (request()->filled('search'))
+            <a href="{{ route('admin.campuses.index') }}" class="btn btn-link">Clear</a>
+        @endif
+    </form>
     <div class="table-responsive">
         <table class="table align-middle mb-0">
             <thead>
@@ -49,7 +59,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="text-center text-secondary py-5">No campuses yet.</td></tr>
+                    <tr><td colspan="4" class="text-center text-secondary py-5">{{ request()->filled('search') ? 'No campuses match this search.' : 'No campuses yet.' }}</td></tr>
                 @endforelse
             </tbody>
         </table>
