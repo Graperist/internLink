@@ -23,7 +23,7 @@
         @elseif (($acct['emailed'] ?? null) === false)
             <span class="d-block mt-1 text-danger"><i class="ti ti-mail-off"></i> The email to {{ $acct['email'] }} couldn't be sent{{ filled($acct['mail_error'] ?? null) ? ': '.$acct['mail_error'] : '.' }} Share these sign-in details with the HTE representative yourself.</span>
         @else
-            Share these sign-in details with the HTE representative.
+            <span class="d-block mt-1"><i class="ti ti-mail"></i> Nothing was emailed. Use the mail icon to email the sign-in details once the agency's interns have finished.</span>
         @endif
         @if (filled($acct['email_warning'] ?? null))
             <span class="d-block mt-1 text-danger"><i class="ti ti-alert-triangle"></i> {{ $acct['email_warning'] }}</span>
@@ -40,6 +40,12 @@
 
 @if (session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
+@endif
+@if (session('warning'))
+    <div class="alert alert-warning"><i class="ti ti-alert-triangle"></i> {{ session('warning') }}</div>
+@endif
+@if ($errors->has('send'))
+    <div class="alert alert-danger"><i class="ti ti-mail-off"></i> {{ $errors->first('send') }}</div>
 @endif
 
 <div class="il-card">
@@ -88,6 +94,10 @@
                                 <div class="fw-semibold">{{ $account->user->name }}</div>
                                 <div class="text-secondary" style="font-size: 0.78rem;">{{ $account->user->id_number }}</div>
                                 <div class="text-secondary" style="font-size: 0.78rem;"><i class="ti ti-mail"></i> {{ $account->user->email ?: 'No email' }}</div>
+                                                <div style="font-size: 0.75rem;" class="{{ $account->credentials_sent_at ? 'text-success' : 'text-secondary' }}">
+                                    <i class="ti {{ $account->credentials_sent_at ? 'ti-mail-check' : 'ti-mail' }}"></i>
+                                    {{ $account->credentials_sent_at ? 'Sign-in details sent '.$account->credentials_sent_at->format('M d, Y') : 'Sign-in details not sent yet' }}
+                                </div>
                                 @if ($account->hte && filled($account->hte->contact_email) && strcasecmp($account->hte->contact_email, (string) $account->user->email) !== 0)
                                     <div class="text-danger" style="font-size: 0.75rem;"><i class="ti ti-alert-triangle"></i> Not the agency's email ({{ $account->hte->contact_email }}) - that address is used by another account.</div>
                                 @endif
@@ -102,10 +112,11 @@
                         @endif
                     </td>
                     <td class="text-end text-nowrap">
+                        @include('partials.hte-send-credentials', ['representative' => $account])
                         <form method="POST" action="{{ route('coordinator.hte-accounts.reset-password', $account) }}" class="d-inline">
                             @csrf
                             <button type="submit" class="il-icon-btn" title="Reset password"
-                                    onclick="return confirm('Generate a new password for {{ addslashes($account->user->name) }}?{{ $account->user->email ? ' It will be emailed to '.addslashes($account->user->email).'.' : '' }}')">
+                                    onclick="return confirm('Generate a new password for {{ addslashes($account->user->name) }}? It is shown once here and not emailed (use the mail icon to email the sign-in details).')">
                                 <i class="ti ti-key"></i><span class="visually-hidden">Reset password</span>
                             </button>
                         </form>

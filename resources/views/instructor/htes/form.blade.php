@@ -103,6 +103,35 @@
             </div>
         </div>
 
+        @unless ($editing)
+            <div id="accountSection">
+                <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">HTE portal account</p>
+                <p class="small fw-semibold mb-1">Do you also want to create an account for this partner agency?</p>
+                <div class="d-flex gap-3 mb-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="create_account" id="create_account_no" value="0" @checked(old('create_account', '0') !== '1')>
+                        <label class="form-check-label" for="create_account_no">No, not now</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="create_account" id="create_account_yes" value="1" @checked(old('create_account') === '1')>
+                        <label class="form-check-label" for="create_account_yes">Yes, create the account</label>
+                    </div>
+                </div>
+                <div id="accountFields" class="p-3 rounded mb-2" style="background:#f4f6f9;" @if (old('create_account') !== '1') hidden @endif>
+                    <label class="form-label small fw-semibold" for="account_id_number">Account ID number <span class="text-danger">*</span></label>
+                    <input type="text" name="account_id_number" id="account_id_number" class="form-control @error('account_id_number') is-invalid @enderror" maxlength="100"
+                           value="{{ old('account_id_number', $suggestedAccountId ?? '') }}" placeholder="e.g. ACC-HTE-001">
+                    @error('account_id_number')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    <p class="il-form-hint mb-0 mt-1">
+                        The account uses the <strong>contact person</strong> as its name and the <strong>contact email</strong> as its email (needed for the account).
+                        <i class="ti ti-mail"></i> Nothing is emailed now: once this agency's interns finish their internship, send the sign-in details with the mail icon on HTE Accounts.
+                    </p>
+                </div>
+            </div>
+            <p id="accountExists" class="il-form-hint mb-4" hidden><i class="ti ti-user-check"></i> This agency already has an HTE portal account.</p>
+            <div class="mb-4"></div>
+        @endunless
+
         <div class="d-flex gap-2">
             <button type="submit" class="il-btn-primary">{{ $editing ? 'Save changes' : 'Add partner agency' }}</button>
             <a href="{{ route('instructor.htes', ['academic_year' => $listing->academic_year, 'semester' => $listing->semester]) }}" class="il-btn-secondary text-decoration-none">Cancel</a>
@@ -121,12 +150,34 @@
             'contact_email' => $h->contact_email,
             'moa_status' => $h->moa_status,
         ]]);
+        $withAccount = $existing->filter(fn ($h) => $h->representatives_count ?? $h->representatives()->exists())->pluck('id')->values();
     @endphp
     <script>
     (function () {
         const directory = @json($directory);
+        const withAccount = @json($withAccount);
         const picker = document.getElementById('existing_hte_id');
         const form = document.getElementById('partnerForm');
+
+        // "Create an account?" - Yes shows the account box; an agency that
+        // already has an account doesn't ask.
+        const fields = document.getElementById('accountFields');
+        const section = document.getElementById('accountSection');
+        const exists = document.getElementById('accountExists');
+        const email = form.querySelector('[name="contact_email"]');
+        function syncAccount() {
+            const yes = document.getElementById('create_account_yes').checked;
+            const has = picker && withAccount.includes(Number(picker.value));
+            section.hidden = has;
+            exists.hidden = !has;
+            fields.hidden = !yes || has;
+            document.getElementById('account_id_number').required = yes && !has;
+            if (email) email.required = yes && !has;
+        }
+        form.querySelectorAll('[name="create_account"]').forEach(r => r.addEventListener('change', syncAccount));
+        if (picker) picker.addEventListener('change', syncAccount);
+        syncAccount();
+
         if (!picker) return;
         picker.addEventListener('change', function () {
             const info = directory[picker.value];

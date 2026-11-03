@@ -48,6 +48,9 @@
 @if (session('warning'))
     <div class="alert alert-warning" role="alert"><i class="ti ti-mail-off"></i> {{ session('warning') }}</div>
 @endif
+@if ($errors->has('send'))
+    <div class="alert alert-danger" role="alert"><i class="ti ti-mail-off"></i> {{ $errors->first('send') }}</div>
+@endif
 @if ($errors->has('listing'))
     <div class="alert alert-danger" role="alert">{{ $errors->first('listing') }}</div>
 @endif
@@ -247,6 +250,9 @@
                         <td class="text-end text-nowrap">
                             @if ($canManage)
                                 <span class="ev-acts">
+                                    @if ($rep = $hte->representatives->first())
+                                        @include('partials.hte-send-credentials', ['representative' => $rep, 'btnClass' => 'ev-act'])
+                                    @endif
                                     <a href="{{ route('instructor.htes.edit', $listing) }}" class="ev-act" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>
                                     @if ($listing->interns_count === 0)
                                         <form method="POST" action="{{ route('instructor.htes.destroy', $listing) }}" class="d-inline"

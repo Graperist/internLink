@@ -44,7 +44,7 @@
         <div class="mb-3">
             <label class="il-form-label" for="id_number">Representative ID number</label>
             <input type="text" class="form-control" id="id_number" name="id_number"
-                   value="{{ old('id_number') }}" placeholder="e.g. ACC-HTE-001" required>
+                   value="{{ old('id_number', $suggestedId) }}" placeholder="e.g. ACC-HTE-001" required>
         </div>
 
         <div class="mb-3">
@@ -60,11 +60,7 @@
             <p class="il-form-hint">Filled in from the partner agency's contact email when it has one. Login uses the ID number above.</p>
         </div>
 
-        <div class="form-check mb-3">
-            <input type="hidden" name="send_email" value="0">
-            <input class="form-check-input" type="checkbox" id="send_email" name="send_email" value="1" @checked(old('send_email', '1') === '1')>
-            <label class="form-check-label" for="send_email">Email the sign-in details (ID number and password) to this address</label>
-        </div>
+        <p class="il-form-hint mb-3"><i class="ti ti-mail"></i> Nothing is emailed now. Once the agency's interns have finished, use the mail icon on HTE Accounts to email the sign-in details.</p>
 
         <div class="d-flex gap-2 mt-3">
             <button type="submit" class="il-btn-primary">Create HTE account</button>

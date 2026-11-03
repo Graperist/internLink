@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class HteRepresentative extends Model
 {
-    protected $fillable = ['user_id', 'hte_id'];
+    protected $fillable = ['user_id', 'hte_id', 'credentials_sent_at'];
+
+    protected $casts = ['credentials_sent_at' => 'datetime'];
 
     public function user()
     {

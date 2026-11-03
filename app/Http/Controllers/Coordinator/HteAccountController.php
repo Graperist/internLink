@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
-use App\Mail\HteAccountMail;
 use App\Models\Hte;
 use App\Models\HteRepresentative;
 use App\Models\Role;
@@ -12,7 +11,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -68,7 +66,9 @@ class HteAccountController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('coordinator.hte-accounts.create', compact('htes'));
+        $suggestedId = \App\Support\HteAccounts::nextIdNumber(auth()->user()->campus);
+
+        return view('coordinator.hte-accounts.create', compact('htes', 'suggestedId'));
     }
 
     /**
@@ -97,7 +97,6 @@ class HteAccountController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'send_email' => ['nullable', 'boolean'],
         ]);
 
         $alreadyHasAccount = HteRepresentative::where('hte_id', $validated['hte_id'])->exists();
@@ -131,8 +130,9 @@ class HteAccountController extends Controller
 
         $representative->load(['user', 'hte']);
 
-        // Email the sign-in details to the HTE (ticked by default).
-        $emailed = $request->boolean('send_email') ? $this->emailDetails($representative, $temporaryPassword, false) : null;
+        // Nothing is emailed now: the sign-in details are sent with the
+        // mail icon once the agency's interns have finished (HteAccounts).
+        $emailed = null;
 
         return redirect()
             ->route('coordinator.hte-accounts.index')
@@ -143,51 +143,10 @@ class HteAccountController extends Controller
                 'hte_name' => $representative->hte->name,
                 'email' => $representative->user->email,
                 'emailed' => $emailed,
-                'mail_error' => $this->mailError,
+                'mail_error' => null,
                 'email_warning' => $representative->hte->contactEmailWarning(),
                 'reset' => false,
             ]);
-    }
-
-    /**
-     * Sends the sign-in details to the representative's email. Returns
-     * false when it couldn't be sent (mail not set up, bad address), so
-     * the page can say to share them by hand; the reason is kept in
-     * $mailError for the page and the error goes to the log.
-     */
-    private ?string $mailError = null;
-
-    private function emailDetails(HteRepresentative $representative, string $password, bool $isReset): bool
-    {
-        if (blank($representative->user->email)) {
-            $this->mailError = 'The account has no email address.';
-
-            return false;
-        }
-
-        // The "log" mailer only writes the email to the log file - nothing is sent.
-        if (config('mail.default') === 'log') {
-            $this->mailError = 'Email sending is not set up on this server (MAIL_MAILER is "log"). Set the MAIL_ settings and redeploy.';
-
-            return false;
-        }
-
-        try {
-            Mail::to($representative->user->email)->send(new HteAccountMail(
-                $representative->user,
-                $password,
-                $representative->hte->name,
-                $representative->user->campus?->name ?? 'Pangasinan State University',
-                $isReset,
-            ));
-
-            return true;
-        } catch (\Throwable $e) {
-            report($e); // storage/logs/laravel.log
-            $this->mailError = \Illuminate\Support\Str::limit(trim(strtok($e->getMessage(), "\n")), 220);
-
-            return false;
-        }
     }
 
     /**
@@ -215,8 +174,8 @@ class HteAccountController extends Controller
             'must_change_password' => false,   // HTE accounts keep this password (evaluations only)
         ]);
 
-        // The new password goes to the HTE's email too.
-        $emailed = $this->emailDetails($representative, $temporaryPassword, true);
+        // Shown once here; emailing is the mail icon's job (HteAccounts).
+        $emailed = null;
 
         return redirect()
             ->route('coordinator.hte-accounts.index')
@@ -227,7 +186,7 @@ class HteAccountController extends Controller
                 'hte_name' => $representative->hte->name,
                 'email' => $representative->user->email,
                 'emailed' => $emailed,
-                'mail_error' => $this->mailError,
+                'mail_error' => null,
                 'email_warning' => $representative->hte->contactEmailWarning(),
                 'reset' => true,
             ]);

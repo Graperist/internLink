@@ -51,37 +51,28 @@ class HteAccountEmailTest extends TestCase
         $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.create'))->assertOk()
             ->assertSee('data-contact="Virgie Osorio"', false)
             ->assertSee('data-email="virgie@fareheaven.test"', false)
-            ->assertSee('Email the sign-in details');
+            ->assertSee('Nothing is emailed now')->assertSee('value="ACC-HTE-001"', false);
     }
 
-    public function test_creating_an_account_emails_the_sign_in_details(): void
+    public function test_creating_an_account_emails_nothing_yet(): void
     {
         Mail::fake();
         $this->create()->assertRedirect(route('coordinator.hte-accounts.index'));
-
+        Mail::assertNothingSent();
+        $this->assertNull(session('provisioned_account')['emailed']);
         $password = session('provisioned_account')['temporary_password'];
-        Mail::assertSent(HteAccountMail::class, fn ($mail) => $mail->hasTo('virgie@fareheaven.test')
-            && $mail->password === $password && ! $mail->isReset && $mail->hteName === 'Fareheaven Boarding House');
 
         $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
-            ->assertSee('emailed to <strong>virgie@fareheaven.test</strong>', false);
+            ->assertSee('Nothing was emailed')->assertSee('Sign-in details not sent yet');
 
-        // the email itself carries the ID number, the password and the sign-in link
+        // the email (sent later with the mail icon) carries the ID number, the password and the sign-in link
         $html = (new HteAccountMail(User::where('id_number', 'ACC-HTE-001')->first(), $password, 'Fareheaven Boarding House', 'PSU - Alaminos City Campus'))->render();
         $this->assertStringContainsString('ACC-HTE-001', $html);
         $this->assertStringContainsString($password, $html);
         $this->assertStringContainsString(route('login'), $html);
     }
 
-    public function test_unticking_the_box_sends_nothing(): void
-    {
-        Mail::fake();
-        $this->create(['send_email' => '0']);
-        Mail::assertNothingSent();
-        $this->assertNull(session('provisioned_account')['emailed']);
-    }
-
-    public function test_resetting_the_password_emails_the_new_one(): void
+    public function test_resetting_the_password_shows_it_without_emailing(): void
     {
         Mail::fake();
         $this->create();
@@ -89,22 +80,11 @@ class HteAccountEmailTest extends TestCase
 
         $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.reset-password', $representative));
         $password = session('provisioned_account')['temporary_password'];
-        Mail::assertSent(HteAccountMail::class, fn ($mail) => $mail->isReset && $mail->password === $password);
+        Mail::assertNothingSent();
         $this->assertTrue(Hash::check($password, $representative->user->fresh()->password));
     }
 
-    public function test_a_failed_email_still_creates_the_account_and_says_so(): void
-    {
-        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP not set up'));
-        $this->create()->assertRedirect(route('coordinator.hte-accounts.index'));
-
-        $this->assertDatabaseHas('users', ['id_number' => 'ACC-HTE-001']);
-        $this->assertFalse(session('provisioned_account')['emailed']);
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
-            ->assertSee("couldn't be sent", false);
-    }
-
-    public function test_changing_the_agency_email_updates_the_account_and_the_reset_goes_there(): void
+    public function test_changing_the_agency_email_updates_the_account(): void
     {
         Mail::fake();
         $this->create();
@@ -113,9 +93,6 @@ class HteAccountEmailTest extends TestCase
         // edited on Partner Agencies
         $this->hte->update(['contact_email' => 'virgie.new@gmail.test']);
         $this->assertSame('virgie.new@gmail.test', $representative->user->fresh()->email);
-
-        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.reset-password', $representative));
-        Mail::assertSent(HteAccountMail::class, fn ($mail) => $mail->isReset && $mail->hasTo('virgie.new@gmail.test'));
     }
 
     public function test_an_account_already_out_of_step_is_caught_up_on_the_list(): void
@@ -125,7 +102,7 @@ class HteAccountEmailTest extends TestCase
         Hte::whereKey($this->hte->id)->toBase()->update(['contact_email' => 'virgie.new@gmail.test']);
 
         $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
-            ->assertSee('emailed to virgie.new@gmail.test', false);
+            ->assertSee('virgie.new@gmail.test');
         $this->assertSame('virgie.new@gmail.test', User::where('id_number', 'ACC-HTE-001')->value('email'));
     }
 
@@ -145,11 +122,4 @@ class HteAccountEmailTest extends TestCase
             ->assertSee("Not the agency's email (coord@t.local)", false);
     }
 
-    public function test_the_log_mailer_is_reported_as_not_sent(): void
-    {
-        config(['mail.default' => 'log']);
-        $this->create();
-        $this->assertFalse(session('provisioned_account')['emailed']);
-        $this->assertStringContainsString('MAIL_MAILER is "log"', session('provisioned_account')['mail_error']);
-    }
 }

@@ -42,7 +42,7 @@ class HteController extends Controller
         [$academicYear, $semester] = $this->term($request);
         $programId = $this->programFilter($request, $instructor);
 
-        $listings = HteListing::with(['hte', 'program', 'addedBy'])
+        $listings = HteListing::with(['hte.representatives.user', 'program', 'addedBy'])
             ->where('campus_id', $instructor->campus_id)
             ->forTerm($academicYear, $semester)
             ->when($programId, fn ($q) => $q->where('program_id', $programId))
@@ -111,7 +111,7 @@ class HteController extends Controller
 
         // Agencies already on the campus record (entered by any program),
         // so an instructor can pick one instead of typing it again.
-        $existing = Hte::where('campus_id', $instructor->campus_id)->orderBy('name')->get();
+        $existing = Hte::where('campus_id', $instructor->campus_id)->withCount('representatives')->orderBy('name')->get();
 
         // The coordinator adds for any program (preselected from the list's filter).
         $programs = $instructor->isCoordinator()
@@ -120,6 +120,7 @@ class HteController extends Controller
         $selectedProgram = $instructor->programForNewRecord($request->query('program_id')) ?? $instructor->program_id;
 
         return view('instructor.htes.form', [
+            'suggestedAccountId' => \App\Support\HteAccounts::nextIdNumber($instructor->campus),
             'listing' => new HteListing(['academic_year' => $academicYear, 'semester' => $semester]),
             'hte' => null,
             'existing' => $existing,
@@ -145,9 +146,24 @@ class HteController extends Controller
             }],
             'semester' => ['required', Rule::in(Term::SEMESTERS)],
             'program_id' => [$instructor->isCoordinator() ? 'required' : 'nullable', 'integer', Rule::exists('programs', 'id')->where('campus_id', $instructor->campus_id)],
+            // "Also create an account for this partner agency?" (nothing is emailed)
+            'create_account' => ['nullable', 'boolean'],
         ], self::listingRules(), self::hteRules()), [
             'program_id.required' => 'Choose the program this partner agency is for.',
         ]);
+        $existingHte = ! empty($data['existing_hte_id']) ? Hte::withCount('representatives')->find($data['existing_hte_id']) : null;
+        $makeAccount = $request->boolean('create_account') && ! ($existingHte?->representatives_count);
+        if ($makeAccount) {
+            $request->validate([
+                'account_id_number' => ['required', 'string', 'max:100', Rule::unique('users', 'id_number')],
+                'contact_email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            ], [
+                'account_id_number.required' => 'Enter an ID number for the HTE account.',
+                'account_id_number.unique' => 'This ID number is already used by another account.',
+                'contact_email.required' => 'The account needs the contact email - enter it, or choose not to create the account now.',
+                'contact_email.unique' => 'This email is already used by another PSU Intern-Link account. Use another email for the agency, or choose not to create the account now.',
+            ]);
+        }
         $programId = $instructor->programForNewRecord($data['program_id'] ?? null);
         abort_if($programId === null, 403, 'Set the program you teach in My Profile before adding partner agencies.');
 
@@ -190,13 +206,21 @@ class HteController extends Controller
             ]);
         });
 
+        // The agency's HTE portal account, if asked for (no email is sent).
+        $accountNote = '';
+        if ($makeAccount && ! $listing->hte->representatives()->exists()) {
+            $account = \App\Support\HteAccounts::create($listing->hte, $request->input('account_id_number'), $listing->hte->contact_person, $listing->hte->contact_email);
+            AuditLogger::record('hte_account.created', "Created the HTE account {$request->input('account_id_number')} for {$listing->hte->name} (sign-in details not emailed yet).", auth()->user(), $request, $account, $instructor->campus_id);
+            $accountNote = " Its HTE account ({$request->input('account_id_number')}) was created; the sign-in details will be emailed with the mail icon once its interns finish.";
+        }
+
         $listing->load('hte', 'program');
         AuditLogger::record('hte_listing.created', "Added {$listing->hte->name} to the {$listing->program->code} partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, $listing, $instructor->campus_id);
 
         return redirect()
             ->route('instructor.htes', ['academic_year' => $listing->academic_year, 'semester' => $listing->semester]
                 + ($instructor->isCoordinator() ? ['program_id' => $listing->program_id] : []))
-            ->with('status', "{$listing->hte->name} was added to the {$listing->program->code} partner agencies.");
+            ->with('status', "{$listing->hte->name} was added to the {$listing->program->code} partner agencies.".$accountNote);
     }
 
     public function edit(HteListing $listing): View

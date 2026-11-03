@@ -139,6 +139,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/partner-agencies/{listing}/edit', [\App\Http\Controllers\Instructor\HteController::class, 'edit'])->name('htes.edit');
         Route::put('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'update'])->name('htes.update');
         Route::delete('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'destroy'])->name('htes.destroy');
+        // Mail icon: email an HTE account its sign-in details (once its interns finished).
+        Route::post('/hte-accounts/{representative}/send', [\App\Http\Controllers\Instructor\HteCredentialsController::class, 'send'])->name('hte-accounts.send');
 
         Route::get('/evaluations', [EvaluationController::class, 'index'])->name('evaluations');
         Route::get('/evaluations/{document}', [EvaluationController::class, 'show'])->whereNumber('document')->name('evaluations.show');
