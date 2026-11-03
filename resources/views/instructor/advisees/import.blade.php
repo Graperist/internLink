@@ -32,6 +32,10 @@
 
     <form method="POST" action="{{ route('instructor.interns.import.store') }}" enctype="multipart/form-data">
         @csrf
+        <label for="academic_year" class="form-label small fw-semibold">Academic year</label>
+        @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $academicYear), 'required' => true])
+        <p class="il-form-hint mb-3">Every student in the file is enrolled for this academic year.</p>
+
         <label for="file" class="form-label small fw-semibold">Spreadsheet file (.csv or .xlsx, max 5MB)</label>
         <input type="file" name="file" id="file" class="form-control mb-3" accept=".csv,.xlsx" required>
 

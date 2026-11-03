@@ -5,7 +5,7 @@
 @section('content')
 <div class="il-page-header">
     <h1 class="il-page-title">Edit HTE account</h1>
-    <a href="{{ route('coordinator.hte-accounts.index') }}" class="il-btn-secondary text-decoration-none">
+    <a href="{{ route('instructor.hte-accounts.index') }}" class="il-btn-secondary text-decoration-none">
         <i class="ti ti-arrow-left"></i> Back to HTE accounts
     </a>
 </div>
@@ -25,7 +25,7 @@
         <i class="ti ti-building"></i> Account of <strong>{{ $account->hte->name }}</strong>
     </p>
 
-    <form method="POST" action="{{ route('coordinator.hte-accounts.update', $account) }}">
+    <form method="POST" action="{{ route('instructor.hte-accounts.update', $account) }}">
         @csrf
         @method('PUT')
 
@@ -51,7 +51,7 @@
 
         <div class="d-flex gap-2 mt-3">
             <button type="submit" class="il-btn-primary">Save changes</button>
-            <a href="{{ route('coordinator.hte-accounts.index') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
+            <a href="{{ route('instructor.hte-accounts.index') }}" class="il-btn-secondary text-decoration-none">Cancel</a>
         </div>
     </form>
 </div>

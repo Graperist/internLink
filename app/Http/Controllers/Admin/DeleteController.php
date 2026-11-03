@@ -32,7 +32,8 @@ class DeleteController extends Controller
     {
         abort_unless(CampusManager::active(), 403);
         abort_unless((int) $user->campus_id === CampusManager::campusId(), 404);
-        abort_unless(in_array($user->role?->code, ['instructor', 'hte_representative', 'student'], true), 404);
+        // Students and HTE accounts are archived (and restored), never deleted.
+        abort_unless($user->role?->code === 'instructor', 404);
 
         return $this->deleteAccount($request, $user, $request->user(), url()->previous());
     }

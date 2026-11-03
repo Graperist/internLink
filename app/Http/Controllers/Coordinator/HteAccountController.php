@@ -25,7 +25,7 @@ class HteAccountController extends Controller
         $campusId = auth()->user()->campus_id;
 
         $query = HteRepresentative::with(['user', 'hte'])
-            ->whereHas('hte', fn ($q) => $q->where('campus_id', $campusId));
+            ->whereHas('hte', fn ($q) => $this->scopeHtes($q));
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -41,13 +41,11 @@ class HteAccountController extends Controller
         // Academic year: accounts whose agency is on a partner list that
         // year, or that were made during it. Defaults to the current year.
         $currentYear = \App\Support\Term::current()[0];
-        $listedYears = \App\Models\HteListing::where('campus_id', $campusId)->distinct()->pluck('academic_year');
-        $madeYears = HteRepresentative::whereHas('hte', fn ($q) => $q->where('campus_id', $campusId))->pluck('created_at')
-            ->filter()->map(fn ($d) => \App\Support\Term::forDate($d)[0]);
-        $years = $listedYears->merge($madeYears)->push($currentYear)
-            ->filter(fn ($y) => \App\Support\Term::isValidAcademicYear($y))->unique()->sortDesc()->values();
-        $year = $request->query('academic_year', $currentYear);
-        if ($year !== 'all' && ! $years->contains($year)) {
+        // Typed, so any year works (next year's too); "all" shows every year.
+        // (The box left empty while showing all years keeps all years.)
+        $year = in_array($request->query('academic_year'), ['all', ''], true) ? 'all'
+            : \App\Support\Term::normalizeAcademicYear($request->query('academic_year', $currentYear));
+        if ($year !== 'all' && ! \App\Support\Term::isValidAcademicYear($year)) {
             $year = $currentYear;
         }
         if ($year !== 'all') {
@@ -72,7 +70,7 @@ class HteAccountController extends Controller
             }
         }
 
-        return view('coordinator.hte-accounts.index', compact('accounts', 'archived', 'years', 'year', 'currentYear'));
+        return view('coordinator.hte-accounts.index', compact('accounts', 'archived', 'year', 'currentYear'));
     }
 
     /**
@@ -81,9 +79,7 @@ class HteAccountController extends Controller
      */
     public function create(): View
     {
-        $campusId = auth()->user()->campus_id;
-
-        $htes = Hte::where('campus_id', $campusId)
+        $htes = $this->scopeHtes(Hte::query())
             ->with('representatives.user')
             ->orderBy('name')
             ->get();
@@ -109,6 +105,11 @@ class HteAccountController extends Controller
                 'integer',
                 \Illuminate\Validation\Rule::exists('htes', 'id')
                     ->where(fn ($q) => $q->where('campus_id', $campusId)),
+                function ($attribute, $value, $fail) {
+                    if (! $this->scopeHtes(Hte::query())->whereKey($value)->exists()) {
+                        $fail('Choose an agency on your program\'s partner list.');
+                    }
+                },
             ],
             'id_number' => [
                 'required',
@@ -157,7 +158,7 @@ class HteAccountController extends Controller
         $emailed = null;
 
         return redirect()
-            ->route('coordinator.hte-accounts.index')
+            ->route('instructor.hte-accounts.index')
             ->with('provisioned_account', [
                 'name' => $representative->user->name,
                 'id_number' => $representative->user->id_number,
@@ -179,10 +180,7 @@ class HteAccountController extends Controller
         $coordinator = auth()->user();
         $representative->load(['user', 'hte']);
 
-        abort_unless(
-            $representative->hte && $representative->hte->campus_id === $coordinator->campus_id,
-            403
-        );
+        $this->authorizeCampus($representative);
 
         // Send to the agency's current contact email (it may have been
         // changed on Partner Agencies after the account was made).
@@ -200,7 +198,7 @@ class HteAccountController extends Controller
         $emailed = null;
 
         return redirect()
-            ->route('coordinator.hte-accounts.index')
+            ->route('instructor.hte-accounts.index')
             ->with('provisioned_account', [
                 'name' => $representative->user->name,
                 'id_number' => $representative->user->id_number,
@@ -218,7 +216,7 @@ class HteAccountController extends Controller
     {
         $representative->load(['user', 'hte']);
         abort_unless($representative->hte && $representative->user
-            && $representative->hte->campus_id === auth()->user()->campus_id, 403);
+            && $this->scopeHtes(Hte::query())->whereKey($representative->hte_id)->exists(), 403);
     }
 
     /** Edit the account: name, ID number and email. */
@@ -252,7 +250,7 @@ class HteAccountController extends Controller
 
         \App\Support\AuditLogger::record('hte_account.updated', "Edited the HTE account {$user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
 
-        return redirect()->route('coordinator.hte-accounts.index')
+        return redirect()->route('instructor.hte-accounts.index')
             ->with('status', "{$user->name}'s account for {$representative->hte->name} was updated. The agency's contact email is now {$user->email}.");
     }
 
@@ -279,5 +277,28 @@ class HteAccountController extends Controller
 
         return back()
             ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was restored and can sign in again.");
+    }
+
+    private function isCoordinator(): bool
+    {
+        return (bool) auth()->user()->instructor?->isCoordinator();
+    }
+
+    /**
+     * The agencies whose HTE accounts this user manages: every agency on
+     * the campus for the OJT Coordinator; for a Subject Instructor, the
+     * agencies on their own program's partner list (any year).
+     */
+    private function scopeHtes($query)
+    {
+        $user = auth()->user();
+        $query->where('htes.campus_id', $user->campus_id);
+
+        if (! $this->isCoordinator()) {
+            $programId = $user->instructor?->program_id;
+            $query->whereHas('listings', fn ($l) => $l->where('program_id', $programId ?? 0));
+        }
+
+        return $query;
     }
 }

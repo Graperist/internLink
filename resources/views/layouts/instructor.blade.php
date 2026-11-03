@@ -66,6 +66,9 @@
                 <a href="{{ route('instructor.htes') }}" class="il-nav-link {{ request()->routeIs('instructor.htes*') ? 'active' : '' }}">
                     <i class="ti ti-building"></i> Partner Agencies
                 </a>
+                <a href="{{ route('instructor.hte-accounts.index') }}" class="il-nav-link {{ request()->routeIs('instructor.hte-accounts.*') ? 'active' : '' }}">
+                    <i class="ti ti-user-shield"></i> HTE Accounts
+                </a>
                 <a href="{{ route('instructor.advisees') }}" class="il-nav-link {{ request()->routeIs('instructor.advisees*', 'instructor.interns.*') ? 'active' : '' }}">
                     <i class="ti ti-users"></i> {{ $isCoordinator ? 'Students' : 'My Students' }}
                 </a>
@@ -99,9 +102,6 @@
                     </a>
                     <a href="{{ route('coordinator.instructors.index') }}" class="il-nav-link {{ request()->routeIs('coordinator.instructors.*') ? 'active' : '' }}">
                         <i class="ti ti-chalkboard"></i> Instructors
-                    </a>
-                    <a href="{{ route('coordinator.hte-accounts.index') }}" class="il-nav-link {{ request()->routeIs('coordinator.hte-accounts.*') ? 'active' : '' }}">
-                        <i class="ti ti-user-shield"></i> HTE Accounts
                     </a>
                     <a href="{{ route('coordinator.documents') }}" class="il-nav-link {{ request()->routeIs('coordinator.documents*', 'coordinator.repository*') || ! empty($inTracking) ? 'active' : '' }}">
                         <i class="ti ti-folder"></i> Repository

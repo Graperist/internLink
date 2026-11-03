@@ -30,16 +30,58 @@
 @endif
 
 @if (session('provisioned_account'))
-    @php $acct = session('provisioned_account'); @endphp
-    <div class="il-badge-generated mb-3">
-        <strong>{{ $acct['name'] }}</strong>{{ ! empty($acct['reset']) ? "'s password was reset." : "'s account was created." }}
-        Share these credentials with the student - this password is shown once and cannot be recovered here:
-        <div class="mt-2">
-            ID number: <code>{{ $acct['id_number'] }}</code>
-            &nbsp;&middot;&nbsp;
-            Temporary password: <code>{{ $acct['temporary_password'] }}</code>
+    @php
+        $acct = session('provisioned_account');
+        $acctMessage = "PSU Intern-Link sign-in details\n"
+            .$acct['name']."\n"
+            .'ID number: '.$acct['id_number']."\n"
+            .'Temporary password: '.$acct['temporary_password']."\n"
+            .'Sign in at: '.route('login')."\n"
+            .'You will be asked to set your own password the first time you sign in.';
+    @endphp
+    {{-- The new credentials pop up (shown once). --}}
+    <div class="modal fade" id="credentialsModal" tabindex="-1" aria-labelledby="credentialsTitle" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h6 fw-bold" id="credentialsTitle">
+                        <i class="ti ti-circle-check text-success"></i>
+                        {{ ! empty($acct['reset']) ? 'Password reset' : 'Student enrolled' }}
+                    </h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small mb-3">
+                        <strong>{{ $acct['name'] }}</strong>{{ ! empty($acct['reset']) ? "'s password was reset." : "'s account was created." }}
+                        Send these sign-in details to the student. The password is shown only this once.
+                    </p>
+                    <div class="p-3 rounded mb-2" style="background:#f4f6f9;">
+                        <div class="d-flex justify-content-between small mb-1"><span class="text-secondary">ID number</span> <code class="fs-6">{{ $acct['id_number'] }}</code></div>
+                        <div class="d-flex justify-content-between small"><span class="text-secondary">Temporary password</span> <code class="fs-6">{{ $acct['temporary_password'] }}</code></div>
+                    </div>
+                    <p class="text-secondary mb-0" style="font-size:.78rem;">They will set their own password the first time they sign in.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" id="copyCredentials" data-message="{{ $acctMessage }}">
+                        <i class="ti ti-copy"></i> Copy as message
+                    </button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+                </div>
+            </div>
         </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modal = document.getElementById('credentialsModal');
+        if (window.bootstrap && modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+        const copy = document.getElementById('copyCredentials');
+        copy?.addEventListener('click', function () {
+            navigator.clipboard?.writeText(copy.dataset.message).then(function () {
+                copy.innerHTML = '<i class="ti ti-check"></i> Copied - paste it in Messenger';
+            });
+        });
+    });
+    </script>
 @endif
 
 @if (session('import_results'))
@@ -50,7 +92,13 @@
             <span class="small text-secondary">{{ count($results['created']) }} created &middot; {{ count($results['skipped']) }} skipped</span>
         </div>
         @if (count($results['created']))
-            <div class="small text-secondary mb-1">Share each temporary password with the student - it's shown once.</div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div class="small text-secondary">Send each student their sign-in details. The passwords are shown only now.</div>
+                <a href="{{ route('instructor.interns.credentials') }}" class="btn btn-sm btn-primary">
+                    <i class="ti ti-file-download"></i> Download sign-in details (.csv)
+                </a>
+            </div>
+            <div class="small text-secondary mb-1">The file opens in Excel; send it to the students (e.g. on Messenger). It can be downloaded for 2 hours.</div>
             <div class="table-responsive mb-3" style="max-height: 220px; overflow-y: auto;">
                 <table class="table table-sm mb-0">
                     <thead><tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase;"><th>Row</th><th>Name</th><th>ID number</th><th>Temporary password</th></tr></thead>
@@ -76,7 +124,7 @@
 @if (session('status'))
     <div class="alert alert-success" role="status">{{ session('status') }}</div>
 @endif
-@foreach (['completion', 'activation'] as $errorKey)
+@foreach (['completion', 'activation', 'credentials'] as $errorKey)
     @if ($errors->has($errorKey))
         <div class="alert alert-danger" role="alert">{{ $errors->first($errorKey) }}</div>
     @endif
@@ -90,6 +138,7 @@
             @else
                 My {{ $instructor->program->code ?? '' }} Student Interns
             @endif
+            &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year.($year === $currentYear ? ' (current)' : '') }}
         </h2>
         <div class="d-flex align-items-center gap-3">
             <a href="{{ route('instructor.advisees.export', request()->query()) }}" class="small fw-semibold text-decoration-none">
@@ -99,8 +148,21 @@
         </div>
     </div>
 
-    <form method="GET" class="row g-2 mb-3 align-items-center">
-        <div class="col-md il-search">
+    <form method="GET" class="row g-2 mb-3 align-items-start">
+        <div class="col-md-3">
+            <div class="input-group">
+                <span class="input-group-text small">AY</span>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'students_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true])
+            </div>
+            <div class="small mt-1">
+                @if ($year === 'all')
+                    <a href="{{ route('instructor.advisees') }}">Back to AY {{ $currentYear }}</a>
+                @else
+                    <a href="{{ route('instructor.advisees', ['academic_year' => 'all']) }}">Show all years</a>
+                @endif
+            </div>
+        </div>
+        <div class="col-md-9 il-search">
             <i class="ti ti-search"></i>
             <input
                 type="text"
@@ -146,7 +208,7 @@
                 <i class="ti ti-search"></i> Search
             </button>
             @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
-                <a href="{{ route('instructor.advisees') }}" class="btn btn-sm btn-link">Clear</a>
+                <a href="{{ route('instructor.advisees', ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </div>
     </form>
@@ -225,19 +287,17 @@
                     <td class="small">@if ($deployment?->hte)<i class="ti ti-building text-secondary"></i> {{ $deployment->hte->name }}@else <span class="text-secondary">&mdash;</span> @endif</td>
                     <td class="text-end">
                         <div class="d-flex align-items-center justify-content-end gap-1 flex-wrap">
-                            @if ($canAct)
+                            @if ($instructor->canManageAccountOf($student))
                                 <form method="POST" action="{{ route('instructor.interns.reset-password', $student) }}" class="d-inline"
                                       onsubmit="return confirm('Generate a new temporary password for {{ addslashes($student->user->name) }}?');">
                                     @csrf
                                     <button type="submit" class="il-icon-btn" title="Reset password"><i class="ti ti-key"></i><span class="visually-hidden">Reset password</span></button>
                                 </form>
-                            @endif
-                            @if (\App\Support\CampusManager::active())
-                                {{-- Super Admin only --}}
-                                @include('partials.admin-delete-button', [
-                                    'action' => route('admin.campus-accounts.destroy', $student->user),
-                                    'message' => "Delete the student {$student->user->name} ({$student->user->id_number})? This deletes their account, internship, documents, uploaded files, time frame and evaluations. This cannot be undone.",
-                                ])
+                                <form method="POST" action="{{ route('instructor.interns.archive', $student) }}" class="d-inline"
+                                      onsubmit="return confirm('Archive {{ addslashes($student->user->name) }} ({{ $student->user->id_number }})? They can no longer sign in. Their internship, forms and hours are kept, and you can restore them anytime.');">
+                                    @csrf
+                                    <button type="submit" class="il-icon-btn danger" title="Archive"><i class="ti ti-archive"></i><span class="visually-hidden">Archive</span></button>
+                                </form>
                             @endif
                             @if ($canAct && $deployment && $deployment->status === 'pending' && $missing === 0)
                                 <button type="button" class="btn btn-sm btn-primary"
@@ -271,6 +331,9 @@
                     <td colspan="{{ $isCoordinator ? 6 : 5 }}" class="text-center text-secondary py-5">
                         @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
                             No students match this search or filter.
+                        @elseif ($year !== 'all')
+                            No students enrolled for AY {{ $year }}.
+                            <a href="{{ route('instructor.advisees', ['academic_year' => 'all']) }}">Show all years</a>.
                         @else
                             {{ $isCoordinator ? 'No students on this campus yet.' : 'No students are enrolled in your program yet. Use Enroll student to create their accounts.' }}
                         @endif
@@ -288,6 +351,44 @@
 <div class="mt-3">
     {{ $advisees->links() }}
 </div>
+
+@if ($archived->isNotEmpty())
+    <details class="il-card mt-3 stu-archived" @if (request()->filled('search')) open @endif>
+        <summary class="d-flex align-items-center gap-2">
+            <i class="ti ti-chevron-right stu-chev text-secondary"></i>
+            <span class="fw-bold"><i class="ti ti-archive text-secondary"></i> Archived students{{ $year === 'all' ? '' : ' · AY '.$year }}</span>
+            <span class="text-secondary small ms-auto">{{ $archived->count() }} archived</span>
+        </summary>
+        <p class="text-secondary small mt-2 mb-1">Kept with their internship, forms and hours. They can't sign in until restored.</p>
+        <table class="table align-middle mb-0">
+            <tbody>
+                @foreach ($archived as $student)
+                    <tr>
+                        <td>
+                            <span class="fw-semibold d-block text-secondary">{{ $student->user->name }}</span>
+                            <span class="text-secondary" style="font-size:.78rem;">{{ $student->user->id_number }} &middot; {{ $student->program->code ?? '' }} &middot; AY {{ $student->academic_year }}</span>
+                        </td>
+                        <td class="text-end">
+                            @if ($instructor->canManageAccountOf($student))
+                                <form method="POST" action="{{ route('instructor.interns.restore', $student) }}" class="d-inline"
+                                      onsubmit="return confirm('Restore {{ addslashes($student->user->name) }}? They will be able to sign in again.')">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-restore"></i> Restore</button>
+                                </form>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </details>
+    <style>
+        .stu-archived > summary { cursor: pointer; list-style: none; }
+        .stu-archived > summary::-webkit-details-marker { display: none; }
+        .stu-chev { transition: transform .15s; }
+        .stu-archived[open] .stu-chev { transform: rotate(90deg); }
+    </style>
+@endif
 
 {{-- Start deployment: the placement came from the accepted Application for OJT --}}
 <div class="modal fade" id="activateModal" tabindex="-1" aria-hidden="true">

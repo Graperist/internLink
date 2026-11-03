@@ -41,14 +41,14 @@ class HteAccountEmailTest extends TestCase
 
     private function create(array $extra = [])
     {
-        return $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.store'), $extra + [
+        return $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.store'), $extra + [
             'hte_id' => $this->hte->id, 'id_number' => 'ACC-HTE-001', 'name' => 'Virgie Osorio', 'email' => 'virgie@fareheaven.test', 'send_email' => '1',
         ]);
     }
 
     public function test_the_form_is_prefilled_from_the_partner_agency(): void
     {
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.create'))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.create'))->assertOk()
             ->assertSee('data-contact="Virgie Osorio"', false)
             ->assertSee('data-email="virgie@fareheaven.test"', false)
             ->assertSee('Nothing is emailed now')->assertSee('value="ACC-HTE-001"', false);
@@ -57,12 +57,12 @@ class HteAccountEmailTest extends TestCase
     public function test_creating_an_account_emails_nothing_yet(): void
     {
         Mail::fake();
-        $this->create()->assertRedirect(route('coordinator.hte-accounts.index'));
+        $this->create()->assertRedirect(route('instructor.hte-accounts.index'));
         Mail::assertNothingSent();
         $this->assertNull(session('provisioned_account')['emailed']);
         $password = session('provisioned_account')['temporary_password'];
 
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))
             ->assertSee('Nothing was emailed')->assertSee('Sign-in details not sent yet');
 
         // the email (sent later with the mail icon) carries the ID number, the password and the sign-in link
@@ -78,7 +78,7 @@ class HteAccountEmailTest extends TestCase
         $this->create();
         $representative = HteRepresentative::first();
 
-        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.reset-password', $representative));
+        $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.reset-password', $representative));
         $password = session('provisioned_account')['temporary_password'];
         Mail::assertNothingSent();
         $this->assertTrue(Hash::check($password, $representative->user->fresh()->password));
@@ -101,7 +101,7 @@ class HteAccountEmailTest extends TestCase
         // changed without the model event (e.g. directly in the database)
         Hte::whereKey($this->hte->id)->toBase()->update(['contact_email' => 'virgie.new@gmail.test']);
 
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
             ->assertSee('virgie.new@gmail.test');
         $this->assertSame('virgie.new@gmail.test', User::where('id_number', 'ACC-HTE-001')->value('email'));
     }
@@ -115,9 +115,9 @@ class HteAccountEmailTest extends TestCase
         $representative = HteRepresentative::first();
         $this->assertSame('virgie@fareheaven.test', $representative->user->fresh()->email);
 
-        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.reset-password', $representative));
+        $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.reset-password', $representative));
         $this->assertStringContainsString('coord@t.local is already used by another PSU Intern-Link account (Coordinator', session('provisioned_account')['email_warning']);
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))
             ->assertSee('already used by another PSU Intern-Link account', false)
             ->assertSee("Not the agency's email (coord@t.local)", false);
     }

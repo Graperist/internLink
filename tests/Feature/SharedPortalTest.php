@@ -602,7 +602,7 @@ class SharedPortalTest extends TestCase
         $this->actingAs($coordinator)->get(route('instructor.evaluations'))->assertOk();
 
         foreach (['coordinator.programs.index', 'coordinator.programs.create', 'coordinator.instructors.index',
-            'coordinator.hte-accounts.index', 'coordinator.documents',
+            'instructor.hte-accounts.index', 'coordinator.documents',
             'coordinator.campus-settings.edit'] as $name) {
             $this->actingAs($coordinator)->get(route($name))->assertOk();
         }
@@ -858,5 +858,131 @@ class SharedPortalTest extends TestCase
                 ->assertSee($document->requirement->name)
                 ->assertSee(e(route('instructor.documents', ['student' => $student->id, 'form' => $document->document_requirement_id])), false);
         }
+    }
+
+    public function test_students_are_enrolled_for_an_academic_year_and_listed_by_year(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $this->actingAs($instructor)->get(route('instructor.interns.create'))->assertOk()->assertSee('value="2026-2027"', false);
+
+        $this->actingAs($instructor)->post(route('instructor.interns.store'), [
+            'academic_year' => '2027', 'id_number' => '27-AC-0001', 'name' => 'Next Year Student', 'email' => 'next@t.local',
+        ])->assertRedirect(route('instructor.advisees', ['academic_year' => '2027-2028']));
+        $this->assertSame('2027-2028', User::where('id_number', '27-AC-0001')->first()->student->academic_year);
+        $this->student('23-AC-0001', $this->bsit);   // this year
+        $this->actingAs($instructor)->get(route('instructor.advisees', ['academic_year' => 'all']));   // (shows the enrolment popup once)
+
+        // only the current year by default; any year can be typed; or all years
+        $this->actingAs($instructor)->get(route('instructor.advisees'))->assertOk()
+            ->assertSee('AY 2026-2027 (current)')->assertSee('student 23-AC-0001')->assertDontSee('Next Year Student');
+        $this->actingAs($instructor)->get(route('instructor.advisees', ['academic_year' => '2027-28']))
+            ->assertSee('Next Year Student')->assertDontSee('student 23-AC-0001');
+        $this->actingAs($instructor)->get(route('instructor.advisees', ['academic_year' => 'all']))
+            ->assertSee('Next Year Student')->assertSee('student 23-AC-0001');
+    }
+
+    public function test_enrolling_shows_the_credentials_in_a_popup(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $this->actingAs($instructor)->followingRedirects()->post(route('instructor.interns.store'), [
+            'id_number' => '23-AC-0100', 'name' => 'Ana Cruz', 'email' => 'ana@t.local',
+        ])->assertOk()->assertSee('id="credentialsModal"', false)->assertSee('Copy as message')
+            ->assertDontSee('il-badge-generated', false);
+    }
+
+    public function test_the_coordinator_resets_passwords_of_every_program(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $other = $this->student('23-AC-0001', $this->bshm);   // not the coordinator's program
+
+        $this->actingAs($coordinator)->get(route('instructor.advisees'))
+            ->assertSee(route('instructor.interns.reset-password', $other), false);
+        $this->actingAs($coordinator)->post(route('instructor.interns.reset-password', $other))->assertSessionHas('provisioned_account');
+        $this->assertTrue((bool) $other->user->fresh()->must_change_password);
+
+        // an instructor only their own program
+        $this->actingAs($instructor)->post(route('instructor.interns.reset-password', $other))->assertForbidden();
+    }
+
+    public function test_students_are_archived_and_restored_never_deleted(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $student = $this->student('23-AC-0001', $this->bsit);
+
+        $this->actingAs($instructor)->from(route('instructor.advisees'))->post(route('instructor.interns.archive', $student))
+            ->assertRedirect(route('instructor.advisees'));
+        $this->assertSame('archived', $student->user->fresh()->status);
+        $this->assertDatabaseHas('students', ['id' => $student->id]);
+
+        $html = $this->actingAs($instructor)->get(route('instructor.advisees'))->assertOk()
+            ->assertSee('Archived students')->assertSee(route('instructor.interns.restore', $student), false)->getContent();
+        $this->assertStringNotContainsString(route('instructor.interns.archive', $student), $html);
+        // left out of Document Review too
+        $this->actingAs($instructor)->get(route('instructor.documents', ['tab' => 'all']))->assertDontSee('student 23-AC-0001');
+
+        $this->actingAs($instructor)->post(route('instructor.interns.restore', $student))->assertRedirect();
+        $this->assertSame('active', $student->user->fresh()->status);
+
+        // another program's instructor can't
+        $bshm = $this->teacher('instructor', 'ACC-INST-002', $this->bshm);
+        $this->actingAs($bshm)->post(route('instructor.interns.archive', $student))->assertForbidden();
+    }
+
+    public function test_bulk_import_gives_a_file_of_the_sign_in_details(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $csv = "id_number,name,email\n23-AC-0451,Juan Dela Cruz,juan@example.com\n23-AC-0452,Ana Cruz,ana@example.com\n";
+        $this->actingAs($instructor)->post(route('instructor.interns.import.store'), [
+            'academic_year' => '2026-2027',
+            'file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('interns.csv', $csv),
+        ])->assertRedirect();
+        $this->actingAs($instructor)->get(route('instructor.advisees'))->assertSee(route('instructor.interns.credentials'), false);
+
+        $response = $this->actingAs($instructor)->get(route('instructor.interns.credentials'))->assertOk();
+        $this->assertStringContainsString('attachment; filename=internlink-student-sign-in-details-', $response->headers->get('Content-Disposition'));
+        $file = $response->streamedContent();
+        $this->assertStringContainsString('Name,"ID number","Temporary password",Program,"Academic year","Sign in at"', $file);
+        $this->assertStringContainsString('"Juan Dela Cruz",23-AC-0451,', $file);
+        $this->assertStringContainsString(',BSIT,2026-2027,'.route('login'), $file);
+        $this->assertSame(2026, (int) substr(User::where('id_number', '23-AC-0452')->first()->student->academic_year, 0, 4));
+    }
+
+    public function test_an_instructor_makes_hte_accounts_for_their_programs_agencies_only(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $other = Hte::forceCreate(['campus_id' => $this->campus->id, 'name' => 'BSHM Only Hotel']);
+        \App\Models\HteListing::forceCreate(['campus_id' => $this->campus->id, 'program_id' => $this->bsit->id, 'hte_id' => $this->hte->id, 'academic_year' => '2026-2027', 'semester' => \App\Support\Term::SEMESTER, 'slots' => 2]);
+        \App\Models\HteListing::forceCreate(['campus_id' => $this->campus->id, 'program_id' => $this->bshm->id, 'hte_id' => $other->id, 'academic_year' => '2026-2027', 'semester' => \App\Support\Term::SEMESTER, 'slots' => 2]);
+
+        $this->actingAs($instructor)->get(route('instructor.dashboard'))->assertSee(route('instructor.hte-accounts.index'), false);
+        $this->actingAs($instructor)->get(route('instructor.hte-accounts.create'))->assertOk()
+            ->assertSee('Hundred Islands Resort')->assertDontSee('BSHM Only Hotel');
+
+        $this->actingAs($instructor)->post(route('instructor.hte-accounts.store'), [
+            'hte_id' => $other->id, 'id_number' => 'ACC-HTE-009', 'name' => 'X', 'email' => 'x@hotel.test',
+        ])->assertSessionHasErrors('hte_id');
+        $this->actingAs($instructor)->post(route('instructor.hte-accounts.store'), [
+            'hte_id' => $this->hte->id, 'id_number' => 'ACC-HTE-001', 'name' => 'Rep', 'email' => 'rep@resort.test',
+        ])->assertSessionHasNoErrors();
+
+        // the coordinator manages both; the instructor sees only their program's
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bshm);
+        $this->actingAs($coordinator)->post(route('instructor.hte-accounts.store'), [
+            'hte_id' => $other->id, 'id_number' => 'ACC-HTE-002', 'name' => 'Hotel Rep', 'email' => 'rep@hotel.test',
+        ])->assertSessionHasNoErrors();
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index'));   // (shows the new account's banner once)
+        $this->actingAs($instructor)->get(route('instructor.hte-accounts.index'))->assertSee('rep@resort.test')->assertDontSee('Hotel Rep');
+        $hotelRep = \App\Models\HteRepresentative::where('hte_id', $other->id)->first();
+        $this->actingAs($instructor)->get(route('instructor.hte-accounts.edit', $hotelRep))->assertForbidden();
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index'))->assertSee('Hotel Rep');
+    }
+
+    public function test_hte_accounts_take_a_typed_academic_year(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
+            ->assertSee('il-ay-input', false)->assertSee('AY 2026-2027 (current)')->assertSee('Show all years');
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => '2031']))->assertSee('AY 2031-2032');
     }
 }

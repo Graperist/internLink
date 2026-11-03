@@ -37,7 +37,11 @@ class StudentsImport
     /** @var array<int, array{row:int,reason:string}> */
     public array $skipped = [];
 
-    public function __construct(private readonly Instructor $instructor, private readonly ?\App\Models\Program $defaultProgram = null)
+    public function __construct(
+        private readonly Instructor $instructor,
+        private readonly ?\App\Models\Program $defaultProgram = null,
+        private readonly ?string $academicYear = null,   // the year they are enrolled for (current if null)
+    )
     {
     }
 
@@ -121,6 +125,7 @@ class StudentsImport
                         'program_id' => $program->id,
                         'instructor_id' => $handler?->id,
                         'hours_rendered' => 0,
+                        'academic_year' => $this->academicYear ?? \App\Support\Term::current()[0],
                     ]);
 
                     // Same as the single Add Intern form: every student starts
@@ -140,6 +145,7 @@ class StudentsImport
                     'name' => $name,
                     'id_number' => $idNumber,
                     'temporary_password' => $temporaryPassword,
+                    'program' => $program->code,
                 ];
             } catch (Throwable $e) {
                 $this->skipped[] = ['row' => $excelRow, 'reason' => 'Unexpected error: '.$e->getMessage()];

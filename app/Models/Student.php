@@ -6,7 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class Student extends Model
 {
-    protected $fillable = ['user_id', 'campus_id', 'program_id', 'instructor_id', 'hours_rendered'];
+    protected $fillable = ['user_id', 'campus_id', 'program_id', 'instructor_id', 'hours_rendered', 'academic_year'];
+
+    protected static function booted(): void
+    {
+        // Enrolled for an academic year; the current one unless given.
+        static::creating(function (Student $student) {
+            $student->academic_year ??= \App\Support\Term::current()[0];
+        });
+    }
 
     public function user()
     {

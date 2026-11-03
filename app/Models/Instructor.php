@@ -119,6 +119,18 @@ class Instructor extends Model
     }
 
     /** Can act on this student / internship (own program only). */
+    /**
+     * Student accounts (reset password, archive / restore): the OJT
+     * Coordinator for every program on the campus; an instructor for
+     * their own program's students.
+     */
+    public function canManageAccountOf(?Student $student): bool
+    {
+        return $student
+            && (int) $student->campus_id === (int) $this->campus_id
+            && ($this->isCoordinator() || $this->ownsProgramOf($student));
+    }
+
     public function canActOn(Student|Internship|null $record): bool
     {
         return $record

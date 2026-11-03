@@ -15,7 +15,7 @@
         ['instructor.reports', ['instructor.reports*', 'coordinator.reports*'], 'ti-report', 'Generate Reports'],
         ['coordinator.programs.index', ['coordinator.programs.*'], 'ti-school', 'Programs'],
         ['coordinator.instructors.index', ['coordinator.instructors.*'], 'ti-chalkboard', 'Instructors'],
-        ['coordinator.hte-accounts.index', ['coordinator.hte-accounts.*'], 'ti-user-shield', 'HTE Accounts'],
+        ['instructor.hte-accounts.index', ['instructor.hte-accounts.*'], 'ti-user-shield', 'HTE Accounts'],
         ['coordinator.documents', ['coordinator.documents*', 'coordinator.repository*'], 'ti-folder', 'Repository'],
         ['coordinator.campus-settings.edit', ['coordinator.settings', 'coordinator.campus-settings.*', 'instructor.audit-trail'], 'ti-settings', 'Campus Settings'],
     ];

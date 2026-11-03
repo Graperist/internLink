@@ -109,6 +109,11 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/interns/import', [InternAccountController::class, 'import'])->name('interns.import.store');
         Route::get('/interns/import/template', [InternAccountController::class, 'template'])->name('interns.template');
         Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
+        // Students are archived, never deleted (restore brings them back).
+        Route::post('/interns/{student}/archive', [InternAccountController::class, 'archive'])->name('interns.archive');
+        Route::post('/interns/{student}/restore', [InternAccountController::class, 'restore'])->name('interns.restore');
+        // The sign-in details of the last bulk import, as a file to send the students.
+        Route::get('/interns/import/credentials', [InternAccountController::class, 'credentials'])->name('interns.credentials');
 
         Route::get('/monitoring', [MonitoringController::class, 'index'])->name('monitoring');
         Route::get('/monitoring/{student}/form-17', [MonitoringController::class, 'form'])->name('monitoring.form');
@@ -139,6 +144,17 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/partner-agencies/{listing}/edit', [\App\Http\Controllers\Instructor\HteController::class, 'edit'])->name('htes.edit');
         Route::put('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'update'])->name('htes.update');
         Route::delete('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'destroy'])->name('htes.destroy');
+        // HTE Accounts - one portal account per HTE. The coordinator: every agency
+        // on the campus; a Subject Instructor: the agencies on their program's list.
+        Route::get('/hte-accounts', [HteAccountController::class, 'index'])->name('hte-accounts.index');
+        Route::get('/hte-accounts/create', [HteAccountController::class, 'create'])->name('hte-accounts.create');
+        Route::post('/hte-accounts', [HteAccountController::class, 'store'])->name('hte-accounts.store');
+        Route::post('/hte-accounts/{representative}/reset-password', [HteAccountController::class, 'resetPassword'])->name('hte-accounts.reset-password');
+        Route::get('/hte-accounts/{representative}/edit', [HteAccountController::class, 'edit'])->name('hte-accounts.edit');
+        Route::put('/hte-accounts/{representative}', [HteAccountController::class, 'update'])->name('hte-accounts.update');
+        // Archived, never deleted: restore brings the account back.
+        Route::post('/hte-accounts/{representative}/archive', [HteAccountController::class, 'archive'])->name('hte-accounts.archive');
+        Route::post('/hte-accounts/{representative}/restore', [HteAccountController::class, 'restore'])->name('hte-accounts.restore');
         // Mail icon: email an HTE account its sign-in details (once its interns finished).
         Route::post('/hte-accounts/{representative}/send', [\App\Http\Controllers\Instructor\HteCredentialsController::class, 'send'])->name('hte-accounts.send');
 
@@ -248,16 +264,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::put('/instructors/{instructor}', [InstructorController::class, 'update'])->name('instructors.update');
         Route::post('/instructors/{instructor}/reset-password', [InstructorController::class, 'resetPassword'])->name('instructors.reset-password');
 
-        // HTE Accounts - create/reset the single representative account per HTE
-        Route::get('/hte-accounts', [HteAccountController::class, 'index'])->name('hte-accounts.index');
-        Route::get('/hte-accounts/create', [HteAccountController::class, 'create'])->name('hte-accounts.create');
-        Route::post('/hte-accounts', [HteAccountController::class, 'store'])->name('hte-accounts.store');
-        Route::post('/hte-accounts/{representative}/reset-password', [HteAccountController::class, 'resetPassword'])->name('hte-accounts.reset-password');
-        Route::get('/hte-accounts/{representative}/edit', [HteAccountController::class, 'edit'])->name('hte-accounts.edit');
-        Route::put('/hte-accounts/{representative}', [HteAccountController::class, 'update'])->name('hte-accounts.update');
-        // Archived, never deleted: restore brings the account back.
-        Route::post('/hte-accounts/{representative}/archive', [HteAccountController::class, 'archive'])->name('hte-accounts.archive');
-        Route::post('/hte-accounts/{representative}/restore', [HteAccountController::class, 'restore'])->name('hte-accounts.restore');
+        // HTE Accounts moved to the shared portal (instructors make their program's).
+        Route::redirect('/hte-accounts', '/instructor/hte-accounts');
 
         // Repository - every intern's document status and passed files
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents');

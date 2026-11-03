@@ -92,6 +92,8 @@ class DocumentReviewController extends Controller
                     ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes()))
             ]);
         $advisees = $instructor->advisees()
+            // Archived students are left out (their records stay).
+            ->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))
 
             ->with(['user', 'program'])
 

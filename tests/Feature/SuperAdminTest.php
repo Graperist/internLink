@@ -199,7 +199,7 @@ class SuperAdminTest extends TestCase
             ->assertDontSee('Coordinator Portal')->assertDontSee('Test OJT Coordinator')->assertDontSee(route('instructor.profile'), false);
         // the Super Admin's own pages keep the campus open in the sidebar
         $this->get(route('admin.campuses.index'))->assertOk()->assertSee('Close campus')->assertSee(route('coordinator.programs.index'), false);
-        foreach (['coordinator.programs.index', 'coordinator.instructors.index', 'coordinator.hte-accounts.index', 'coordinator.documents', 'coordinator.settings', 'coordinator.campus-settings.edit', 'instructor.advisees', 'instructor.monitoring', 'instructor.htes', 'instructor.reports', 'instructor.audit-trail'] as $name) {
+        foreach (['coordinator.programs.index', 'coordinator.instructors.index', 'instructor.hte-accounts.index', 'coordinator.documents', 'coordinator.settings', 'coordinator.campus-settings.edit', 'instructor.advisees', 'instructor.monitoring', 'instructor.htes', 'instructor.reports', 'instructor.audit-trail'] as $name) {
             $this->get(route($name))->assertOk();
         }
         // no document review, evaluations or announcements for the Super Admin
@@ -349,7 +349,9 @@ class SuperAdminTest extends TestCase
 
         // in the campus (Manage): trash icons on Students and Instructors
         $this->actingAs($this->admin)->post(route('admin.campuses.manage', $this->acc));
-        $this->get(route('instructor.advisees'))->assertOk()->assertSee(route('admin.campus-accounts.destroy', $studentUser), false);
+        // students are archived, never deleted
+        $this->get(route('instructor.advisees'))->assertOk()->assertDontSee(route('admin.campus-accounts.destroy', $studentUser), false)
+            ->assertSee(route('instructor.interns.archive', $student), false);
         $this->get(route('coordinator.instructors.index'))->assertOk()->assertSee(route('admin.campus-accounts.destroy', $instructorUser), false);
 
         // the instructor: their review stays, without them
@@ -358,12 +360,11 @@ class SuperAdminTest extends TestCase
         $this->assertDatabaseMissing('instructors', ['id' => $instructor->id]);
         $this->assertDatabaseHas('document_reviews', ['document_id' => $document->id, 'instructor_id' => null]);
 
-        // the student: account, internship, documents and the file
-        $this->delete(route('admin.campus-accounts.destroy', $studentUser))->assertRedirect();
-        $this->assertDatabaseMissing('users', ['id' => $studentUser->id]);
-        $this->assertDatabaseMissing('students', ['id' => $student->id]);
-        $this->assertDatabaseMissing('documents', ['id' => $document->id]);
-        \Illuminate\Support\Facades\Storage::assertMissing('documents/23-AC-0001.pdf');
+        // the student can't be deleted; archiving keeps everything
+        $this->delete(route('admin.campus-accounts.destroy', $studentUser))->assertNotFound();
+        $this->post(route('instructor.interns.archive', $student))->assertRedirect();
+        $this->assertSame('archived', $studentUser->fresh()->status);
+        $this->assertDatabaseHas('documents', ['id' => $document->id]);
 
         // coordinators are deleted from OJT Coordinators, not here
         $this->delete(route('admin.campus-accounts.destroy', $coordinator))->assertNotFound();

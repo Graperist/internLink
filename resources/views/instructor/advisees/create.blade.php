@@ -35,6 +35,12 @@
     <form method="POST" action="{{ route('instructor.interns.store') }}">
         @csrf
 
+        <div class="mb-3">
+            <label class="il-form-label" for="academic_year">Academic year</label>
+            @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $academicYear), 'required' => true])
+            <p class="il-form-hint">The year the student is enrolled for the internship. Type it, e.g. 2026-2027 (or just 2026).</p>
+        </div>
+
         @if ($instructor->isCoordinator())
             <div class="mb-3">
                 <label class="il-form-label" for="program_id">Program</label>

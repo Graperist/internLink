@@ -32,14 +32,23 @@ class InternAccountController extends Controller
         $programs = $this->programsFor($instructor);
         $selectedProgram = $instructor->programForNewRecord($request->query('program_id')) ?? $instructor->program_id;
 
-        return view('instructor.advisees.create', compact('instructor', 'programs', 'selectedProgram'));
+        $academicYear = \App\Support\Term::current()[0];
+
+        return view('instructor.advisees.create', compact('instructor', 'programs', 'selectedProgram', 'academicYear'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $instructor = $this->instructorWithProgram();
+        // Blank means the current academic year.
+        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0]]);
 
         $data = $request->validate([
+            'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
+                if (! \App\Support\Term::isValidAcademicYear($value)) {
+                    $fail('Type the academic year like 2026-2027 (or just 2026).');
+                }
+            }],
             // Unique across ALL campuses - sign-in is by ID alone.
             'id_number' => ['required', 'string', 'max:50', Rule::unique('users', 'id_number')],
             'name' => ['required', 'string', 'max:255'],
@@ -73,6 +82,7 @@ class InternAccountController extends Controller
                 'program_id' => $program->id,
                 'instructor_id' => $handler?->id,
                 'hours_rendered' => 0,
+                'academic_year' => $data['academic_year'],
             ]);
 
             // Every student starts with an internship record so they can fill
@@ -92,7 +102,7 @@ class InternAccountController extends Controller
 
         AuditLogger::record('student.created', "Added intern account {$data['id_number']} ({$program->code}).", auth()->user(), $request, $student, $instructor->campus_id);
 
-        return redirect()->route('instructor.advisees')->with('provisioned_account', [
+        return redirect()->route('instructor.advisees', $this->yearQuery($data['academic_year']))->with('provisioned_account', [
             'name' => $data['name'],
             'id_number' => $data['id_number'],
             'temporary_password' => $temporaryPassword,
@@ -102,7 +112,8 @@ class InternAccountController extends Controller
     public function resetPassword(Request $request, Student $student): RedirectResponse
     {
         $instructor = auth()->user()->instructor;
-        abort_unless($instructor && $instructor->canActOn($student), 403);
+        // The coordinator resets interns of every program; an instructor their own.
+        abort_unless($instructor && $instructor->canManageAccountOf($student), 403);
 
         $temporaryPassword = Str::password(10, symbols: false);
 
@@ -113,7 +124,7 @@ class InternAccountController extends Controller
 
         AuditLogger::record('student.password_reset', "Reset the password of {$student->user->id_number}.", auth()->user(), $request, $student, $instructor->campus_id);
 
-        return redirect()->route('instructor.advisees')->with('provisioned_account', [
+        return back()->with('provisioned_account', [
             'name' => $student->user->name,
             'id_number' => $student->user->id_number,
             'temporary_password' => $temporaryPassword,
@@ -126,15 +137,24 @@ class InternAccountController extends Controller
         $instructor = $this->instructorWithProgram();
         $programs = $this->programsFor($instructor);
 
-        return view('instructor.advisees.import', compact('instructor', 'programs'));
+        $academicYear = \App\Support\Term::current()[0];
+
+        return view('instructor.advisees.import', compact('instructor', 'programs', 'academicYear'));
     }
 
     public function import(Request $request): RedirectResponse
     {
         $instructor = $this->instructorWithProgram();
 
+        // Blank means the current academic year.
+        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0]]);
         $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:5120'],
+            'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
+                if (! \App\Support\Term::isValidAcademicYear($value)) {
+                    $fail('Type the academic year like 2026-2027 (or just 2026).');
+                }
+            }],
         ], ['file.mimes' => 'Upload a .csv or .xlsx file. (For an old .xls file, open it in Excel and save it as .xlsx or .csv.)']);
 
         $file = $request->file('file');
@@ -156,13 +176,51 @@ class InternAccountController extends Controller
         $defaultProgram = $instructor->isCoordinator() && $request->filled('program_id')
             ? \App\Models\Program::where('campus_id', $instructor->campus_id)->find($request->input('program_id'))
             : null;
-        $import = new StudentsImport($instructor, $defaultProgram);
+        $import = new StudentsImport($instructor, $defaultProgram, $request->input('academic_year'));
         $import->collection(collect($rows));
 
-        return redirect()->route('instructor.advisees')->with('import_results', [
+        // Kept (for 2 hours) so the sign-in details can be downloaded as a
+        // file and sent to the students, e.g. on Messenger.
+        if ($import->created) {
+            session()->put('import_credentials', [
+                'at' => now()->toIso8601String(),
+                'academic_year' => $request->input('academic_year'),
+                'rows' => $import->created,
+            ]);
+        }
+        AuditLogger::record('student.imported', count($import->created).' intern account(s) enrolled by bulk import for AY '.$request->input('academic_year').'.', auth()->user(), $request, null, $instructor->campus_id);
+
+        return redirect()->route('instructor.advisees', $this->yearQuery($request->input('academic_year')))->with('import_results', [
             'created' => $import->created,
             'skipped' => $import->skipped,
         ]);
+    }
+
+    /**
+     * The last bulk import's sign-in details as a CSV file (opens in Excel)
+     * to send the students. Available for 2 hours after the import.
+     */
+    public function credentials(): \Symfony\Component\HttpFoundation\StreamedResponse|RedirectResponse
+    {
+        $saved = session('import_credentials');
+        if (! $saved || now()->diffInMinutes(\Illuminate\Support\Carbon::parse($saved['at'])) > 120) {
+            session()->forget('import_credentials');
+
+            return redirect()->route('instructor.advisees')->withErrors(['credentials' => 'The sign-in details of the last import are no longer available. Use Reset password to give a student a new one.']);
+        }
+
+        $signIn = route('login');
+        $filename = 'internlink-student-sign-in-details-'.\Illuminate\Support\Carbon::parse($saved['at'])->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($saved, $signIn) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");   // so Excel reads the names correctly
+            fputcsv($out, ['Name', 'ID number', 'Temporary password', 'Program', 'Academic year', 'Sign in at']);
+            foreach ($saved['rows'] as $row) {
+                fputcsv($out, [$row['name'], $row['id_number'], $row['temporary_password'], $row['program'] ?? '', $saved['academic_year'] ?? '', $signIn]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8', 'Cache-Control' => 'no-store']);
     }
 
     public function template(): BinaryFileResponse
@@ -190,5 +248,37 @@ class InternAccountController extends Controller
         $instructor->loadMissing('program', 'campus');
 
         return $instructor;
+    }
+
+    /**
+     * Archive instead of delete: the student's account, internship, forms
+     * and hours are all kept; they just can't sign in until restored.
+     */
+    public function archive(Request $request, Student $student): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        abort_unless($instructor && $instructor->canManageAccountOf($student), 403);
+
+        $student->user->update(['status' => 'archived']);
+        AuditLogger::record('student.archived', "Archived the student {$student->user->name} ({$student->user->id_number}).", auth()->user(), $request, $student, $instructor->campus_id);
+
+        return back()->with('status', "{$student->user->name} was archived and can no longer sign in. Their records are kept; restore them from Archived students.");
+    }
+
+    public function restore(Request $request, Student $student): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        abort_unless($instructor && $instructor->canManageAccountOf($student), 403);
+
+        $student->user->update(['status' => 'active']);
+        AuditLogger::record('student.restored', "Restored the student {$student->user->name} ({$student->user->id_number}).", auth()->user(), $request, $student, $instructor->campus_id);
+
+        return back()->with('status', "{$student->user->name} was restored and can sign in again.");
+    }
+
+    /** The list opens on the year just enrolled (no parameter for the current year). */
+    private function yearQuery(string $year): array
+    {
+        return $year === \App\Support\Term::current()[0] ? [] : ['academic_year' => $year];
     }
 }

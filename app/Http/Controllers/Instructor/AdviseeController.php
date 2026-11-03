@@ -32,8 +32,15 @@ class AdviseeController extends Controller
         $preDeploymentIds = PreDeployment::requirementIds($instructor->campus_id);
         $requiredDocsCount = $preDeploymentIds->count();
 
+        [$year, $currentYear] = $this->selectedYear($request);
         $advisees = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)
+            ->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))
             ->latest('id')->paginate(20)->withQueryString();
+
+        // Archived students (never deleted), listed apart with Restore.
+        $archived = $this->filteredAdvisees($instructor, $request, $preDeploymentIds)
+            ->whereHas('user', fn ($u) => $u->where('status', 'archived'))
+            ->get()->sortBy(fn ($s) => mb_strtolower($s->user->name))->values();
 
         // The coordinator sees the whole campus, so give them a program filter.
         $programs = $instructor->isCoordinator()
@@ -48,7 +55,7 @@ class AdviseeController extends Controller
             ->map(fn ($s) => $s->currentInternship?->deployment?->hte)
             ->filter()->unique('id')->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
-        return view('instructor.advisees.index', compact('advisees', 'requiredDocsCount', 'programs', 'instructor', 'agencies'));
+        return view('instructor.advisees.index', compact('advisees', 'archived', 'requiredDocsCount', 'programs', 'instructor', 'agencies', 'year', 'currentYear'));
     }
 
     /**
@@ -259,6 +266,12 @@ class AdviseeController extends Controller
             $query->where('program_id', $programId);
         }
 
+        // One academic year at a time (the current one unless another is typed).
+        [$year] = $this->selectedYear($request);
+        if ($year !== 'all') {
+            $query->where('academic_year', $year);
+        }
+
         if ($search = $request->query('search')) {
             $query->whereHas('user', fn ($q) => $q
                 ->where('name', 'like', "%{$search}%")
@@ -279,5 +292,26 @@ class AdviseeController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * The academic year typed in the filter: the current one by default,
+     * "all" (or the box left empty) for every year.
+     *
+     * @return array{0:string,1:string} [selected year or 'all', current year]
+     */
+    private function selectedYear(Request $request): array
+    {
+        $current = \App\Support\Term::current()[0];
+        if (! $request->has('academic_year')) {
+            return [$current, $current];
+        }
+        $typed = (string) $request->query('academic_year');
+        if ($typed === '' || $typed === 'all') {
+            return ['all', $current];
+        }
+        $year = \App\Support\Term::normalizeAcademicYear($typed);
+
+        return [\App\Support\Term::isValidAcademicYear($year) ? $year : $current, $current];
     }
 }

@@ -5,7 +5,7 @@
 @section('content')
 <div class="il-page-header">
     <h1 class="il-page-title">HTE accounts</h1>
-    <a href="{{ route('coordinator.hte-accounts.create') }}" class="il-btn-primary text-decoration-none">
+    <a href="{{ route('instructor.hte-accounts.create') }}" class="il-btn-primary text-decoration-none">
         <i class="ti ti-plus"></i> Add HTE account
     </a>
 </div>
@@ -50,18 +50,23 @@
 
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="h6 fw-bold mb-0">HTE Representatives &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year }}</h2>
+        <h2 class="h6 fw-bold mb-0">HTE Representatives &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year.($year === $currentYear ? ' (current)' : '') }}</h2>
         <span class="text-secondary small">{{ $accounts->total() }} total</span>
     </div>
 
-    <form method="GET" class="row g-2 mb-3 align-items-center">
+    <form method="GET" class="row g-2 mb-3 align-items-start">
         <div class="col-md-3">
-            <select name="academic_year" class="form-select" onchange="this.form.submit()" aria-label="Academic year">
-                @foreach ($years as $option)
-                    <option value="{{ $option }}" @selected($year === $option)>AY {{ $option }}{{ $option === $currentYear ? ' (current)' : '' }}</option>
-                @endforeach
-                <option value="all" @selected($year === 'all')>All academic years</option>
-            </select>
+            <div class="input-group">
+                <span class="input-group-text small">AY</span>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'hte_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true])
+            </div>
+            <div class="small mt-1">
+                @if ($year === 'all')
+                    <span class="text-secondary">Showing all years &middot;</span> <a href="{{ route('instructor.hte-accounts.index') }}">Back to AY {{ $currentYear }}</a>
+                @else
+                    <a href="{{ route('instructor.hte-accounts.index', ['academic_year' => 'all']) }}">Show all years</a>
+                @endif
+            </div>
         </div>
         <div class="col-md il-search">
             <i class="ti ti-search"></i>
@@ -78,7 +83,7 @@
                 <i class="ti ti-search"></i> Search
             </button>
             @if (request()->filled('search'))
-                <a href="{{ route('coordinator.hte-accounts.index', ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
+                <a href="{{ route('instructor.hte-accounts.index', ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </div>
     </form>
@@ -121,15 +126,15 @@
                     </td>
                     <td class="text-end text-nowrap">
                         @include('partials.hte-send-credentials', ['representative' => $account])
-                        <form method="POST" action="{{ route('coordinator.hte-accounts.reset-password', $account) }}" class="d-inline">
+                        <form method="POST" action="{{ route('instructor.hte-accounts.reset-password', $account) }}" class="d-inline">
                             @csrf
                             <button type="submit" class="il-icon-btn" title="Reset password"
                                     onclick="return confirm('Generate a new password for {{ addslashes($account->user->name) }}? It is shown once here and not emailed (use the mail icon to email the sign-in details).')">
                                 <i class="ti ti-key"></i><span class="visually-hidden">Reset password</span>
                             </button>
                         </form>
-                        <a href="{{ route('coordinator.hte-accounts.edit', $account) }}" class="il-icon-btn" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>
-                        <form method="POST" action="{{ route('coordinator.hte-accounts.archive', $account) }}" class="d-inline">
+                        <a href="{{ route('instructor.hte-accounts.edit', $account) }}" class="il-icon-btn" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>
+                        <form method="POST" action="{{ route('instructor.hte-accounts.archive', $account) }}" class="d-inline">
                             @csrf
                             <button type="submit" class="il-icon-btn danger" title="Archive"
                                     onclick="return confirm('Archive the account of {{ addslashes($account->user->name) }}{{ $account->hte ? ' ('.addslashes($account->hte->name).')' : '' }}? It can no longer sign in. The account and the evaluations it filed are kept, and you can restore it anytime.')">
@@ -145,10 +150,10 @@
                             No HTE accounts match this search.
                         @elseif ($year !== 'all')
                             No HTE accounts for AY {{ $year }}.
-                            <a href="{{ route('coordinator.hte-accounts.index', ['academic_year' => 'all']) }}">See all academic years</a>.
+                            <a href="{{ route('instructor.hte-accounts.index', ['academic_year' => 'all']) }}">See all academic years</a>.
                         @else
                             No HTE accounts yet.
-                            <a href="{{ route('coordinator.hte-accounts.create') }}">Add your first one</a>.
+                            <a href="{{ route('instructor.hte-accounts.create') }}">Add your first one</a>.
                         @endif
                     </td>
                 </tr>
@@ -179,7 +184,7 @@
                         </td>
                         <td><span class="badge rounded-pill text-bg-light border text-secondary"><i class="ti ti-building"></i> {{ $account->hte?->name ?? 'No HTE linked' }}</span></td>
                         <td class="text-end">
-                            <form method="POST" action="{{ route('coordinator.hte-accounts.restore', $account) }}" class="d-inline"
+                            <form method="POST" action="{{ route('instructor.hte-accounts.restore', $account) }}" class="d-inline"
                                   onsubmit="return confirm('Restore {{ addslashes($account->user->name) }}\'s account? It will be able to sign in again.')">
                                 @csrf
                                 <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-restore"></i> Restore</button>

@@ -137,7 +137,7 @@ class HteCredentialsTest extends TestCase
         Mail::fake();
         $account = $this->account();
 
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
             ->assertSee('1 intern at this agency has not finished the internship yet.')
             ->assertDontSee(route('instructor.hte-accounts.send', $account), false);
 
@@ -152,7 +152,7 @@ class HteCredentialsTest extends TestCase
         $account = $this->account();
         $this->deployment->update(['status' => 'completed']);
 
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
             ->assertSee(route('instructor.hte-accounts.send', $account), false);
         // also on Partner Agencies
         $this->actingAs($this->coordinator)->get(route('instructor.htes', ['academic_year' => '2026-2027', 'semester' => Term::SEMESTER]))->assertOk()
@@ -169,7 +169,7 @@ class HteCredentialsTest extends TestCase
         });
         $this->assertTrue(Hash::check($sentPassword, $account->user->fresh()->password));
         $this->assertNotNull($account->fresh()->credentials_sent_at);
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertSee('Sign-in details sent');
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertSee('Sign-in details sent');
     }
 
     public function test_a_failed_email_keeps_the_old_password_and_says_why(): void
@@ -202,22 +202,22 @@ class HteCredentialsTest extends TestCase
     public function test_the_account_can_be_edited_and_the_agency_email_follows(): void
     {
         $account = $this->account();
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.edit', $account))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.edit', $account))->assertOk()
             ->assertSee('value="ACC-HTE-001"', false)->assertSee('virgie@fareheaven.test');
 
-        $this->actingAs($this->coordinator)->put(route('coordinator.hte-accounts.update', $account), [
+        $this->actingAs($this->coordinator)->put(route('instructor.hte-accounts.update', $account), [
             'id_number' => 'ACC-HTE-010', 'name' => 'Virgie O. Osorio', 'email' => 'virgie.new@fareheaven.test',
-        ])->assertRedirect(route('coordinator.hte-accounts.index'));
+        ])->assertRedirect(route('instructor.hte-accounts.index'));
 
         $user = $account->user->fresh();
         $this->assertSame(['ACC-HTE-010', 'Virgie O. Osorio', 'virgie.new@fareheaven.test'], [$user->id_number, $user->name, $user->email]);
         $this->assertSame('virgie.new@fareheaven.test', $this->hte->fresh()->contact_email);
         // the list keeps it (the agency email no longer pulls it back)
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertSee('virgie.new@fareheaven.test')
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertSee('virgie.new@fareheaven.test')
             ->assertDontSee("Not the agency's email", false);
 
         // an email or ID another account uses is refused
-        $this->actingAs($this->coordinator)->put(route('coordinator.hte-accounts.update', $account), [
+        $this->actingAs($this->coordinator)->put(route('instructor.hte-accounts.update', $account), [
             'id_number' => 'ACC-COORD-001', 'name' => 'x', 'email' => '23-ac-0001@t.local',
         ])->assertSessionHasErrors(['id_number', 'email']);
     }
@@ -225,15 +225,15 @@ class HteCredentialsTest extends TestCase
     public function test_accounts_are_archived_and_restored_never_deleted(): void
     {
         $account = $this->account();
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
-            ->assertSee(route('coordinator.hte-accounts.archive', $account), false)
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))
+            ->assertSee(route('instructor.hte-accounts.archive', $account), false)
             ->assertDontSee('ti-trash', false);
 
-        $this->actingAs($this->coordinator)->from(route('coordinator.hte-accounts.index'))->post(route('coordinator.hte-accounts.archive', $account))->assertRedirect();
+        $this->actingAs($this->coordinator)->from(route('instructor.hte-accounts.index'))->post(route('instructor.hte-accounts.archive', $account))->assertRedirect();
         $this->assertSame('archived', $account->user->fresh()->status);
         $this->assertDatabaseHas('hte_representatives', ['id' => $account->id]);
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))
-            ->assertSee('Archived HTE accounts')->assertSee(route('coordinator.hte-accounts.restore', $account), false);
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))
+            ->assertSee('Archived HTE accounts')->assertSee(route('instructor.hte-accounts.restore', $account), false);
 
         // it can't sign in, and the mail icon can't send to it
         auth()->logout();
@@ -243,7 +243,7 @@ class HteCredentialsTest extends TestCase
         $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.send', $account))->assertSessionHasErrors('send');
         Mail::assertNothingSent();
 
-        $this->actingAs($this->coordinator)->post(route('coordinator.hte-accounts.restore', $account))->assertRedirect();
+        $this->actingAs($this->coordinator)->post(route('instructor.hte-accounts.restore', $account))->assertRedirect();
         $this->assertSame('active', $account->user->fresh()->status);
     }
 
@@ -256,11 +256,11 @@ class HteCredentialsTest extends TestCase
         $oldAccount->forceFill(['created_at' => '2024-01-10'])->save();
 
         // current year by default
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index'))->assertOk()
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
             ->assertSee('AY 2026-2027 (current)')->assertSee('Fareheaven Boarding House')->assertDontSee('Old Partner Resort');
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index', ['academic_year' => '2023-2024']))
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => '2023-2024']))
             ->assertSee('Old Partner Resort')->assertDontSee('Fareheaven Boarding House');
-        $this->actingAs($this->coordinator)->get(route('coordinator.hte-accounts.index', ['academic_year' => 'all']))
+        $this->actingAs($this->coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => 'all']))
             ->assertSee('Old Partner Resort')->assertSee('Fareheaven Boarding House');
     }
 }
