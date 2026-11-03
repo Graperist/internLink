@@ -273,10 +273,10 @@ class SharedPortalTest extends TestCase
         $this->actingAs($instructor)->get(route('instructor.advisees'))->assertOk()
             ->assertDontSee('23-AC-0001')->assertSee('23-AC-0002');
 
-        // Coordinator's list has a Program column, with other programs marked view only.
+        // Coordinator's list has a Program column (no "View only" marks).
         $this->actingAs($coordinator)->get(route('instructor.advisees'))
             ->assertSee('<th>Program</th>', false)
-            ->assertSee('View only');
+            ->assertDontSee('View only');
         $this->actingAs($instructor)->get(route('instructor.advisees'))->assertDontSee('<th>Program</th>', false);
 
         // Coordinator can filter the campus list by program.
@@ -984,5 +984,31 @@ class SharedPortalTest extends TestCase
         $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index'))->assertOk()
             ->assertSee('il-ay-input', false)->assertSee('AY 2026-2027 (current)')->assertSee('Show all years');
         $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => '2031']))->assertSee('AY 2031-2032');
+    }
+
+    public function test_students_are_edited_by_their_instructor_or_the_coordinator(): void
+    {
+        $instructor = $this->teacher('instructor', 'ACC-INST-001', $this->bsit);
+        $bshmInstructor = $this->teacher('instructor', 'ACC-INST-002', $this->bshm);
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bshm);
+        $student = $this->student('23-AC-0001', $this->bsit);
+
+        $this->actingAs($instructor)->get(route('instructor.advisees'))->assertSee(route('instructor.interns.edit', $student), false);
+        $this->actingAs($instructor)->get(route('instructor.interns.edit', $student))->assertOk()->assertDontSee('name="program_id"', false);
+        $this->actingAs($instructor)->put(route('instructor.interns.update', $student), [
+            'academic_year' => '2026', 'id_number' => '23-AC-0009', 'name' => 'Ana Cruz', 'email' => 'ana.cruz@t.local',
+        ])->assertRedirect(route('instructor.advisees'));
+        $user = $student->user->fresh();
+        $this->assertSame(['23-AC-0009', 'Ana Cruz', 'ana.cruz@t.local'], [$user->id_number, $user->name, $user->email]);
+
+        // another program's instructor can't; the coordinator can, and can move the program before deployment
+        $this->actingAs($bshmInstructor)->get(route('instructor.interns.edit', $student))->assertForbidden();
+        $this->actingAs($coordinator)->get(route('instructor.advisees'))->assertDontSee('View only');
+        $this->actingAs($coordinator)->put(route('instructor.interns.update', $student), [
+            'academic_year' => '2026-2027', 'id_number' => '23-AC-0009', 'name' => 'Ana Cruz', 'email' => 'ana.cruz@t.local', 'program_id' => $this->bshm->id,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame($this->bshm->id, $student->fresh()->program_id);
+        $this->assertSame($this->bshm->id, $student->fresh()->currentInternship->program_id);
+        $this->assertSame(600, (int) $student->fresh()->currentInternship->required_hours);
     }
 }

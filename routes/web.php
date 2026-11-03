@@ -109,6 +109,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/interns/import', [InternAccountController::class, 'import'])->name('interns.import.store');
         Route::get('/interns/import/template', [InternAccountController::class, 'template'])->name('interns.template');
         Route::post('/interns/{student}/reset-password', [InternAccountController::class, 'resetPassword'])->name('interns.reset-password');
+        Route::get('/interns/{student}/edit', [InternAccountController::class, 'edit'])->name('interns.edit');
+        Route::put('/interns/{student}', [InternAccountController::class, 'update'])->name('interns.update');
         // Students are archived, never deleted (restore brings them back).
         Route::post('/interns/{student}/archive', [InternAccountController::class, 'archive'])->name('interns.archive');
         Route::post('/interns/{student}/restore', [InternAccountController::class, 'restore'])->name('interns.restore');

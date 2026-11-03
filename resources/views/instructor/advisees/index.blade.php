@@ -148,69 +148,49 @@
         </div>
     </div>
 
-    <form method="GET" class="row g-2 mb-3 align-items-start">
-        <div class="col-md-3">
-            <div class="input-group">
-                <span class="input-group-text small">AY</span>
-                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'students_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true])
-            </div>
-            <div class="small mt-1">
-                @if ($year === 'all')
-                    <a href="{{ route('instructor.advisees') }}">Back to AY {{ $currentYear }}</a>
-                @else
-                    <a href="{{ route('instructor.advisees', ['academic_year' => 'all']) }}">Show all years</a>
-                @endif
-            </div>
-        </div>
-        <div class="col-md-9 il-search">
-            <i class="ti ti-search"></i>
-            <input
-                type="text"
-                name="search"
-                class="form-control"
-                placeholder="Search by name or ID number..."
-                value="{{ request('search') }}"
-            >
-        </div>
-        @if ($isCoordinator)
-            <div class="col-md-3">
-                <select name="program_id" class="form-select" onchange="this.form.submit()">
-                    <option value="">All programs</option>
-                    @foreach ($programs as $program)
-                        <option value="{{ $program->id }}" @selected((string) request('program_id') === (string) $program->id)>
-                            {{ $program->code }}{{ $program->id === $instructor->program_id ? ' (mine)' : '' }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-        @endif
-        <div class="col-md-3">
-            <select name="hte_id" class="form-select" onchange="this.form.submit()" aria-label="Partner agency">
-                <option value="">All partner agencies</option>
-                @foreach ($agencies as $agency)
-                    <option value="{{ $agency->id }}" @selected((string) request('hte_id') === (string) $agency->id)>{{ $agency->name }}</option>
-                @endforeach
-                <option value="none" @selected(request('hte_id') === 'none')>No partner agency yet</option>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <select name="status" class="form-select" onchange="this.form.submit()">
-                <option value="">All Status</option>
-                <option value="pending" @selected(request('status') === 'pending')>Placed (not yet started)</option>
-                <option value="active" @selected(request('status') === 'active')>Deployed</option>
-                <option value="completed" @selected(request('status') === 'completed')>Completed</option>
-                <option value="terminated" @selected(request('status') === 'terminated')>Terminated</option>
-                <option value="not_deployed" @selected(request('status') === 'not_deployed')>Not Deployed</option>
-            </select>
-        </div>
-        <div class="col-md-auto d-flex align-items-center gap-1">
-            <button type="submit" class="btn btn-primary">
-                <i class="ti ti-search"></i> Search
-            </button>
-            @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
-                <a href="{{ route('instructor.advisees', ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
+    <form method="GET" class="d-flex flex-wrap flex-lg-nowrap gap-2 mb-3 align-items-center il-filter-row">
+        <div class="input-group" style="flex: 0 0 190px;">
+            <span class="input-group-text small px-2">AY</span>
+            @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'students_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true])
+            @if ($year === 'all')
+                <a href="{{ route('instructor.advisees') }}" class="btn btn-outline-secondary btn-sm d-flex align-items-center" title="Back to AY {{ $currentYear }}">{{ substr($currentYear, 2, 2) }}-{{ substr($currentYear, 7, 2) }}</a>
+            @else
+                <a href="{{ route('instructor.advisees', ['academic_year' => 'all']) }}" class="btn btn-outline-secondary btn-sm d-flex align-items-center" title="Show all academic years">All</a>
             @endif
         </div>
+        <div class="il-search" style="flex: 1 1 160px; min-width: 130px;">
+            <i class="ti ti-search"></i>
+            <input type="text" name="search" class="form-control" placeholder="Search name or ID..." value="{{ request('search') }}">
+        </div>
+        @if ($isCoordinator)
+            <select name="program_id" class="form-select" style="flex: 0 1 150px; min-width: 110px;" onchange="this.form.submit()" aria-label="Program">
+                <option value="">All programs</option>
+                @foreach ($programs as $program)
+                    <option value="{{ $program->id }}" @selected((string) request('program_id') === (string) $program->id)>
+                        {{ $program->code }}{{ $program->id === $instructor->program_id ? ' (mine)' : '' }}
+                    </option>
+                @endforeach
+            </select>
+        @endif
+        <select name="hte_id" class="form-select" style="flex: 0 1 210px; min-width: 130px;" onchange="this.form.submit()" aria-label="Partner agency">
+            <option value="">All partner agencies</option>
+            @foreach ($agencies as $agency)
+                <option value="{{ $agency->id }}" @selected((string) request('hte_id') === (string) $agency->id)>{{ $agency->name }}</option>
+            @endforeach
+            <option value="none" @selected(request('hte_id') === 'none')>No partner agency yet</option>
+        </select>
+        <select name="status" class="form-select" style="flex: 0 1 170px; min-width: 120px;" onchange="this.form.submit()" aria-label="Status">
+            <option value="">All status</option>
+            <option value="pending" @selected(request('status') === 'pending')>Placed (not yet started)</option>
+            <option value="active" @selected(request('status') === 'active')>Deployed</option>
+            <option value="completed" @selected(request('status') === 'completed')>Completed</option>
+            <option value="terminated" @selected(request('status') === 'terminated')>Terminated</option>
+            <option value="not_deployed" @selected(request('status') === 'not_deployed')>Not deployed</option>
+        </select>
+        <button type="submit" class="btn btn-primary flex-shrink-0" title="Search"><i class="ti ti-search"></i><span class="d-none d-xxl-inline"> Search</span></button>
+        @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
+            <a href="{{ route('instructor.advisees', ['academic_year' => $year]) }}" class="btn btn-sm btn-link flex-shrink-0 px-1">Clear</a>
+        @endif
     </form>
 
     <div class="table-responsive">
@@ -293,6 +273,7 @@
                                     @csrf
                                     <button type="submit" class="il-icon-btn" title="Reset password"><i class="ti ti-key"></i><span class="visually-hidden">Reset password</span></button>
                                 </form>
+                                <a href="{{ route('instructor.interns.edit', $student) }}" class="il-icon-btn" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>
                                 <form method="POST" action="{{ route('instructor.interns.archive', $student) }}" class="d-inline"
                                       onsubmit="return confirm('Archive {{ addslashes($student->user->name) }} ({{ $student->user->id_number }})? They can no longer sign in. Their internship, forms and hours are kept, and you can restore them anytime.');">
                                     @csrf
@@ -321,7 +302,7 @@
                             <div class="text-secondary mt-1" style="font-size: 0.72rem;">Placement is created when you accept the Application for OJT.</div>
                         @elseif ($canAct && $deployment && $deployment->status === 'active' && ! $completionReady)
                             <div class="text-secondary mt-1" style="font-size: 0.72rem;">Completion unlocks once the required hours are rendered.</div>
-                        @elseif (! $canAct)
+                        @elseif (! $canAct && ! $isCoordinator)
                             <div class="mt-1"><span class="il-viewonly"><i class="ti ti-eye"></i> View only</span></div>
                         @endif
                     </td>
