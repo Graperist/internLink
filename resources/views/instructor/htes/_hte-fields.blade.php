@@ -63,21 +63,11 @@
     type="text"
     name="contact_phone"
             id="hte_contact_phone"
-    class="form-control mb-3"
+    class="form-control mb-4"
     value="{{ old('contact_phone', $hte->contact_phone ?? '') }}"
     placeholder="e.g. 0917 123 4567"
     required
 >
 
-{{-- MOA status: the Subject Instructor's list only, not the OJT Coordinator's. --}}
-@unless (auth()->user()->isCoordinator())
-<label class="form-label small fw-semibold">MOA status</label>
-<select name="moa_status" class="form-select mb-4" required>
-    @foreach (['pending' => 'Pending', 'active' => 'Active', 'expired' => 'Expired'] as $value => $label)
-        <option value="{{ $value }}" @selected(old('moa_status', $hte->moa_status ?? 'pending') === $value)>
-            {{ $label }}
-        </option>
-    @endforeach
-</select>
-@endunless
+{{-- No MOA status on the form (the MOA is followed in Document Review, Form 10). --}}
 

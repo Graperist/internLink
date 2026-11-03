@@ -9,7 +9,6 @@
     $termQuery = ['academic_year' => $academicYear, 'semester' => $semester];
     // The coordinator adds for the program being viewed (or picks one on the form).
     $addQuery = $termQuery + ($isCoordinator && $programId ? ['program_id' => $programId] : []);
-    $moaPills = ['pending' => 'warn', 'active' => 'ok', 'expired' => 'bad'];
     $totalInterns = $listings->sum('interns_count');
 @endphp
 @include('partials.ui-list-styles')
@@ -92,17 +91,6 @@
                 <input type="text" name="search" id="f_search" class="form-control border-start-0" placeholder="Agency name..." value="{{ request('search') }}">
             </div>
         </div>
-        @unless ($isCoordinator)
-        <div class="col-md-2">
-            <label class="form-label small fw-semibold mb-1" for="f_moa">MOA</label>
-            <select name="moa_status" id="f_moa" class="form-select" onchange="this.form.submit()">
-                <option value="">Any</option>
-                @foreach (['pending' => 'Pending', 'active' => 'Active', 'expired' => 'Expired'] as $value => $label)
-                    <option value="{{ $value }}" @selected(request('moa_status') === $value)>{{ $label }}</option>
-                @endforeach
-            </select>
-        </div>
-        @endunless
     </form>
 </div>
 
@@ -196,7 +184,6 @@
                     <th>Contact person</th>
                     <th>Contact number</th>
                     @if ($isCoordinator && ! $programId)<th>Program</th>@endif
-                    @unless ($isCoordinator)<th>MOA</th>@endunless
                     <th class="text-center">Placed / slots</th>
                     <th></th>
                 </tr>
@@ -227,11 +214,6 @@
                         @if ($isCoordinator && ! $programId)
                             <td><span class="ev-pill blue">{{ $listing->program->code }}</span></td>
                         @endif
-                        @unless ($isCoordinator)
-                            <td>
-                                <span class="ev-pill {{ $moaPills[$hte->moa_status] ?? 'wait' }}">{{ ucfirst($hte->moa_status) }}</span>
-                            </td>
-                        @endunless
                         <td class="text-nowrap">
                             <div class="pa-slots mx-auto">
                                 <div class="d-flex justify-content-between align-items-baseline gap-2">
@@ -270,9 +252,9 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" class="text-center text-secondary py-5">
+                        <td colspan="6" class="text-center text-secondary py-5">
                             <i class="ti ti-building-community fs-2 d-block mb-1"></i>
-                            @if (request()->hasAny(['search', 'moa_status']))
+                            @if (request()->filled('search'))
                                 No agencies match this search or filter.
                             @else
                                 <div class="mb-2">No partner agencies listed for {{ $semester }}, AY {{ $academicYear }} yet.</div>

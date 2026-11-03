@@ -240,9 +240,9 @@ class PartnerAgencyRepositoryTest extends TestCase
         ] + collect($this->details)->except('moa_status')->all())->assertSessionHasNoErrors();
         $this->assertSame('pending', Hte::where('name', 'Bolinao Tourism Office')->value('moa_status'));
 
-        // The Subject Instructor's page still has it.
-        $this->actingAs($instructor)->get(route('instructor.htes', $term))->assertOk()->assertSee('MOA');
-        $this->actingAs($instructor)->get(route('instructor.htes.create'))->assertOk()->assertSee('MOA status');
+        // The Subject Instructor's pages have no MOA status either.
+        $this->actingAs($instructor)->get(route('instructor.htes', $term))->assertOk()->assertDontSee('moa_status', false);
+        $this->actingAs($instructor)->get(route('instructor.htes.create'))->assertOk()->assertDontSee('MOA status');
     }
 
     public function test_intern_count_follows_the_program_and_term(): void
