@@ -30,9 +30,9 @@
             Changes to the agency's details are shared with every program that lists it.
         @else
             @if ($instructor->isCoordinator())
-                Added to the <strong>{{ $listing->semester }}, AY {{ $listing->academic_year }} list</strong> of the program you choose below.
+                Added to the <strong>{{ $listing->semester }}, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong> of the program you choose below.
             @else
-                Added to <strong>your program's {{ $listing->semester }}, AY {{ $listing->academic_year }} list</strong>
+                Added to <strong>your program's {{ $listing->semester }}, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong>
                 ({{ $instructor->program->code }}).
             @endif
             Use this when the agencies already on the list don't have enough slots:
@@ -40,6 +40,24 @@
             are printed on the Masterlist of Partner Industries (FM-AA-INT-06).
         @endif
     </div>
+
+    @unless ($editing)
+        <script>
+        // The note above follows the academic year typed below.
+        document.addEventListener('DOMContentLoaded', function () {
+            var input = document.getElementById('academic_year');
+            if (!input) return;
+            var show = function () {
+                var v = (input.value || '').trim();
+                if (/^\d{4}$/.test(v)) v = v + '-' + (parseInt(v, 10) + 1);
+                document.querySelectorAll('[data-term-year]').forEach(function (el) { el.textContent = v || '____'; });
+            };
+            input.addEventListener('input', show);
+            input.addEventListener('change', show);
+            show();
+        });
+        </script>
+    @endunless
 
     <form method="POST" action="{{ $editing ? route('instructor.htes.update', $listing) : route('instructor.htes.store') }}" id="partnerForm">
         @csrf
