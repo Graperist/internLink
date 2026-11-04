@@ -13,7 +13,7 @@
         </a>
     </div>
 
-    <div class="il-card" style="max-width: 850px;">
+    <div class="il-card">
         @if ($errors->any())
             <div class="alert alert-danger">
                 <ul class="mb-0">

@@ -21,7 +21,7 @@
     @endif
 @endif
 
-<div class="il-card" style="max-width: {{ $requirement->code === 'APPLICATION_FOR_OJT' ? '920px' : '640px' }};">
+<div class="il-card">
     @if ($errors->any())
         <div class="alert alert-danger">
             <ul class="mb-0">
@@ -953,8 +953,14 @@
                     @endif
                 @endif
 
+                {{-- Two columns for short fields; long text, ratings and checkboxes take the full width. --}}
+                @if (! $fields->contains('field_type', 'rating_scale'))<div class="row g-3 mb-3">@endif
                 @foreach ($fields as $field)
-                    <div class="mb-3">
+                    <div class="{{ $fields->contains('field_type', 'rating_scale') ? 'mb-3' : match (true) {
+                        in_array($field->field_type, ['textarea', 'checkbox'], true) || in_array($field->field_key, ['current_address', 'home_address', 'hte_name', 'hte_address'], true) => 'col-12',
+                        in_array($field->field_key, ['surname', 'given_name', 'middle_name'], true) => 'col-md-4',
+                        default => 'col-md-6',
+                    } }}">
                         @if ($field->field_type === 'rating_scale')
                             @php $ratingNo++; @endphp
                             @include('partials.rating.question', ['field' => $field, 'value' => old($field->field_key, $document?->fieldValue($field->field_key)), 'number' => $ratingNo, 'legend' => $ratingScaleLegend, 'required' => (bool) $field->is_required])
@@ -1036,6 +1042,7 @@
                         @endif
                     </div>
                 @endforeach
+                @if (! $fields->contains('field_type', 'rating_scale'))</div>@endif
             @endforeach
         @endif
 
