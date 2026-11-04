@@ -307,10 +307,18 @@
                     <div class="row g-0">
                         @foreach ($internCodes as $code)
                             @php $doc = $irow->forms[$code]; $fromAgency = in_array($code, \App\Support\EvaluationRouting::HTE_INTERN_CODES, true); @endphp
-                            <div class="col-md-6 px-3 py-2 border-top d-flex align-items-center gap-2 flex-wrap">
+                            @if ($loop->first || $fromAgency !== in_array($internCodes[$loop->index - 1], \App\Support\EvaluationRouting::HTE_INTERN_CODES, true))
+                                {{-- Who sent these forms --}}
+                                <div class="col-12 ev-from border-top">
+                                    <i class="ti {{ $fromAgency ? 'ti-building' : 'ti-user' }}"></i>
+                                    {{ $fromAgency ? 'From the agency' : 'From the intern' }}
+                                    <span class="fw-normal text-secondary">&middot; {{ $fromAgency ? 'about the intern' : 'about the agency' }}</span>
+                                </div>
+                            @endif
+                            <div class="col-md-6 px-3 py-2 d-flex align-items-center gap-2 flex-wrap">
                                 <span class="flex-grow-1" style="min-width:170px;">
                                     <span class="d-block small fw-semibold">{{ $titles[$code] }}</span>
-                                    <span class="d-block text-secondary" style="font-size:.72rem;">{{ $short($code) }} &middot; {{ $fromAgency ? 'the agency rates the intern' : 'the intern rates the agency' }}</span>
+                                    <span class="d-block text-secondary" style="font-size:.72rem;">{{ $short($code) }}</span>
                                 </span>
                                 @if ($doc)
                                     <span class="ev-pill ok"><i class="ti ti-circle-check"></i> RECEIVED</span>
@@ -350,6 +358,7 @@
     .ev-divider { display:flex; align-items:center; gap:10px; margin: 4px 0 10px; color:#1c3f66; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
     .ev-divider::before, .ev-divider::after { content:''; flex:1; height:1px; background:#d6dde6; }
     .ev-divider span { white-space:nowrap; }
+    .ev-from { background:#f8f9fb; padding:5px 16px; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#1c3f66; }
 </style>
 <script>
 (function () {
