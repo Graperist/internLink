@@ -47,6 +47,14 @@ class DocumentController extends Controller
 
     public const NARRATIVE_MAX_KB = 51200;
 
+    /** Messages for the Required Hours the student types (Forms 3, 12, 15 and the practicum form). */
+    private const HOURS_MESSAGES = [
+        'required_hours.required' => 'Type the required internship hours for your program.',
+        'required_hours.integer' => 'The required hours must be a whole number.',
+        'required_hours.min' => 'The required hours must be at least 1.',
+        'required_hours.numeric' => 'The required hours must be a number.',
+    ];
+
     /** Forms that name the partner agency chosen on Form 1. */
     public const AGENCY_FORMS = ['PARENT_CONSENT', 'ENDORSEMENT_LETTER', 'INTERNSHIP_AGREEMENT', 'INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY'];
 
@@ -355,7 +363,9 @@ class DocumentController extends Controller
                     ),
                 ],
                 'address' => ['required', 'string', 'max:2000'],
-            ]);
+                // Typed by the student: the hours depend on the program.
+                'required_hours' => ['required', 'integer', 'min:1', 'max:5000'],
+            ], self::HOURS_MESSAGES);
 
             $hte = Hte::where('campus_id', $student->campus_id)
                 ->find($selected['hte_id']);
@@ -372,14 +382,7 @@ class DocumentController extends Controller
                 ]);
             }
 
-            $requiredHours = (int) ($internship->requiredHours()
-                ?? 0);
-
-            if ($requiredHours <= 0) {
-                return back()->withInput()->withErrors([
-                    'hte_id' => 'The required internship hours are not configured for this student’s program. Please ask the Coordinator to configure the program first.',
-                ]);
-            }
+            $requiredHours = (int) $selected['required_hours'];
 
             $wasReturned = $internship->documents()
                 ->where('document_requirement_id', $requirement->id)
@@ -452,16 +455,11 @@ class DocumentController extends Controller
                         $query->where('campus_id', $student->campus_id)
                     ),
                 ],
-            ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
+                // Typed by the student: the hours depend on the program.
+                'required_hours' => ['required', 'integer', 'min:1', 'max:5000'],
+            ] + $this->attachmentRules($requirement, $internship), self::HOURS_MESSAGES + self::ATTACHMENT_MESSAGES);
 
-            $requiredHours = (int) ($internship->requiredHours()
-                ?? 0);
-
-            if ($requiredHours <= 0) {
-                return back()->withInput()->withErrors([
-                    'company_name' => 'The required internship hours are not configured for this student\'s program. Please ask the Coordinator to configure the program first.',
-                ]);
-            }
+            $requiredHours = (int) $selected['required_hours'];
 
             $signedCity = $student->campus?->address ?: $student->campus?->name;
 
@@ -566,6 +564,10 @@ class DocumentController extends Controller
                 ? [$field->is_required ? 'required' : 'nullable', 'in:1,2,3,4,5']
                 : [$field->is_required ? 'required' : 'nullable', 'string', 'max:'.$maxLength];
         }
+        // Required Hours is typed by the student (it depends on the program).
+        if (isset($rules['required_hours']) && $requirement->code !== 'APPLICATION_FOR_OJT') {
+            $rules['required_hours'] = ['required', 'integer', 'min:1', 'max:5000'];
+        }
         // Files that go with this form (Form 1: Medical Certificate and
         // Psychological Test Result). Required the first time; on a
         // resubmission they are only needed to replace a file.
@@ -584,7 +586,7 @@ class DocumentController extends Controller
             $extraMessages = \App\Support\Form1Academics::messages();
         }
 
-        $validated = $request->validate($rules, $extraMessages + self::ATTACHMENT_MESSAGES);
+        $validated = $request->validate($rules, $extraMessages + self::HOURS_MESSAGES + self::ATTACHMENT_MESSAGES);
         foreach (array_keys($attachmentKinds) as $kind) {
             unset($validated['attachment_'.$kind]);
         }

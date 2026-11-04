@@ -149,7 +149,7 @@ class EveryFormSubmitsTest extends TestCase
         // Forms filled after Form 1 carry the typed hours.
         Document::where('document_requirement_id', $form1->id)->update(['status' => 'printed']);
         $consent = DocumentRequirement::where('code', 'PARENT_CONSENT')->firstOrFail();
-        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('600 hours');
+        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('name="required_hours"', false)->assertSee('value="600"', false);
         $this->actingAs($this->user)->get(route('student.dashboard'))->assertOk()->assertSee('600');
     }
 
@@ -170,5 +170,42 @@ class EveryFormSubmitsTest extends TestCase
         Document::create(['internship_id' => Internship::firstOrFail()->id, 'document_requirement_id' => $form1->id, 'status' => 'submitted', 'submitted_at' => now()]);
         $this->actingAs($this->user)->get(route('student.documents', ['form' => $consent->id]))->assertOk()
             ->assertDontSee('Fill out Form 1 (Application for Internship) first');
+    }
+
+    /** Form 12: the required hours are typed (they depend on the program). */
+    public function test_form_12_required_hours_are_typed(): void
+    {
+        $form12 = DocumentRequirement::where('code', 'INTERNSHIP_AGREEMENT')->firstOrFail();
+        $html = $this->actingAs($this->user)->get(route('student.documents.fill', $form12))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<input type="number"[^>]*name="required_hours"[^>]*value="486"/', $html);
+        $this->assertSame(1, substr_count($html, 'name="required_hours"'), 'one hours field, no hidden copy');
+
+        $data = $this->payloadFrom($html);
+        $data['required_hours'] = '600';
+        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form12), $data)->assertSessionHasNoErrors();
+        $doc = Document::where('document_requirement_id', $form12->id)->firstOrFail();
+        $this->assertSame('600', $doc->fieldValue('required_hours'));
+
+        $data['required_hours'] = '';
+        $this->actingAs($this->user)->post(route('student.documents.fill.store', $form12), $data)
+            ->assertSessionHasErrors(['required_hours' => 'Type the required internship hours for your program.']);
+    }
+
+    /** Forms 3 and 15 (and the practicum form): the required hours are typed too. */
+    public function test_the_other_forms_take_typed_hours(): void
+    {
+        foreach (['PARENT_CONSENT', 'INTERNSHIP_RELEASE_FORM'] as $code) {
+            $form = DocumentRequirement::where('code', $code)->firstOrFail();
+            $html = $this->actingAs($this->user)->get(route('student.documents.fill', $form))->assertOk()->getContent();
+            $this->assertMatchesRegularExpression('/<input type="number"[^>]*name="required_hours"[^>]*value="486"/', $html, $code);
+            $this->assertSame(1, substr_count($html, 'name="required_hours"'), $code.': one hours field');
+
+            $data = $this->payloadFrom($html);
+            $data['required_hours'] = 'abc';
+            $this->actingAs($this->user)->post(route('student.documents.fill.store', $form), $data)->assertSessionHasErrors('required_hours');
+            $data['required_hours'] = '540';
+            $this->actingAs($this->user)->post(route('student.documents.fill.store', $form), $data)->assertSessionHasNoErrors();
+            $this->assertSame('540', Document::where('document_requirement_id', $form->id)->firstOrFail()->fieldValue('required_hours'), $code);
+        }
     }
 }

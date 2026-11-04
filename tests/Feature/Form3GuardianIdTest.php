@@ -73,7 +73,7 @@ class Form3GuardianIdTest extends TestCase
 
     private function consent(array $extra = []): array
     {
-        return ['address' => 'Sual, Pangasinan', 'company_name' => 'Hundred Islands Resort', 'signed_date' => '2026-10-16'] + $extra;
+        return ['address' => 'Sual, Pangasinan', 'company_name' => 'Hundred Islands Resort', 'signed_date' => '2026-10-16', 'required_hours' => '486'] + $extra;
     }
 
     public function test_form3_page_asks_for_the_guardian_id(): void

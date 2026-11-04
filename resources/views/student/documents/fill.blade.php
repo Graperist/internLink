@@ -410,8 +410,8 @@
 
             <div class="alert alert-info small mb-4">
                 Select the partner Host Training Establishment from your program's partner agencies for this term.
-                The HTE address, representative name, representative position, and required internship
-                hours are filled automatically from the official HTE and program records.
+                The HTE address, representative name and representative position are filled automatically
+                from the official HTE records.
             </div>
 
             <h2 class="h6 fw-bold mt-2 mb-3">Student Information</h2>
@@ -423,8 +423,12 @@
                 </div>
                 <div class="col-md-4">
                     <label class="il-form-label" for="agreement_required_hours">Required Hours</label>
-                    <input type="text" class="form-control" id="agreement_required_hours"
-                           value="{{ $agreementRequiredHours }} hours" readonly>
+                    <div class="input-group">
+                        <input type="number" class="form-control @error('required_hours') is-invalid @enderror" id="agreement_required_hours" name="required_hours"
+                               value="{{ $agreementValue('required_hours', $agreementRequiredHours) }}" min="1" max="5000" step="1" required>
+                        <span class="input-group-text">hours</span>
+                    </div>
+                    @error('required_hours')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-8">
                     <label class="il-form-label" for="agreement_course">Course</label>
@@ -478,14 +482,7 @@
                     <label class="il-form-label" for="representative_position">Representative's Position</label>
                     <input type="text" class="form-control" id="representative_position" readonly required>
                 </div>
-                <div class="col-md-6">
-                    <label class="il-form-label" for="agreement_required_hours_display">Required Internship Hours</label>
-                    <input type="text" class="form-control" id="agreement_required_hours_display"
-                           value="{{ $agreementRequiredHours }} hours" readonly>
-                </div>
             </div>
-
-            <input type="hidden" name="required_hours" id="required_hours" value="{{ $agreementRequiredHours }}">
 
             @error('address')
                 <div class="text-danger small mt-1">{{ $message }}</div>
@@ -546,9 +543,8 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Your student information and required internship hours are filled automatically.
-                Select your partner agency and the date you will sign the printed Consent Form.
-                If this document was returned for correction, you can edit the date and resubmit it.
+                Your student information is filled automatically. Type the required internship hours
+                for your program and select your partner agency.
             </div>
 
             <h2 class="h6 fw-bold mt-2 mb-3">Student Information</h2>
@@ -572,9 +568,12 @@
                 </div>
                 <div class="col-md-4">
                     <label class="il-form-label" for="consent_required_hours">Required Internship Hours</label>
-                    <input type="text" class="form-control" id="consent_required_hours"
-                           value="{{ $consentRequiredHours }} hours" readonly>
-                    <input type="hidden" name="required_hours" value="{{ $consentRequiredHours }}">
+                    <div class="input-group">
+                        <input type="number" class="form-control @error('required_hours') is-invalid @enderror" id="consent_required_hours" name="required_hours"
+                               value="{{ $consentValue('required_hours', $consentRequiredHours) }}" min="1" max="5000" step="1" required>
+                        <span class="input-group-text">hours</span>
+                    </div>
+                    @error('required_hours')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
             </div>
 
@@ -707,8 +706,8 @@
 
             <div class="alert alert-info small mb-4">
                 Select your registered partner agency. Its address is filled automatically.
-                Choose the internship start and end dates using the calendar. Required hours are
-                taken automatically from your program/internship record.
+                Choose the internship start and end dates using the calendar, and type the required
+                hours for your program.
             </div>
 
             <h2 class="h6 fw-bold mt-2 mb-3">Student Information</h2>
@@ -771,10 +770,12 @@
                 </div>
                 <div class="col-md-6">
                     <label class="il-form-label" for="release_required_hours">Required Hours</label>
-                    <input type="text" class="form-control" id="release_required_hours"
-                           value="{{ $releaseRequiredHours }} hours" readonly>
-                    <input type="hidden" name="required_hours" value="{{ $releaseRequiredHours }}">
-                    <div class="form-text">Automatically taken from your program/internship record.</div>
+                    <div class="input-group">
+                        <input type="number" class="form-control @error('required_hours') is-invalid @enderror" id="release_required_hours" name="required_hours"
+                               value="{{ $releaseValue('required_hours', $releaseRequiredHours) }}" min="1" max="5000" step="1" required>
+                        <span class="input-group-text">hours</span>
+                    </div>
+                    @error('required_hours')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
                 <div class="col-md-6 d-flex align-items-end">
                     <div class="small text-secondary pb-2" id="release_period_hint" aria-live="polite"></div>
@@ -842,7 +843,7 @@
             @endphp
 
             <div class="alert alert-info small mb-4">
-                Select your registered partner HTE. The company address and required internship hours are filled automatically from the partner agency records.
+                Select your registered partner HTE. The company address is filled automatically from the partner agency records; type the required internship hours for your program.
                 Enter your assigned company supervisor manually.
             </div>
 
@@ -912,10 +913,12 @@
                 </div>
                 <div class="col-md-6">
                     <label class="il-form-label" for="practicum_required_hours">Required Hours</label>
-                    <input type="text" class="form-control" id="practicum_required_hours"
-                           value="{{ $practicumRequiredHours }} hours" readonly>
-                    <input type="hidden" name="required_hours" value="{{ $practicumRequiredHours }}">
-                    <div class="form-text">Automatically taken from your program/internship record.</div>
+                    <div class="input-group">
+                        <input type="number" class="form-control @error('required_hours') is-invalid @enderror" id="practicum_required_hours" name="required_hours"
+                               value="{{ $practicumValue('required_hours', $practicumRequiredHours) }}" min="1" max="5000" step="1" required>
+                        <span class="input-group-text">hours</span>
+                    </div>
+                    @error('required_hours')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                 </div>
             </div>
 
