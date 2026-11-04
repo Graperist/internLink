@@ -33,8 +33,10 @@
         .credentials-table td.value { font-weight: 600; }
 
         .registrar-block { padding: 8px 9px 7px; border-bottom: 1.3px solid #000; }
-        .registrar-block .cert-line { text-align: right; font-size: 9px; margin-bottom: 7px; }
-        .registrar-block .fit-line { font-size: 9px; margin-bottom: 8px; }
+        /* As on the official form: the "qualified" line centered in italics, then
+           "Certified and verified true and correct:" on the left, space for the signature. */
+        .registrar-block .cert-line { text-align: left; font-size: 9px; padding-left: 12px; margin-bottom: 14px; }
+        .registrar-block .fit-line { text-align: center; font-style: italic; font-size: 9px; margin-bottom: 10px; }
         .registrar-sig { text-align: center; font-size: 8.8px; }
         .registrar-sig .name { display: inline-block; min-width: 180px; border-bottom: 1px solid #000; padding: 0 4px 2px; font-weight: 700; }
 
