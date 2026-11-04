@@ -457,9 +457,8 @@
                         Upload a scan or photo of the printed form after all the signatories have signed it.
                         Your instructor checks it and approves it.
                     </p>
-                    <label class="form-label small fw-semibold" id="uploadHint">File (PDF, JPG, PNG — max 10MB)</label>
-                    <input type="file" name="file" id="uploadFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
-                    <div class="text-danger small mt-1 d-none" id="uploadTooBig"></div>
+                    <label class="form-label small fw-semibold">File (PDF, JPG, PNG — max 10MB)</label>
+                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
