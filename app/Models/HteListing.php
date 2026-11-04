@@ -15,7 +15,25 @@ class HteListing extends Model
         'campus_id', 'program_id', 'hte_id', 'academic_year', 'semester', 'slots', 'remarks', 'added_by_user_id',
     ];
 
-    protected $casts = ['slots' => 'integer'];
+    protected $casts = ['slots' => 'integer', 'archived_at' => 'datetime'];
+
+    /**
+     * Archived listings are left out everywhere (students can't choose them,
+     * they don't count); HteListing::withArchived() includes them again.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('notArchived', function (Builder $query) {
+            if (\Illuminate\Support\Facades\Schema::hasColumn('hte_listings', 'archived_at')) {
+                $query->whereNull($query->getModel()->getTable().'.archived_at');
+            }
+        });
+    }
+
+    public static function withArchived(): Builder
+    {
+        return static::withoutGlobalScope('notArchived');
+    }
 
     public function hte()
     {

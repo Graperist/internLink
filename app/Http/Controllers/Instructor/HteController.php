@@ -87,8 +87,18 @@ class HteController extends Controller
             ? Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
             : collect();
 
+        // Archived this term (restorable), like the archived HTE accounts.
+        $archived = HteListing::withArchived()->whereNotNull('archived_at')->with(['hte', 'program'])
+            ->where('campus_id', $instructor->campus_id)
+            ->forTerm($academicYear, $semester)
+            ->when($programId, fn ($q) => $q->where('program_id', $programId))
+            ->get()
+            ->sortBy(fn ($l) => $l->hte?->name, SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+
         return view('instructor.htes.index', [
             'instructor' => $instructor,
+            'archived' => $archived,
             'listings' => $listings,
             'programs' => $programs,
             'programId' => $programId,
@@ -183,15 +193,21 @@ class HteController extends Controller
                 }
             }
 
-            $duplicate = HteListing::where('program_id', $programId)
+            $duplicate = HteListing::withArchived()->where('program_id', $programId)
                 ->where('hte_id', $hte->id)
                 ->forTerm($data['academic_year'], $data['semester'])
-                ->exists();
+                ->first();
 
-            if ($duplicate) {
+            if ($duplicate && ! $duplicate->archived_at) {
                 throw ValidationException::withMessages([
                     'name' => "{$hte->name} is already on this program's {$data['semester']} {$data['academic_year']} list.",
                 ]);
+            }
+            if ($duplicate) {
+                // It was archived for this term: added again means restored.
+                $duplicate->forceFill(['archived_at' => null, 'slots' => $data['slots'], 'remarks' => $data['remarks'] ?? $duplicate->remarks])->save();
+
+                return $duplicate;
             }
 
             return HteListing::create([
@@ -260,22 +276,27 @@ class HteController extends Controller
     }
 
     /** Remove from this program's list for this term. The HTE record stays. */
-    public function destroy(Request $request, HteListing $listing): RedirectResponse
+    /** Archive a partner agency for this term (kept with its records; restore it any time). */
+    public function archive(Request $request, int $listingId): RedirectResponse
     {
-        $instructor = auth()->user()->instructor;
-        $this->authorizeManage($listing, $instructor);
-        $listing->load('hte');
+        $listing = HteListing::withArchived()->with('hte')->findOrFail($listingId);
+        $this->authorizeManage($listing, auth()->user()->instructor);
+        $listing->forceFill(['archived_at' => now()])->save();
 
-        $placed = self::internCounts($listing->campus_id, $listing->academic_year, $listing->semester)[$listing->program_id.'|'.$listing->hte_id] ?? 0;
-        if ($placed > 0) {
-            return back()->withErrors(['listing' => "{$listing->hte->name} already has {$placed} of your interns this term, so it stays on the list."]);
-        }
+        AuditLogger::record('hte_listing.archived', "Archived {$listing->hte->name} from the partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, null, $listing->campus_id);
 
-        $listing->delete();
+        return back()->with('status', "{$listing->hte->name} was archived. Students can no longer choose it; interns already placed there stay. Restore it from Archived partner agencies.");
+    }
 
-        AuditLogger::record('hte_listing.deleted', "Removed {$listing->hte->name} from the partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, null, $listing->campus_id);
+    public function restore(Request $request, int $listingId): RedirectResponse
+    {
+        $listing = HteListing::withArchived()->with('hte')->findOrFail($listingId);
+        $this->authorizeManage($listing, auth()->user()->instructor);
+        $listing->forceFill(['archived_at' => null])->save();
 
-        return back()->with('status', "{$listing->hte->name} was removed from this term's list.");
+        AuditLogger::record('hte_listing.restored', "Restored {$listing->hte->name} to the partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, null, $listing->campus_id);
+
+        return back()->with('status', "{$listing->hte->name} is back on the {$listing->semester} {$listing->academic_year} list.");
     }
 
     /** Start a new term from last term's list (own program). */
@@ -293,7 +314,7 @@ class HteController extends Controller
         $programId = $instructor->programForNewRecord($request->input('program_id'));
         abort_if($programId === null, 403);
 
-        $already = HteListing::where('program_id', $programId)
+        $already = HteListing::withArchived()->where('program_id', $programId)
             ->forTerm($data['academic_year'], $data['semester'])->pluck('hte_id');
 
         $copied = 0;

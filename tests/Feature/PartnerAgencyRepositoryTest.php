@@ -208,9 +208,9 @@ class PartnerAgencyRepositoryTest extends TestCase
             'academic_year' => '2026-2027', 'semester' => '2nd Semester',
         ])->assertSessionHasErrors('program_id');
 
-        // Removes another program's entry (no interns placed).
-        $this->actingAs($coordinator)->delete(route('instructor.htes.destroy', $added))->assertRedirect();
-        $this->assertModelMissing($added);
+        // Archives another program's entry (kept, restorable).
+        $this->actingAs($coordinator)->post(route('instructor.htes.archive', $added->id))->assertRedirect();
+        $this->assertNotNull(\App\Models\HteListing::withArchived()->find($added->id)->archived_at);
 
         // An instructor still manages only their own program.
         $this->actingAs($hmInstructor)->get(route('instructor.htes.edit', $own))->assertForbidden();
@@ -258,9 +258,15 @@ class PartnerAgencyRepositoryTest extends TestCase
         $counts = \App\Http\Controllers\Instructor\HteController::internCounts($this->campus->id, '2026-2027', '2nd Semester');
         $this->assertSame(3, $counts[$this->bshm->id.'|'.$listing->hte_id]);
 
-        // A listing with interns this term can't be removed.
-        $this->actingAs($hm)->delete(route('instructor.htes.destroy', $listing))->assertSessionHasErrors('listing');
-        $this->assertModelExists($listing);
+        // No delete: archived instead (kept with its interns), and restored.
+        $this->actingAs($hm)->get(route('instructor.htes', ['academic_year' => '2026-2027', 'semester' => '2nd Semester']))->assertOk()
+            ->assertSee(route('instructor.htes.archive', $listing->id), false)->assertDontSee('ti-trash', false);
+        $this->actingAs($hm)->post(route('instructor.htes.archive', $listing->id))->assertRedirect();
+        $this->assertNull(\App\Models\HteListing::find($listing->id), 'left out once archived');
+        $this->actingAs($hm)->get(route('instructor.htes', ['academic_year' => '2026-2027', 'semester' => '2nd Semester']))->assertOk()
+            ->assertSee('Archived partner agencies')->assertSee(route('instructor.htes.restore', $listing->id), false);
+        $this->actingAs($hm)->post(route('instructor.htes.restore', $listing->id))->assertRedirect();
+        $this->assertNotNull(\App\Models\HteListing::find($listing->id));
     }
 
     public function test_masterlist_prints_only_name_and_total(): void

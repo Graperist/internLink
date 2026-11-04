@@ -236,14 +236,11 @@
                                         @include('partials.hte-send-credentials', ['representative' => $rep, 'btnClass' => 'ev-act'])
                                     @endif
                                     <a href="{{ route('instructor.htes.edit', $listing) }}" class="ev-act" title="Edit"><i class="ti ti-pencil"></i><span class="visually-hidden">Edit</span></a>
-                                    @if ($listing->interns_count === 0)
-                                        <form method="POST" action="{{ route('instructor.htes.destroy', $listing) }}" class="d-inline"
-                                              onsubmit="return confirm('Remove {{ addslashes($hte->name) }} from this term\'s list? The agency record itself is kept.');">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="ev-act danger" title="Remove"><i class="ti ti-trash"></i><span class="visually-hidden">Remove</span></button>
-                                        </form>
-                                    @endif
+                                    <form method="POST" action="{{ route('instructor.htes.archive', $listing->id) }}" class="d-inline"
+                                          onsubmit="return confirm('Archive {{ addslashes($hte->name) }} for this term? Students can no longer choose it; interns already placed there stay. You can restore it any time.');">
+                                        @csrf
+                                        <button type="submit" class="ev-act" title="Archive"><i class="ti ti-archive"></i><span class="visually-hidden">Archive</span></button>
+                                    </form>
                                 </span>
                             @else
                                 <span class="ev-pill ro" title="Entered by the {{ $listing->program->code }} instructor"><i class="ti ti-eye"></i> View only</span>
@@ -295,7 +292,46 @@
     <p class="text-secondary small mt-3 mb-0 pa-note">
         <i class="ti ti-info-circle"></i> <strong>Placed / slots</strong>: that program's students placed at the agency this term, out of the slots the HTE gave.
         Students choose from this list on their Application for OJT; a full agency can't be chosen.
-        @if ($isCoordinator) As OJT Coordinator you can add, edit and remove partner agencies for every program. @endif
+        @if ($isCoordinator) As OJT Coordinator you can add, edit and archive partner agencies for every program. @endif
     </p>
 </div>
+
+@if ($archived->isNotEmpty())
+    <details class="il-card mt-3 hte-archived" @if (request()->filled('search')) open @endif>
+        <summary class="d-flex align-items-center gap-2">
+            <i class="ti ti-chevron-right hte-chev text-secondary"></i>
+            <span class="fw-bold"><i class="ti ti-archive text-secondary"></i> Archived partner agencies &middot; {{ $semester }}, AY {{ $academicYear }}</span>
+            <span class="text-secondary small ms-auto">{{ $archived->count() }} archived</span>
+        </summary>
+        <p class="text-secondary small mt-2 mb-1">Kept with all their records. Students can't choose them until restored.</p>
+        <table class="table align-middle mb-0">
+            <tbody>
+                @foreach ($archived as $listing)
+                    <tr>
+                        <td>
+                            <span class="fw-semibold d-block text-secondary">{{ $listing->hte?->name }}</span>
+                            <span class="text-secondary" style="font-size:.78rem;"><i class="ti ti-map-pin"></i> {{ $listing->hte?->address ?: '—' }}</span>
+                        </td>
+                        <td><span class="badge rounded-pill text-bg-light border text-secondary">{{ $listing->program?->code }}</span> <span class="text-secondary small">{{ $listing->slots }} {{ \Illuminate\Support\Str::plural('slot', $listing->slots) }}</span></td>
+                        <td class="text-end">
+                            @if ($instructor->canManageListing($listing))
+                                <form method="POST" action="{{ route('instructor.htes.restore', $listing->id) }}" class="d-inline"
+                                      onsubmit="return confirm('Restore {{ addslashes($listing->hte?->name) }} to this term\'s list? Students will be able to choose it again.')">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-primary"><i class="ti ti-restore"></i> Restore</button>
+                                </form>
+                            @endif
+                        </td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </details>
+    <style>
+        .hte-archived > summary { cursor: pointer; list-style: none; }
+        .hte-archived > summary::-webkit-details-marker { display: none; }
+        .hte-chev { transition: transform .15s; }
+        .hte-archived[open] .hte-chev { transform: rotate(90deg); }
+    </style>
+@endif
 @endsection

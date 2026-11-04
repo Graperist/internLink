@@ -145,7 +145,9 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/partner-agencies/copy-previous', [\App\Http\Controllers\Instructor\HteController::class, 'copyPrevious'])->name('htes.copy');
         Route::get('/partner-agencies/{listing}/edit', [\App\Http\Controllers\Instructor\HteController::class, 'edit'])->name('htes.edit');
         Route::put('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'update'])->name('htes.update');
-        Route::delete('/partner-agencies/{listing}', [\App\Http\Controllers\Instructor\HteController::class, 'destroy'])->name('htes.destroy');
+        // Archived instead of deleted; restored from Archived partner agencies.
+        Route::post('/partner-agencies/{listingId}/archive', [\App\Http\Controllers\Instructor\HteController::class, 'archive'])->whereNumber('listingId')->name('htes.archive');
+        Route::post('/partner-agencies/{listingId}/restore', [\App\Http\Controllers\Instructor\HteController::class, 'restore'])->whereNumber('listingId')->name('htes.restore');
         // HTE Accounts - one portal account per HTE. The coordinator: every agency
         // on the campus; a Subject Instructor: the agencies on their program's list.
         Route::get('/hte-accounts', [HteAccountController::class, 'index'])->name('hte-accounts.index');
