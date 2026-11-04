@@ -11,8 +11,9 @@
         $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $entries->pluck('entry_date'));
         $weeks = $anchor ? \App\Support\TrainingWeeks::group($entries, $anchor) : collect();
         $weekDocs = $packets->keyBy('packet_number');
-        // Days fold into weeks, weeks into months.
-        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->format('Y-m'), true);
+        // Days fold into weeks, weeks into months - a week is filed under the
+        // month it ends in (Oct 31 - Nov 06 is under November).
+        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->addDays(6)->format('Y-m'), true);
         $status = fn ($doc) => match ($doc?->status) {
             'submitted', 'for_review' => ['With your instructor', 'text-bg-warning'],
             'printed' => ['Print, sign & upload', 'text-bg-info'],

@@ -337,7 +337,7 @@
                                 $form19Packets = $form19Packets->reject(fn ($p) => $p->status === 'draft' && $p->entries->isEmpty())->values();
                                 $f19Anchor = $internship ? \App\Support\TrainingWeeks::anchorForInternship($internship) : null;
                                 $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => $f19Anchor
-                                    ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7)->format('Y-m') : 'all');
+                                    ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7 + 6)->format('Y-m') : 'all');   // the month the week ends in
                                 $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path);
                             @endphp
                             <div class="small text-secondary mb-2">
