@@ -173,8 +173,10 @@
             </div>
         </div>
 
+        {{-- ===== Evaluate: what you fill ===== --}}
+        <div class="ev-divider"><span><i class="ti ti-pencil"></i> Evaluate</span></div>
         <div class="il-card mb-3">
-            <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">The agency</p>
+            <p class="text-secondary small mb-2">What you fill in for this agency.</p>
             <div class="ev-agency-forms p-0 border-0">
                 <div class="ev-agency-form">
                     <span class="lbl">Your evaluation of the agency <small>Form 23a &middot; the agency does not see it</small></span>
@@ -190,6 +192,14 @@
                         <span class="ev-pill ro" title="Form 23a is filled by the subject instructor of the program whose students trained here."><i class="ti ti-eye"></i> View only &middot; not your program</span>
                     @endif
                 </div>
+            </div>
+        </div>
+
+        {{-- ===== Received: what comes to you ===== --}}
+        <div class="ev-divider"><span><i class="ti ti-inbox"></i> Received</span></div>
+        <div class="il-card mb-3">
+            <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">From the agency about itself</p>
+            <div class="ev-agency-forms p-0 border-0">
                 <div class="ev-agency-form">
                     <span class="lbl">The agency rates itself <small>Form 23b</small></span>
                     @if ($row->self)
@@ -207,7 +217,7 @@
         </div>
 
         <div class="il-card">
-            <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">The interns</p>
+            <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">For each intern</p>
             <p class="text-secondary small mb-3">The agency rates each intern (Forms 13, 21) and each intern rates the agency (Forms 23c, 20). Neither side sees the other's.</p>
             @forelse ($interns as $irow)
                 @php $got = $irow->forms->filter()->count(); @endphp
@@ -257,6 +267,9 @@
     .il-form-list .list-group-item { border-left: 3px solid transparent; }
     .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
     .eval-row:target { box-shadow: 0 0 0 2px #f0c94a; }
+    .ev-divider { display:flex; align-items:center; gap:10px; margin: 4px 0 10px; color:#1c3f66; font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .ev-divider::before, .ev-divider::after { content:''; flex:1; height:1px; background:#d6dde6; }
+    .ev-divider span { white-space:nowrap; }
 </style>
 <script>
 (function () {
