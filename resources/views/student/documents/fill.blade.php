@@ -130,7 +130,7 @@
                 </div>
                 <div class="col-12">
                     <label class="il-form-label" for="career_objective">Career Objective</label>
-                    <textarea class="form-control" id="career_objective" name="career_objective" rows="4">{{ $resumeValue('career_objective') }}</textarea>
+                    <textarea class="form-control" id="career_objective" name="career_objective" rows="4" required>{{ $resumeValue('career_objective') }}</textarea>
                 </div>
             </div>
 

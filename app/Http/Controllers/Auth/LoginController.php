@@ -29,10 +29,16 @@ class LoginController extends Controller
     {
         $id = trim((string) $request->query('id', ''));
         $user = mb_strlen($id) >= 4 ? AccountResolver::findUser($id) : null;
-        $campus = $user?->campus;
+        // The account's campus; if the user row has none (older or imported
+        // accounts), the campus of the student / instructor / HTE record.
+        $campus = $user?->campus
+            ?? $user?->student?->campus
+            ?? $user?->instructor?->campus
+            ?? $user?->hteRepresentative?->hte?->campus;
 
         return response()->json([
-            'campus' => $campus && $campus->status === 'active' ? $this->shortCampusName($campus->name) : null,
+            // Only an archived campus is hidden (its accounts can't sign in).
+            'campus' => $campus && $campus->status !== 'archived' ? $this->shortCampusName($campus->name) : null,
             'kind' => match ($user?->role?->code) {
                 'student' => 'Student Intern',
                 'coordinator' => 'OJT Coordinator',

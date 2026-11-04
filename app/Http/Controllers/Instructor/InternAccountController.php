@@ -251,6 +251,85 @@ class InternAccountController extends Controller
     }
 
     /**
+     * Edit a student: name, ID number, email and academic year. The OJT
+     * Coordinator edits every program's students and can also move a
+     * student to another program while they are not deployed yet; an
+     * instructor edits their own program's students.
+     */
+    public function edit(Student $student): View
+    {
+        $instructor = auth()->user()->instructor;
+        abort_unless($instructor && $instructor->canManageAccountOf($student), 403);
+        $student->load('user', 'program', 'currentInternship.deployment');
+
+        return view('instructor.advisees.edit', [
+            'student' => $student,
+            'instructor' => $instructor,
+            'programs' => $this->programsFor($instructor),
+            'canMoveProgram' => $instructor->isCoordinator() && $this->canMoveProgram($student),
+        ]);
+    }
+
+    public function update(Request $request, Student $student): RedirectResponse
+    {
+        $instructor = auth()->user()->instructor;
+        abort_unless($instructor && $instructor->canManageAccountOf($student), 403);
+        $student->load('user', 'currentInternship.deployment');
+        $user = $student->user;
+
+        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? $student->academic_year]);
+        $data = $request->validate([
+            'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
+                if (! \App\Support\Term::isValidAcademicYear($value)) {
+                    $fail('Type the academic year like 2026-2027 (or just 2026).');
+                }
+            }],
+            'id_number' => ['required', 'string', 'max:50', Rule::unique('users', 'id_number')->ignore($user->id)],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'program_id' => ['nullable', 'integer', Rule::exists('programs', 'id')->where('campus_id', $instructor->campus_id)],
+        ], [
+            'id_number.unique' => 'An account with this ID number already exists.',
+            'email.unique' => 'This email is already used by another account.',
+        ]);
+
+        $newProgram = null;
+        if ($instructor->isCoordinator() && ! empty($data['program_id']) && (int) $data['program_id'] !== (int) $student->program_id) {
+            abort_unless($this->canMoveProgram($student), 422, 'A student who is already deployed stays in their program.');
+            $newProgram = \App\Models\Program::findOrFail($data['program_id']);
+        }
+
+        DB::transaction(function () use ($user, $student, $data, $newProgram, $instructor) {
+            $user->update(['id_number' => $data['id_number'], 'name' => $data['name'], 'email' => $data['email']]);
+            $student->update(['academic_year' => $data['academic_year']]);
+
+            if ($newProgram) {
+                $handler = $instructor->handlerFor($newProgram);
+                $student->update(['program_id' => $newProgram->id, 'instructor_id' => $handler?->id]);
+                $student->currentInternship?->update([
+                    'program_id' => $newProgram->id,
+                    'instructor_id' => $handler?->id,
+                    'required_hours' => $newProgram->required_hours ?? $student->currentInternship->required_hours,
+                ]);
+            }
+        });
+
+        AuditLogger::record('student.updated', "Edited the student {$user->name} ({$user->id_number})".($newProgram ? ", moved to {$newProgram->code}" : '').'.', auth()->user(), $request, $student, $instructor->campus_id);
+
+        return redirect()->route('instructor.advisees', $this->yearQuery($data['academic_year']))
+            ->with('status', "{$user->name}'s details were updated.");
+    }
+
+    /** A student can change program only before being deployed. */
+    private function canMoveProgram(Student $student): bool
+    {
+        $internship = $student->currentInternship;
+
+        return ! $internship || ($internship->status === 'pre_deployment'
+            && ! in_array($internship->deployment?->status, ['active', 'completed'], true));
+    }
+
+    /**
      * Archive instead of delete: the student's account, internship, forms
      * and hours are all kept; they just can't sign in until restored.
      */

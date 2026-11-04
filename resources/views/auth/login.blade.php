@@ -158,7 +158,9 @@
 (function () {
     // The campus comes from the account itself: where the student was
     // enrolled (or the staff member was added), whatever letters the ID has.
-    var lookupUrl = @json(route('login.campus'));
+    // Same-site path (not a full http/https URL), so the lookup works behind
+    // the hosting's HTTPS proxy too.
+    var lookupUrl = @json(route('login.campus', [], false));
 
     var input = document.getElementById('id_number');
     var out = document.getElementById('id-detect');
@@ -174,8 +176,8 @@
     var pin = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg>';
 
     function show(data) {
-        if (data && (data.campus || data.all)) {
-            out.innerHTML = '<span class="login-detect-chip">' + pin + escapeHtml(data.all ? 'All campuses' : data.campus) + '</span>' +
+        if (data && (data.campus || data.all || data.kind)) {
+            out.innerHTML = (data.campus || data.all ? '<span class="login-detect-chip">' + pin + escapeHtml(data.all ? 'All campuses' : data.campus) + '</span>' : '') +
                 (data.kind ? '<span class="login-detect-kind">' + escapeHtml(data.kind) + '</span>' : '');
         } else {
             out.innerHTML = '<span class="login-detect-idle">Keep typing &mdash; your campus will show here.</span>';
@@ -188,7 +190,7 @@
         if (raw.length < 4) { out.innerHTML = idleHtml; return; }
         var mine = ++seq;
         timer = setTimeout(function () {
-            fetch(lookupUrl + '?id=' + encodeURIComponent(raw), { headers: { 'Accept': 'application/json' } })
+            fetch(lookupUrl + '?id=' + encodeURIComponent(raw), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (data) { if (mine === seq) show(data); })
                 .catch(function () {});

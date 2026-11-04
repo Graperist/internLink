@@ -13,6 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias(['role' => \App\Http\Middleware\EnsureUserHasRole::class]);
 
+        // Laravel Cloud (and most hosting) sits behind an HTTPS proxy: trust
+        // it so links come out as https and the audit trail logs the real IP.
+        $middleware->trustProxies(at: '*');
+
         // Audit trail: records page views, downloads, form actions and denied
         // access for every signed-in user. See LogUserActivity + config/audit.php.
         // The Super Admin working in a campus gets the coordinator's access (CampusManager).

@@ -46,11 +46,13 @@
             <div class="mb-3">
                 <label class="il-form-label" for="entry_date">Training Date</label>
                 <input type="date" class="form-control" id="entry_date" name="entry_date"
-                       value="{{ $selectedDate }}" required>
+                       value="{{ $selectedDate }}" max="{{ now()->toDateString() }}"
+                       @if (! empty($weekOneFixed) && $weekAnchor) min="{{ $weekAnchor->toDateString() }}" @endif required>
                 <div class="form-text">Choose the actual training day. The system automatically groups it into the correct weekly report. Each day can only be logged once.</div>
                 <div class="text-danger small mt-1 d-none" id="duplicateDateWarning">
                     You already have an entry for this date. Delete it from the weekly report first, or choose another day.
                 </div>
+                <div class="text-danger small mt-1 d-none" id="lockedWeekWarning"></div>
             </div>
 
             <div class="mb-3">
@@ -77,10 +79,22 @@
             var warning = document.getElementById('duplicateDateWarning');
             var button = document.getElementById('saveEntryButton');
 
+            var locked = @json($lockedWeeks ?? []);
+            var lockedWarning = document.getElementById('lockedWeekWarning');
+
             function check() {
                 var duplicate = logged.indexOf(input.value) !== -1;
                 warning.classList.toggle('d-none', !duplicate);
-                button.disabled = duplicate;
+                var week = null;
+                locked.forEach(function (w) { if (input.value >= w.start && input.value <= w.end) { week = w; } });
+                if (week) {
+                    var next = new Date(week.end + 'T00:00:00');
+                    next.setDate(next.getDate() + 1);
+                    lockedWarning.textContent = 'Week ' + week.number + ' (' + week.label + ') has already been sent to your instructor, so no more days can be added to it. The next week starts on '
+                        + next.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + '.';
+                }
+                lockedWarning.classList.toggle('d-none', !week);
+                button.disabled = duplicate || !!week;
             }
 
             input.addEventListener('input', check);
