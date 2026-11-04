@@ -148,6 +148,9 @@
                 <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">OJT Requirements</span>
                 <span class="small text-secondary">{{ $doneCount }} / {{ $countedForms->count() }} done</span>
             </div>
+            <p class="px-3 mb-2 text-secondary" style="font-size: .75rem;">
+                <i class="ti ti-route"></i> In the suggested order. Fill out Form 1 first: Forms 3, 6, 12, 15 and 18 name the partner agency you choose there.
+            </p>
             <div class="list-group list-group-flush il-form-list">
                 @foreach ($stageLabels as $stageKey => $stageLabel)
                     @php $stageRows = $checklist->filter(fn ($row) => $row['requirement']->stage === $stageKey); @endphp
@@ -157,6 +160,8 @@
                         @php
                             $rowInfo = $info($row);
                             $isOpen = $row['requirement']->id === $selectedId;
+                            $remindRow = isset($reminders[$row['requirement']->id]) && ! $row['document'];
+                            $isNext = $row['requirement']->id === ($nextId ?? null);
                         @endphp
                         <a href="{{ route('student.documents', ['form' => $row['requirement']->id]) }}"
                            class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}"
@@ -164,7 +169,10 @@
                             <i class="ti {{ $rowInfo['icon'] }} {{ $rowInfo['iconColor'] }} fs-5 flex-shrink-0"></i>
                             <span class="flex-grow-1" style="min-width: 0;">
                                 <span class="d-block small fw-semibold" style="overflow-wrap: anywhere;">@if($row['requirement']->form_number && ! \Illuminate\Support\Str::startsWith($row['requirement']->name, 'Form '))Form {{ $row['requirement']->form_number }} &middot; @endif{{ $row['requirement']->name }}</span>
-                                <span class="d-block {{ $rowInfo['label'] === 'Returned' ? 'text-danger' : 'text-secondary' }}" style="font-size: 0.72rem;">{{ $rowInfo['label'] }}</span>
+                                <span class="d-block {{ $rowInfo['label'] === 'Returned' ? 'text-danger' : 'text-secondary' }}" style="font-size: 0.72rem;">
+                                    {{ $rowInfo['label'] }}@if ($remindRow) &middot; Fill out Form 1 first @endif
+                                    @if ($isNext)<span class="badge rounded-pill text-bg-primary ms-1">Next</span>@endif
+                                </span>
                             </span>
                             <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
                         </a>
@@ -185,6 +193,7 @@
             $label = $rowInfo['label'];
             // Form 17 has no submission (an upload from the old flow is not shown).
             $hasFile = $doc && filled($doc->file_path) && $requirement->code !== $timeFrameCode;
+            $form1Reminder = ! $doc ? ($reminders[$requirement->id] ?? null) : null;
             $previewable = $hasFile && preg_match('/\.(pdf|png|jpe?g|gif|webp)$/i', (string) ($doc->original_filename ?: $doc->file_path));
             $next = match (true) {
                 $requirement->code === 'WEEKLY_REPORT' => 'Add a row for every training day. Each week is its own Form 19: submit it when the week is finished, your instructor checks it, then you print it, have it signed and upload the signed copy. Open the log to see your weeks, grouped by month.',
@@ -218,6 +227,16 @@
             @if ($requirement->code !== $timeFrameCode && $doc?->status === 'returned' && $doc->latestReview?->remarks)
                 <div class="alert alert-danger py-2 small">
                     <strong><i class="ti ti-arrow-back-up"></i> Returned for correction:</strong> {{ $doc->latestReview->remarks }}
+                </div>
+            @endif
+
+            @if ($form1Reminder)
+                @php $form1Row = $checklist->first(fn ($r) => $r['requirement']->code === \App\Support\AutoDeployment::APPLICATION_CODE); @endphp
+                <div class="alert alert-warning py-2 small d-flex flex-wrap align-items-center gap-2">
+                    <span><i class="ti ti-info-circle"></i> {{ $form1Reminder }}</span>
+                    @if ($form1Row)
+                        <a href="{{ route('student.documents', ['form' => $form1Row['requirement']->id]) }}" class="alert-link">Go to Form 1</a>
+                    @endif
                 </div>
             @endif
 

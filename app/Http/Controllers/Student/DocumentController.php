@@ -42,6 +42,34 @@ class DocumentController extends Controller
         return true; // 'active' stage
     }
 
+    /** Forms that name the partner agency chosen on Form 1. */
+    public const AGENCY_FORMS = ['PARENT_CONSENT', 'ENDORSEMENT_LETTER', 'INTERNSHIP_AGREEMENT', 'INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY'];
+
+    /** The suggested order of the pre-deployment forms (the rest follow by number). */
+    public const SUGGESTED_ORDER = ['APPLICATION_FOR_OJT', 'CERTIFICATE_OF_UNITS_EARNED', 'OJT_RESUME', 'PARENT_CONSENT', 'ENDORSEMENT_LETTER',
+        'INTERNSHIP_AGREEMENT', 'INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY', 'MOA'];
+
+    /**
+     * A reminder (not a lock) on the forms that name the agency while the
+     * student hasn't submitted Form 1 yet, or null.
+     */
+    private function form1Reminder(DocumentRequirement $requirement, $internship): ?string
+    {
+        if (! in_array($requirement->code, self::AGENCY_FORMS, true)) {
+            return null;
+        }
+        $hasForm1 = DocumentRequirement::where('campus_id', $requirement->campus_id)
+            ->where('code', \App\Support\AutoDeployment::APPLICATION_CODE)->where('is_active', true)->exists();
+        $form1Submitted = $internship && $internship->documents()
+            ->whereHas('requirement', fn ($q) => $q->where('code', \App\Support\AutoDeployment::APPLICATION_CODE))
+            ->whereNotIn('status', ['draft'])
+            ->exists();
+
+        return $hasForm1 && ! $form1Submitted
+            ? 'Fill out Form 1 (Application for Internship) first. This form names the partner agency you choose there, so both should match.'
+            : null;
+    }
+
     /** Prevent route-model binding from exposing another campus or another party's form. */
     private function authorizeStudentRequirement(DocumentRequirement $requirement, $student): void
     {
@@ -86,6 +114,9 @@ class DocumentController extends Controller
             // items without a number come after the numbered forms.
             ->sortBy(fn ($req) => [
                 ['pre_deployment' => 1, 'active' => 2, 'post_deployment' => 3][$req->stage] ?? 4,
+                // Pre-deployment: the suggested order (Form 1 first, the forms
+                // that name the agency after it).
+                ($i = array_search($req->code, self::SUGGESTED_ORDER, true)) === false ? 99 : $i,
                 self::formNumberSortKey($req->form_number),
                 $req->display_order ?? 0,
                 $req->name,
@@ -110,17 +141,22 @@ class DocumentController extends Controller
             'document' => $docsByCode->get($req->code),
         ]);
 
+        // Reminders to fill Form 1 first, and the next form to work on.
+        $reminders = $checklist->mapWithKeys(fn ($row) => [$row['requirement']->id => $this->form1Reminder($row['requirement'], $internship)])->filter()->all();
+        $next = $checklist->first(fn ($row) => $row['requirement']->audience === 'student'
+            && ! $row['requirement']->is_repeating
+            && (! $row['document'] || in_array($row['document']->status, ['returned', 'printed', 'draft'], true)
+                || ($row['document']->status === 'completed' && blank($row['document']->file_path))));
+        $nextId = $next['requirement']->id ?? null;
+
         // Like Document Review: the forms on the left, one open on the
-        // right. ?form= picks it; otherwise the first form that needs the
-        // student (returned, signed copy to upload, or not started yet).
+        // right. ?form= picks it; otherwise the next form to work on.
         $selectedId = (int) request('form');
         if (! $checklist->contains(fn ($row) => $row['requirement']->id === $selectedId)) {
-            $needsStudent = $checklist->first(fn ($row) => ! $row['document']
-                || in_array($row['document']->status, ['returned', 'printed', 'draft'], true));
-            $selectedId = ($needsStudent ?? $checklist->first())['requirement']->id ?? null;
+            $selectedId = $nextId ?? ($checklist->first()['requirement']->id ?? null);
         }
 
-        return view('student.documents', compact('checklist', 'internship', 'selectedId'));
+        return view('student.documents', compact('checklist', 'internship', 'selectedId', 'reminders', 'nextId'));
     }
 
     /**

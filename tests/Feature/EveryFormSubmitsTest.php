@@ -123,7 +123,6 @@ class EveryFormSubmitsTest extends TestCase
     public function test_the_form_page_can_be_submitted(string $code): void
     {
         $requirement = DocumentRequirement::where('code', $code)->firstOrFail();
-
         $html = $this->actingAs($this->user)->get(route('student.documents.fill', $requirement))->assertOk()->getContent();
         $response = $this->actingAs($this->user)->post(route('student.documents.fill.store', $requirement), $this->payloadFrom($html));
 
@@ -148,8 +147,28 @@ class EveryFormSubmitsTest extends TestCase
         $this->assertSame(600, (int) $internship->required_hours, 'saved on the internship too');
 
         // Forms filled after Form 1 carry the typed hours.
+        Document::where('document_requirement_id', $form1->id)->update(['status' => 'printed']);
         $consent = DocumentRequirement::where('code', 'PARENT_CONSENT')->firstOrFail();
         $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('600 hours');
         $this->actingAs($this->user)->get(route('student.dashboard'))->assertOk()->assertSee('600');
+    }
+
+    public function test_the_agency_forms_remind_to_fill_form_1_first(): void
+    {
+        $consent = DocumentRequirement::where('code', 'PARENT_CONSENT')->firstOrFail();
+        $form1 = DocumentRequirement::where('code', 'APPLICATION_FOR_OJT')->firstOrFail();
+
+        // Before Form 1: a reminder, but the form can still be filled.
+        $this->actingAs($this->user)->get(route('student.documents', ['form' => $consent->id]))->assertOk()
+            ->assertSee('Fill out Form 1 (Application for Internship) first')->assertSee('Go to Form 1')
+            ->assertSee('Next')->assertSee('In the suggested order');
+        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk();
+        $this->actingAs($this->user)->get(route('student.documents'))->assertOk()
+            ->assertSeeInOrder(['Form 1', 'Form 2', 'Form 11', 'Form 3', 'Form 6', 'Form 12', 'Form 15', 'Form 18', 'Form 10']);
+
+        // After Form 1 is submitted: no reminder.
+        Document::create(['internship_id' => Internship::firstOrFail()->id, 'document_requirement_id' => $form1->id, 'status' => 'submitted', 'submitted_at' => now()]);
+        $this->actingAs($this->user)->get(route('student.documents', ['form' => $consent->id]))->assertOk()
+            ->assertDontSee('Fill out Form 1 (Application for Internship) first');
     }
 }
