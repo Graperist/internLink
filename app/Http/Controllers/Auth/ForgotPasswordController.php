@@ -181,8 +181,8 @@ class ForgotPasswordController extends Controller
         }
 
         $validated = $request->validate([
-            'password' => ['required', 'confirmed', 'min:8'],
-        ]);
+            'password' => \App\Support\PasswordRules::rules(),
+        ], \App\Support\PasswordRules::messages());
 
         $user->forceFill([
             'password' => Hash::make($validated['password']),

@@ -57,7 +57,7 @@ class ForgotPasswordTest extends TestCase
 
     public function test_login_page_has_forgot_password_link(): void
     {
-        $this->get(route('login'))->assertOk()->assertSee('Forgot password?');
+        $this->get(route('login'))->assertOk()->assertSee('Forgot Password');
     }
 
     public function test_verify_page_shows_masked_email(): void
@@ -78,11 +78,11 @@ class ForgotPasswordTest extends TestCase
             ->assertRedirect(route('password.forgot.reset'));
 
         $this->post(route('password.forgot.reset.save'), [
-            'password' => 'brand-new-pass',
-            'password_confirmation' => 'brand-new-pass',
+            'password' => 'Brand-New-Pass1',
+            'password_confirmation' => 'Brand-New-Pass1',
         ])->assertRedirect(route('login'));
 
-        $this->assertTrue(Hash::check('brand-new-pass', $this->user->fresh()->password));
+        $this->assertTrue(Hash::check('Brand-New-Pass1', $this->user->fresh()->password));
         $this->assertDatabaseCount('password_reset_codes', 0);
     }
 

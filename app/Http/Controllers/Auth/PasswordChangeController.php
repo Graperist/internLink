@@ -41,8 +41,8 @@ class PasswordChangeController extends Controller
             'current_password' => $user->must_change_password
                 ? ['nullable']
                 : ['required', 'current_password'],
-            'password' => ['required', 'confirmed', 'min:8'],
-        ]);
+            'password' => \App\Support\PasswordRules::rules(),
+        ], \App\Support\PasswordRules::messages());
 
         // First-time change (temporary password): no code - the person has never
         // been able to confirm their email yet, and must not get locked out.

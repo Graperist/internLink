@@ -41,8 +41,8 @@ class ChangePasswordCodeTest extends TestCase
 
         $this->actingAs($this->user)->put(route('password.update'), [
             'current_password' => 'old-password',
-            'password' => 'brand-new-pass',
-            'password_confirmation' => 'brand-new-pass',
+            'password' => 'Brand-New-Pass1',
+            'password_confirmation' => 'Brand-New-Pass1',
         ])->assertRedirect(route('password.change.verify'));
 
         $code = null;
@@ -64,7 +64,7 @@ class ChangePasswordCodeTest extends TestCase
         $this->actingAs($this->user)->post(route('password.change.verify.check'), ['code' => $code])
             ->assertRedirect(route('student.dashboard'));
 
-        $this->assertTrue(Hash::check('brand-new-pass', $this->user->fresh()->password));
+        $this->assertTrue(Hash::check('Brand-New-Pass1', $this->user->fresh()->password));
     }
 
     public function test_wrong_code_keeps_the_old_password(): void
@@ -83,11 +83,28 @@ class ChangePasswordCodeTest extends TestCase
         Mail::fake();
 
         $this->actingAs($this->user)->put(route('password.update'), [
-            'password' => 'brand-new-pass',
-            'password_confirmation' => 'brand-new-pass',
+            'password' => 'Brand-New-Pass1',
+            'password_confirmation' => 'Brand-New-Pass1',
         ])->assertRedirect(route('student.dashboard'));
 
         Mail::assertNothingSent();
-        $this->assertTrue(Hash::check('brand-new-pass', $this->user->fresh()->password));
+        $this->assertTrue(Hash::check('Brand-New-Pass1', $this->user->fresh()->password));
+    }
+
+    public function test_a_new_password_needs_capital_small_number_and_special_character(): void
+    {
+        $user = \App\Models\User::where('must_change_password', true)->first() ?? \App\Models\User::first();
+        $user->forceFill(['must_change_password' => true])->save();
+        foreach ([
+            'alllowercase1!' => 'capital letter',
+            'ALLUPPERCASE1!' => 'capital letter',
+            'NoNumbersHere!' => 'number',
+            'NoSymbols123' => 'special character',
+        ] as $weak => $why) {
+            $this->actingAs($user)->put(route('password.update'), ['password' => $weak, 'password_confirmation' => $weak])
+                ->assertSessionHasErrors('password');
+        }
+        $this->actingAs($user)->put(route('password.update'), ['password' => 'Strong-Pass1', 'password_confirmation' => 'Strong-Pass1'])
+            ->assertSessionHasNoErrors();
     }
 }

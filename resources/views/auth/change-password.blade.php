@@ -68,7 +68,7 @@
                     <label for="password">New password</label>
                     <div class="login-input-wrap">
                         {!! $lockIcon !!}
-                        <input type="password" name="password" id="password" placeholder="At least 8 characters"
+                        <input type="password" name="password" id="password" placeholder="8+ characters: Aa, 0-9 and a symbol"
                                autocomplete="new-password" minlength="8" required @if ($firstTime) autofocus @endif
                                @class(['is-invalid' => $errors->has('password')])>
                         {!! $revealButton('password') !!}
@@ -87,6 +87,10 @@
 
                 <ul class="login-checklist" aria-live="polite">
                     <li data-check="length">At least 8 characters</li>
+                    <li data-check="upper">A capital letter (A-Z)</li>
+                    <li data-check="lower">A small letter (a-z)</li>
+                    <li data-check="number">A number (0-9)</li>
+                    <li data-check="symbol">A special character (e.g. ! @ # $ %)</li>
                     <li data-check="match">Both passwords match</li>
                 </ul>
 
@@ -135,6 +139,10 @@
 
     function check() {
         length.classList.toggle('is-ok', pw.value.length >= 8);
+        document.querySelector('[data-check="upper"]').classList.toggle('is-ok', /[A-Z]/.test(pw.value));
+        document.querySelector('[data-check="lower"]').classList.toggle('is-ok', /[a-z]/.test(pw.value));
+        document.querySelector('[data-check="number"]').classList.toggle('is-ok', /[0-9]/.test(pw.value));
+        document.querySelector('[data-check="symbol"]').classList.toggle('is-ok', /[^A-Za-z0-9\s]/.test(pw.value));
         match.classList.toggle('is-ok', pw.value.length > 0 && pw.value === confirm.value);
     }
     pw.addEventListener('input', check);

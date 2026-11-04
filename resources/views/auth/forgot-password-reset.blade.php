@@ -24,7 +24,8 @@
 
         <label class="auth-label" for="password">New password</label>
         <input class="auth-input" type="password" name="password" id="password"
-               placeholder="At least 8 characters" required autofocus>
+               placeholder="8+ characters: Aa, 0-9 and a symbol" required autofocus>
+        <div class="small text-secondary mb-2">At least 8 characters with a capital letter, a small letter, a number and a special character (e.g. ! @ # $ %).</div>
 
         <label class="auth-label" for="password_confirmation">Confirm new password</label>
         <input class="auth-input" type="password" name="password_confirmation" id="password_confirmation" required>
