@@ -56,6 +56,8 @@ class ProgramController extends Controller
     {
         $this->authorizeCampus($program);
         $program->update($this->validated($request, $program->campus_id, $program));
+        // Every intern of the program follows its Required Hours.
+        \App\Models\Internship::where('program_id', $program->id)->update(['required_hours' => $program->required_hours]);
 
         AuditLogger::record('program.updated', "Updated program {$program->code}.", auth()->user(), $request, $program, $program->campus_id);
 

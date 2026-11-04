@@ -130,27 +130,29 @@ class EveryFormSubmitsTest extends TestCase
         $this->assertSame('submitted', Document::where('document_requirement_id', $requirement->id)->value('status'), "{$code} was saved");
     }
 
-    /** The "Number of Hours" the student types in Form 1 is their required hours everywhere. */
-    public function test_required_hours_come_from_form_1(): void
+    /** Required hours follow the program's hours set by the coordinator; typed form hours only go on that form. */
+    public function test_required_hours_follow_the_program(): void
     {
         $internship = Internship::firstOrFail();
-        $this->assertSame(486, $internship->requiredHours(), 'before Form 1: the program hours');
+        $this->assertSame(486, $internship->requiredHours());
 
+        // Form 1 starts at the program's hours; typing another number doesn't change the requirement.
         $form1 = DocumentRequirement::where('code', 'APPLICATION_FOR_OJT')->firstOrFail();
         $html = $this->actingAs($this->user)->get(route('student.documents.fill', $form1))->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/name="hte_number_of_hours"[^>]*value="486"/', $html);
         $data = $this->payloadFrom($html);
         $data['hte_number_of_hours'] = '600';
         $this->actingAs($this->user)->post(route('student.documents.fill.store', $form1), $data)->assertSessionHasNoErrors();
+        $this->assertSame(486, $internship->fresh()->requiredHours());
 
-        $internship = $internship->fresh();
-        $this->assertSame(600, $internship->requiredHours());
-        $this->assertSame(600, (int) $internship->required_hours, 'saved on the internship too');
-
-        // Forms filled after Form 1 carry the typed hours.
-        Document::where('document_requirement_id', $form1->id)->update(['status' => 'printed']);
+        // The coordinator changes the program's hours: every page follows.
+        Program::query()->update(['required_hours' => 500]);
+        $this->assertSame(500, $internship->fresh()->requiredHours());
+        $this->user = $this->user->fresh();   // (the test's user keeps its loaded internship; a real request doesn't)
+        $this->actingAs($this->user)->get(route('student.dashboard'))->assertOk()
+            ->assertSeeInOrder(['500', 'Required Hours']);
         $consent = DocumentRequirement::where('code', 'PARENT_CONSENT')->firstOrFail();
-        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('name="required_hours"', false)->assertSee('value="600"', false);
-        $this->actingAs($this->user)->get(route('student.dashboard'))->assertOk()->assertSee('600');
+        $this->actingAs($this->user)->get(route('student.documents.fill', $consent))->assertOk()->assertSee('value="500"', false);
     }
 
     public function test_the_agency_forms_remind_to_fill_form_1_first(): void

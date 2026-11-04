@@ -643,11 +643,6 @@ class DocumentController extends Controller
 
         $verb = $wasReturned ? 'resubmitted' : 'submitted';
 
-        // The "Number of Hours" the student typed in Form 1 is their required hours.
-        if ($requirement->code === 'APPLICATION_FOR_OJT') {
-            $internship->syncRequiredHoursFromForm1();
-        }
-
         $isEvaluation = in_array($requirement->code, \App\Support\EvaluationRouting::studentEvaluationCodes(), true);
         if ($isEvaluation) {
             // Form 20 (Student-Intern's Feedback) and Form 23c (evaluation of the

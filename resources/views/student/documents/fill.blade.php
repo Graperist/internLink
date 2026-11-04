@@ -1027,7 +1027,11 @@
                             @elseif ($field->field_type === 'textarea')
                                 <textarea class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" rows="3" {{ $field->is_required ? 'required' : '' }}>{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}</textarea>
                             @else
-                                <input type="text" class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" value="{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}" {{ $field->is_required ? 'required' : '' }}>
+                                @php
+                                    // Form 1's Number of Hours starts at the program's Required Hours (it can be changed).
+                                    $fieldDefault = $field->field_key === 'hte_number_of_hours' ? $internship?->requiredHours() : null;
+                                @endphp
+                                <input type="text" class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" value="{{ old($field->field_key, $document?->fieldValue($field->field_key) ?? $fieldDefault) }}" {{ $field->is_required ? 'required' : '' }}>
                             @endif
                         @endif
                     </div>
