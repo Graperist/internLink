@@ -115,14 +115,21 @@ class FormSignatoriesTest extends TestCase
     {
         $coordinator = $this->user('coordinator', 'ACC-COORD-001', 'Coord');
 
+        // Campus settings: the campus, the signatories and each program's Department Chair.
+        $this->actingAs($coordinator)->get(route('coordinator.campus-settings.edit'))->assertOk()
+            ->assertSee('Your campus')->assertSee($this->campus->name)
+            ->assertSee('Department Chairs')->assertSee('name="department_chairs['.$this->bsit->id.']"', false);
         $this->actingAs($coordinator)->put(route('coordinator.campus-settings.update'), [
             'ced_name' => 'Dr. CED', 'college_dean_name' => 'Dr. Dean', 'registrar_name' => 'New Registrar',
+            'department_chairs' => [$this->bsit->id => 'New Chair'],
         ])->assertRedirect();
         $this->assertSame('New Registrar', $this->campus->fresh()->registrar_name);
+        $this->assertSame('New Chair', $this->bsit->fresh()->department_chair_name);
 
+        // No longer on the Programs page; saving a program keeps the chair.
+        $this->actingAs($coordinator)->get(route('coordinator.programs.edit', $this->bsit))->assertOk()->assertDontSee('department_chair_name');
         $this->actingAs($coordinator)->put(route('coordinator.programs.update', $this->bsit), [
             'code' => 'BSIT', 'name' => 'Bachelor of Science in Information Technology', 'required_hours' => 486,
-            'department_chair_name' => 'New Chair',
         ])->assertRedirect();
         $this->assertSame('New Chair', $this->bsit->fresh()->department_chair_name);
     }

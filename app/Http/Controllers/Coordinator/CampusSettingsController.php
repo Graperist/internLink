@@ -19,8 +19,10 @@ class CampusSettingsController extends Controller
     public function edit(): View
     {
         $campus = auth()->user()->campus;
+        // Each program's Department Chair is set here too (printed on its forms).
+        $programs = \App\Models\Program::where('campus_id', $campus->id)->orderBy('code')->get();
 
-        return view('coordinator.campus-settings.edit', compact('campus'));
+        return view('coordinator.campus-settings.edit', compact('campus', 'programs'));
     }
 
     public function update(Request $request): RedirectResponse
@@ -29,9 +31,16 @@ class CampusSettingsController extends Controller
             'ced_name' => ['nullable', 'string', 'max:255'],
             'college_dean_name' => ['nullable', 'string', 'max:255'],
             'registrar_name' => ['nullable', 'string', 'max:255'],
+            'department_chairs' => ['nullable', 'array'],
+            'department_chairs.*' => ['nullable', 'string', 'max:255'],
         ]);
 
-        auth()->user()->campus->update($validated);
+        $campus = auth()->user()->campus;
+        $campus->update(\Illuminate\Support\Arr::except($validated, ['department_chairs']));
+        foreach ($validated['department_chairs'] ?? [] as $programId => $name) {
+            \App\Models\Program::where('campus_id', $campus->id)->whereKey((int) $programId)
+                ->update(['department_chair_name' => filled($name) ? trim($name) : null]);
+        }
 
         return redirect()
             ->route('coordinator.campus-settings.edit')
