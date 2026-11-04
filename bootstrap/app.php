@@ -39,5 +39,14 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // A file bigger than the server allows (PHP post_max_size): back to
+        // the page with a message instead of a "413 Content Too Large" page.
+        $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
+            if ($request->expectsJson() || ! $request->headers->get('referer')) {
+                return null;
+            }
+
+            return redirect()->to($request->headers->get('referer'))
+                ->withErrors(['file' => 'That file is too large for the server to accept. The Narrative Report can be up to 50 MB; other files up to 10 MB.']);
+        });
     })->create();

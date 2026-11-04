@@ -42,6 +42,11 @@ class DocumentController extends Controller
         return true; // 'active' stage
     }
 
+    /** The Narrative Report: one PDF, up to 50 MB. */
+    public const NARRATIVE_CODE = 'NARRATIVE_REPORT';
+
+    public const NARRATIVE_MAX_KB = 51200;
+
     /** Forms that name the partner agency chosen on Form 1. */
     public const AGENCY_FORMS = ['PARENT_CONSENT', 'ENDORSEMENT_LETTER', 'INTERNSHIP_AGREEMENT', 'INTERNSHIP_RELEASE_FORM', 'TRAINING_LIABILITY'];
 
@@ -1328,10 +1333,17 @@ class DocumentController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        // The Narrative Report is one PDF of up to 50 MB; other uploads PDF/JPG/PNG up to 10 MB.
+        $isNarrative = DocumentRequirement::whereKey($request->input('document_requirement_id'))->value('code') === self::NARRATIVE_CODE;
         $request->validate([
             'document_requirement_id' => ['required', 'exists:document_requirements,id'],
-            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
-        ]);
+            'file' => $isNarrative
+                ? ['required', 'file', 'mimes:pdf', 'max:'.self::NARRATIVE_MAX_KB]
+                : ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+        ], $isNarrative ? [
+            'file.mimes' => 'The Narrative Report must be a PDF file.',
+            'file.max' => 'The Narrative Report can be up to 50 MB.',
+        ] : []);
 
         $student = auth()->user()->student;
         $internship = $student->currentInternship;

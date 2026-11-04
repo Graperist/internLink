@@ -286,7 +286,8 @@
                     @if (! $doc || $doc->status === 'returned')
                         <button type="button" class="btn btn-primary"
                             data-bs-toggle="modal" data-bs-target="#uploadModal"
-                            data-requirement-id="{{ $requirement->id }}" data-requirement-name="{{ $requirement->name }}">
+                            data-requirement-id="{{ $requirement->id }}" data-requirement-name="{{ $requirement->name }}"
+                            @if ($requirement->code === \App\Http\Controllers\Student\DocumentController::NARRATIVE_CODE) data-accept=".pdf" data-hint="File (PDF only — max 50MB)" data-max-mb="50" @endif>
                             <i class="ti ti-upload"></i> {{ $doc?->status === 'returned' ? 'Upload Corrected File' : 'Upload' }}
                         </button>
                     @endif
@@ -401,8 +402,9 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="document_requirement_id" id="document_requirement_id">
-                    <label class="form-label small fw-semibold">File (PDF, JPG, PNG — max 10MB)</label>
-                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <label class="form-label small fw-semibold" id="uploadHint">File (PDF, JPG, PNG — max 10MB)</label>
+                    <input type="file" name="file" id="uploadFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <div class="text-danger small mt-1 d-none" id="uploadTooBig"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -455,8 +457,9 @@
                         Upload a scan or photo of the printed form after all the signatories have signed it.
                         Your instructor checks it and approves it.
                     </p>
-                    <label class="form-label small fw-semibold">File (PDF, JPG, PNG — max 10MB)</label>
-                    <input type="file" name="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <label class="form-label small fw-semibold" id="uploadHint">File (PDF, JPG, PNG — max 10MB)</label>
+                    <input type="file" name="file" id="uploadFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <div class="text-danger small mt-1 d-none" id="uploadTooBig"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -472,6 +475,21 @@
         const button = event.relatedTarget;
         document.getElementById('uploadModalLabel').textContent = 'Upload — ' + button.getAttribute('data-requirement-name');
         document.getElementById('document_requirement_id').value = button.getAttribute('data-requirement-id');
+        // The Narrative Report takes one PDF up to 50 MB; the rest PDF/JPG/PNG up to 10 MB.
+        const file = document.getElementById('uploadFile');
+        file.value = '';
+        file.accept = button.getAttribute('data-accept') || '.pdf,.jpg,.jpeg,.png';
+        file.dataset.maxMb = button.getAttribute('data-max-mb') || '10';
+        document.getElementById('uploadHint').textContent = button.getAttribute('data-hint') || 'File (PDF, JPG, PNG — max 10MB)';
+        document.getElementById('uploadTooBig').classList.add('d-none');
+    });
+    document.getElementById('uploadFile').addEventListener('change', function () {
+        const max = Number(this.dataset.maxMb || 10);
+        const tooBig = this.files[0] && this.files[0].size > max * 1024 * 1024;
+        const note = document.getElementById('uploadTooBig');
+        note.textContent = tooBig ? 'This file is ' + (this.files[0].size / 1048576).toFixed(1) + ' MB. The limit is ' + max + ' MB.' : '';
+        note.classList.toggle('d-none', !tooBig);
+        if (tooBig) this.value = '';
     });
 
     document.getElementById('moaUploadModal').addEventListener('show.bs.modal', function (event) {
