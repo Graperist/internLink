@@ -152,6 +152,7 @@ class InstructorController extends Controller
                 'name' => $instructor->user->name,
                 'id_number' => $instructor->user->id_number,
                 'temporary_password' => $temporaryPassword,
+                'reset' => true,
             ]);
     }
 }
