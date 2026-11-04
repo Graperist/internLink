@@ -315,14 +315,14 @@ class EvaluationRoutingTest extends TestCase
     public function test_the_instructor_lists_the_agencies_and_rates_each_once(): void
     {
         $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
-            ->assertSee('Evaluate Partner Agencies')->assertSee($this->hte->name)->assertSee($this->otherHte->name)
+            ->assertSee('Your evaluation of the agency')->assertSee($this->hte->name)->assertSee($this->otherHte->name)
             ->assertSee(route('instructor.agency-evaluations.create', $this->hte));
         $this->actingAs($this->instructorUser)->get(route('instructor.agency-evaluations.create', $this->hte))->assertOk()
             ->assertSee('Partner agency: '.$this->hte->name);
 
         $document = $this->instructorSubmits();
         $this->assertSame($this->hte->id, $document->hte_id);
-        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()->assertSee('EVALUATED');
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['hte_id' => $this->hte->id]))->assertOk()->assertSee('EVALUATED');
 
         // Once per agency.
         $requirement = $this->req('PARTNER_AGENCY_EVAL_INSTRUCTOR');
@@ -331,6 +331,21 @@ class EvaluationRoutingTest extends TestCase
         // The other agency is still to do.
         $this->instructorSubmits($this->otherHte);
         $this->assertSame(2, Document::where('document_requirement_id', $requirement->id)->count());
+    }
+
+    public function test_the_evaluations_page_lists_agencies_and_opens_one(): void
+    {
+        // Left: every partner agency; right: the open one (the first to evaluate).
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSee('Partner agencies')->assertSee($this->hte->name)->assertSee($this->otherHte->name)
+            ->assertSee(route('instructor.evaluations', ['hte_id' => $this->otherHte->id]), false);
+
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['hte_id' => $this->otherHte->id]))->assertOk()
+            ->assertSee(route('instructor.agency-evaluations.create', $this->otherHte))
+            ->assertDontSee(route('instructor.agency-evaluations.create', $this->hte));
+        // An agency that isn't on the list opens the first one.
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['hte_id' => 999999]))->assertOk()
+            ->assertSee('Your evaluation of the agency');
     }
 
     public function test_form_23a_stays_with_the_instructor(): void
@@ -419,12 +434,14 @@ class EvaluationRoutingTest extends TestCase
 
         $notification = Notification::where('user_id', $this->instructorUser->id)->firstOrFail();
         $studentId = $this->studentUser->student->id;
-        $this->assertSame('/instructor/evaluations#student-'.$studentId, $notification->url);
+        // Opens the intern's agency on the right, at the intern.
+        $url = '/instructor/evaluations?hte_id='.$this->deployment->hte_id.'#student-'.$studentId;
+        $this->assertSame($url, $notification->url);
 
         $this->actingAs($this->instructorUser)->get(route('notifications.open', $notification))
-            ->assertRedirect('/instructor/evaluations#student-'.$studentId);
+            ->assertRedirect($url);
 
-        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['hte_id' => $this->deployment->hte_id]))
             ->assertOk()->assertSee('id="student-'.$studentId.'"', false);
     }
 

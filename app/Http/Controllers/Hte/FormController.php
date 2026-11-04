@@ -71,7 +71,7 @@ class FormController extends Controller
             Instructor::where('campus_id', $deployment->internship->campus_id)->where('program_id', $deployment->internship->program_id),
             EvaluationRouting::FORMS[$requirement->code]['form'].($wasEvaluated ? ' updated by ' : ' received from ').$representative->hte->name,
             "{$representative->hte->name} ".($wasEvaluated ? 'edited' : 'submitted')." {$requirement->name} for {$studentName}. Open Evaluations to view it.",
-            route('instructor.evaluations', [], false).'#student-'.$deployment->internship->student_id,
+            route('instructor.evaluations', ['hte_id' => $deployment->hte_id], false).'#student-'.$deployment->internship->student_id,
         );
 
         return redirect()->route('hte.evaluations')->with('status', $wasEvaluated

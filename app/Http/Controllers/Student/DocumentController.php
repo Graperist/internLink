@@ -659,7 +659,7 @@ class DocumentController extends Controller
                         ? "{$student->user->name} updated their evaluation of their agency ({$formLabel})"
                         : "{$student->user->name} evaluated their agency ({$formLabel})",
                     'message' => "{$student->user->name} ".($wasEvaluated ? 'edited' : 'submitted')." {$requirement->name}. Open Evaluations to view it.",
-                    'url' => route('instructor.evaluations', [], false).'#student-'.$student->id,
+                    'url' => route('instructor.evaluations', array_filter(['hte_id' => $internship->deployment?->hte_id]), false).'#student-'.$student->id,
                 ]));
         } else {
             // Notify every instructor scoped to this student's program/campus -

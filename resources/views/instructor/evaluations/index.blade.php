@@ -28,7 +28,7 @@
 <div class="il-page-header d-flex justify-content-between align-items-end flex-wrap gap-3">
     <div>
         <h1 class="il-page-title">Evaluations</h1>
-        <p class="text-secondary small mb-0">They open once an internship is completed. Whoever is rated never sees the rating &mdash; every evaluation comes to you.</p>
+        <p class="text-secondary small mb-0">Evaluations open once an intern completes their internship. Everything comes to you &mdash; no one sees the ratings about them.</p>
     </div>
     @if ($isCoordinator)
         {{-- The OJT Coordinator sees every program's evaluations. --}}
@@ -47,26 +47,34 @@
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
 @if ($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
 
+<style>
+    .ev-agency-card { border:1px solid #e3e8ef; border-radius:14px; overflow:hidden; margin-bottom:16px; background:#fff; }
+    .ev-agency-head { background:#f6f8fb; padding:14px 18px; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+    .ev-agency-forms { display:flex; gap:10px; flex-wrap:wrap; padding:12px 18px; border-bottom:1px solid #eef1f5; }
+    .ev-agency-form { display:flex; align-items:center; gap:8px; flex-wrap:wrap; border:1px solid #eef1f5; border-radius:10px; padding:8px 12px; flex:1 1 320px; }
+    .ev-agency-form .lbl { font-size:.78rem; font-weight:600; min-width:150px; }
+    .ev-agency-form .lbl small { display:block; color:#6b7785; font-weight:400; }
+</style>
 {{-- At a glance --}}
 <div class="row g-3 mb-3">
     <div class="col-md-4">
         <div class="ev-stat">
             <div class="n">{{ $evaluated }} <small>/ {{ $toEvaluate }}</small></div>
-            <div class="l">Agencies you evaluated (Form 23a)</div>
+            <div class="l">Agencies you have evaluated <span class="text-secondary">(Form 23a)</span></div>
             <div class="bar"><span style="width: {{ $pct($evaluated, $toEvaluate) }}%"></span></div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="ev-stat">
             <div class="n">{{ $selfReceived }} <small>/ {{ $agencyRows->count() }}</small></div>
-            <div class="l">Agency self-ratings received (Form 23b)</div>
+            <div class="l">Agencies that rated themselves <span class="text-secondary">(Form 23b)</span></div>
             <div class="bar"><span style="width: {{ $pct($selfReceived, $agencyRows->count()) }}%"></span></div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="ev-stat">
             <div class="n">{{ $formsReceived }} <small>/ {{ $formsExpected }}</small></div>
-            <div class="l">Intern evaluations received (Forms 13, 21, 23c, 20)</div>
+            <div class="l">Intern evaluations received <span class="text-secondary">(Forms 13, 21, 23c, 20)</span></div>
             <div class="bar"><span style="width: {{ $pct($formsReceived, $formsExpected) }}%"></span></div>
         </div>
     </div>
@@ -92,213 +100,177 @@
     </form>
 @endif
 
-{{-- ============ Evaluate the partner agencies (Form 23a), like the faculty evaluation ============ --}}
-<div class="il-card mb-3">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-        <div class="ev-head">
-            <span class="ev-icon blue"><i class="ti ti-building-community"></i></span>
-            <div>
-                <h2 class="h6 fw-bold mb-0">Evaluate Partner Agencies <span class="text-secondary fw-normal">(Form 23a)</span></h2>
-                <div class="text-secondary small">
-                    Once per agency where {{ $isCoordinator ? ($programId ? 'this program\'s' : 'any program\'s') : 'your' }} students finished. The agency does not see it.
-                    @if ($isCoordinator) You evaluate only the agencies of your program{{ auth()->user()->instructor?->program ? ' ('.auth()->user()->instructor->program->code.')' : '' }}. @endif
+@php
+    // Per agency: its interns, and how many of its forms have come in.
+    $agencyInterns = fn ($row) => $internRows->filter(fn ($r) => (int) $r->deployment->hte_id === (int) $row->hte->id)->values();
+    $formsFor = fn ($row) => [
+        'got' => ($row->self ? 1 : 0) + $agencyInterns($row)->sum(fn ($r) => $r->forms->filter()->count()),
+        'of' => (isset($requirements['PARTNER_AGENCY_EVAL_SELF']) ? 1 : 0) + $agencyInterns($row)->count() * collect($internCodes)->filter(fn ($c) => isset($requirements[$c]))->count(),
+    ];
+    // Which agency is open: ?hte_id=, else the first one waiting on you, else the first.
+    $selected = $agencyRows->firstWhere(fn ($r) => (int) $r->hte->id === (int) $hteId)
+        ?? $agencyRows->first(fn ($r) => $r->canEvaluate && ! $r->mine)
+        ?? $agencyRows->first();
+    $linkFor = fn ($row) => route('instructor.evaluations', array_filter(['hte_id' => $row->hte->id, 'program_id' => $isCoordinator ? ($programId ?? 'all') : null]));
+@endphp
+
+@if ($agencyRows->isEmpty())
+    <div class="il-card text-center text-secondary py-5">
+        <i class="ti ti-building fs-3 d-block mb-1"></i>
+        No evaluations yet &mdash; they open once one of your students completes their internship.
+    </div>
+@else
+<div class="row g-3" id="evaluations-received">
+    {{-- Left: the partner agencies, like the forms list in Document Review --}}
+    <div class="col-lg-4">
+        <div class="il-card p-0 overflow-hidden" style="position: sticky; top: 1rem;">
+            <div class="px-3 pt-3 pb-2 d-flex justify-content-between align-items-center">
+                <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Partner agencies</span>
+                <span class="small text-secondary">{{ $evaluated }} / {{ $toEvaluate }} evaluated</span>
+            </div>
+            @if ($agencyRows->count() > 5)
+                <div class="px-3 pb-2">
+                    <input type="search" class="form-control form-control-sm" id="evalAgencySearch" placeholder="Search partner agency…" autocomplete="off">
+                </div>
+            @endif
+            <div class="list-group list-group-flush il-form-list" id="evalAgencyList">
+                @foreach ($agencyRows as $row)
+                    @php
+                        $isOpen = $selected && $row->hte->id === $selected->hte->id;
+                        $f = $formsFor($row);
+                        [$icon, $color, $note] = match (true) {
+                            $row->canEvaluate && ! $row->mine => ['ti-alert-circle-filled', 'text-warning', 'To evaluate'],
+                            $f['of'] > 0 && $f['got'] >= $f['of'] => ['ti-circle-check-filled', 'text-success', 'All received'],
+                            default => ['ti-clock', 'text-secondary', $f['got'].' of '.$f['of'].' forms received'],
+                        };
+                    @endphp
+                    <a href="{{ $linkFor($row) }}" data-search="{{ \Illuminate\Support\Str::lower($row->hte->name) }}"
+                       class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}" @if ($isOpen) aria-current="true" @endif>
+                        <i class="ti {{ $icon }} {{ $color }} fs-5 flex-shrink-0"></i>
+                        <span class="flex-grow-1" style="min-width:0;">
+                            <span class="d-block small fw-semibold" style="overflow-wrap:anywhere;">{{ $row->hte->name }}</span>
+                            <span class="d-block text-secondary" style="font-size:.72rem;">{{ $agencyInterns($row)->count() }} {{ \Illuminate\Support\Str::plural('intern', $agencyInterns($row)->count()) }} &middot; {{ $note }}</span>
+                        </span>
+                        <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
+                    </a>
+                @endforeach
+                <div class="list-group-item small text-secondary text-center d-none" id="evalAgencyNone">No partner agency matches.</div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Right: only the open agency --}}
+    <div class="col-lg-8">
+        @php $row = $selected; $interns = $agencyInterns($row); @endphp
+        <div class="il-card mb-3">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div>
+                    <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">Partner agency</p>
+                    <h2 class="h5 fw-bold mb-1">{{ $row->hte->name }}</h2>
+                    <div class="text-secondary small"><i class="ti ti-map-pin"></i> {{ $row->hte->address ?: '—' }}</div>
+                </div>
+                <span class="ev-pill wait"><i class="ti ti-users"></i> {{ $interns->count() }} {{ \Illuminate\Support\Str::plural('intern', $interns->count()) }} finished here</span>
+            </div>
+        </div>
+
+        <div class="il-card mb-3">
+            <p class="small fw-bold text-uppercase text-secondary mb-2" style="letter-spacing:.03em;">The agency</p>
+            <div class="ev-agency-forms p-0 border-0">
+                <div class="ev-agency-form">
+                    <span class="lbl">Your evaluation of the agency <small>Form 23a &middot; the agency does not see it</small></span>
+                    @if ($row->mine)
+                        <span class="ev-pill ok"><i class="ti ti-circle-check"></i> EVALUATED</span>
+                        <span class="ev-acts">
+                            <a href="{{ route('instructor.evaluations.show', $row->mine) }}" target="_blank" class="ev-act" title="View"><i class="ti ti-eye"></i></a>
+                            <a href="{{ route('instructor.evaluations.show', ['document' => $row->mine, 'download' => 1]) }}" target="_blank" class="ev-act" title="Download"><i class="ti ti-download"></i></a>
+                        </span>
+                    @elseif ($row->canEvaluate)
+                        <a href="{{ route('instructor.agency-evaluations.create', $row->hte) }}" class="btn btn-sm btn-primary"><i class="ti ti-star"></i> Evaluate</a>
+                    @else
+                        <span class="ev-pill ro" title="Form 23a is filled by the subject instructor of the program whose students trained here."><i class="ti ti-eye"></i> View only &middot; not your program</span>
+                    @endif
+                </div>
+                <div class="ev-agency-form">
+                    <span class="lbl">The agency rates itself <small>Form 23b</small></span>
+                    @if ($row->self)
+                        <span class="ev-pill ok"><i class="ti ti-circle-check"></i> RECEIVED</span>
+                        <span class="ev-acts">
+                            <a href="{{ route('instructor.evaluations.show', $row->self) }}" target="_blank" class="ev-act" title="View"><i class="ti ti-eye"></i></a>
+                            <a href="{{ route('instructor.evaluations.show', ['document' => $row->self, 'download' => 1]) }}" target="_blank" class="ev-act" title="Download"><i class="ti ti-download"></i></a>
+                            @include('instructor.evaluations._lock', ['doc' => $row->self, 'canLock' => $row->canEvaluate])
+                        </span>
+                    @else
+                        <span class="ev-pill wait"><i class="ti ti-clock"></i> Not sent yet</span>
+                    @endif
                 </div>
             </div>
         </div>
-        <span class="ev-pill {{ $toEvaluate > 0 && $evaluated >= $toEvaluate ? 'ok' : 'wait' }}">{{ $evaluated }} of {{ $toEvaluate }} evaluated</span>
-    </div>
 
-    <div class="table-responsive">
-        <table class="table align-middle mb-0 ui-table eval-table">
-            <thead>
-                <tr><th>Agency</th><th>{{ $isCoordinator ? 'Interns there' : 'Your interns there' }}</th><th>Your evaluation</th><th>Agency's self-rating <span class="text-lowercase fw-normal">(Form 23b)</span></th></tr>
-            </thead>
-            <tbody>
-                @forelse ($agencyRows as $row)
-                    <tr>
-                        <td>
-                            @if ($row->mine)
-                                <a href="{{ route('instructor.evaluations.show', $row->mine) }}" target="_blank" class="ev-agency">{{ $row->hte->name }}</a>
-                            @elseif ($row->canEvaluate)
-                                <a href="{{ route('instructor.agency-evaluations.create', $row->hte) }}" class="ev-agency">{{ $row->hte->name }}</a>
-                            @else
-                                <span class="ev-agency">{{ $row->hte->name }}</span>
-                            @endif
-                            <div class="text-secondary" style="font-size:.76rem;"><i class="ti ti-map-pin"></i> {{ $row->hte->address ?: '—' }}</div>
-                        </td>
-                        <td class="text-nowrap">
-                            @php $internCount = $row->deployments->count(); @endphp
-                            <button type="button" class="ev-chip" data-bs-toggle="modal" data-bs-target="#agencyInternsModal"
-                                    data-agency="{{ $row->hte->name }}" data-list="agencyInterns{{ $row->hte->id }}" title="See the interns">
-                                <i class="ti ti-users"></i> <strong>{{ $internCount }}</strong> {{ \Illuminate\Support\Str::plural('intern', $internCount) }}
-                            </button>
-                            {{-- The list, shown in the window (kept out of the table so a big agency stays one line). --}}
-                            <template id="agencyInterns{{ $row->hte->id }}">
-                                @foreach ($row->deployments->sortBy(fn ($d) => $d->internship->student->user->name) as $d)
-                                    @php $st = $d->internship->student; @endphp
-                                    <li class="list-group-item d-flex justify-content-between align-items-center gap-2" data-search="{{ \Illuminate\Support\Str::lower($st->user->name.' '.$st->user->id_number) }}">
-                                        <span>
-                                            <span class="fw-semibold d-block">{{ $st->user->name }}</span>
-                                            <span class="text-secondary" style="font-size:.76rem;">{{ $st->user->id_number }}{{ $st->program ? ' · '.$st->program->code : '' }}</span>
-                                        </span>
-                                        <span class="text-secondary small text-nowrap">
-                                            {{ $d->start_date?->format('M d, Y') }}{{ $d->end_date ? ' – '.$d->end_date->format('M d, Y') : '' }}
-                                        </span>
-                                    </li>
-                                @endforeach
-                            </template>
-                        </td>
-                        <td class="text-nowrap">
-                            @if ($row->mine)
-                                <span class="ev-pill ok"><i class="ti ti-circle-check"></i> EVALUATED</span>
-                                <span class="ev-acts">
-                                    <a href="{{ route('instructor.evaluations.show', $row->mine) }}" target="_blank" class="ev-act" title="View"><i class="ti ti-eye"></i></a>
-                                    <a href="{{ route('instructor.evaluations.show', ['document' => $row->mine, 'download' => 1]) }}" target="_blank" class="ev-act" title="Download"><i class="ti ti-download"></i></a>
-                                </span>
-                            @elseif ($row->canEvaluate)
-                                <a href="{{ route('instructor.agency-evaluations.create', $row->hte) }}" class="btn btn-sm btn-primary"><i class="ti ti-star"></i> Evaluate</a>
-                            @else
-                                <span class="ev-pill ro" title="Form 23a is filled by the subject instructor of the program whose students trained here."><i class="ti ti-eye"></i> View only &middot; not your program</span>
-                            @endif
-                        </td>
-                        <td class="text-nowrap">
-                            @if ($row->self)
-                                <span class="ev-pill ok"><i class="ti ti-circle-check"></i> RECEIVED</span>
-                                <span class="ev-acts">
-                                    <a href="{{ route('instructor.evaluations.show', $row->self) }}" target="_blank" class="ev-act" title="View"><i class="ti ti-eye"></i></a>
-                                    <a href="{{ route('instructor.evaluations.show', ['document' => $row->self, 'download' => 1]) }}" target="_blank" class="ev-act" title="Download"><i class="ti ti-download"></i></a>
-                                    @include('instructor.evaluations._lock', ['doc' => $row->self, 'canLock' => $row->canEvaluate])
-                                </span>
-                            @else
-                                <span class="ev-pill wait"><i class="ti ti-clock"></i> Waiting for the agency</span>
-                            @endif
-                        </td>
-                    </tr>
-                @empty
-                    <tr><td colspan="4" class="text-center text-secondary py-5"><i class="ti ti-building fs-3 d-block mb-1"></i>No agency to evaluate yet &mdash; this opens once one of your students completes their internship.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
-</div>
-
-{{-- ============ Received about / from each intern ============ --}}
-<div class="il-card" id="evaluations-received">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-        <div class="ev-head">
-            <span class="ev-icon gold"><i class="ti ti-inbox"></i></span>
-            <div>
-                <h2 class="h6 fw-bold mb-0">Evaluations Received</h2>
-                <div class="text-secondary small">From the agency about the intern (Forms 13, 21) and from the intern about the agency (Forms 23c, 20). Neither sees the other's.</div>
-            </div>
-        </div>
-        <span class="ev-pill wait"><i class="ti ti-users"></i> {{ $internRows->count() }} {{ \Illuminate\Support\Str::plural('intern', $internRows->count()) }}</span>
-    </div>
-
-    <div class="table-responsive">
-        <table class="table align-middle mb-0 ui-table eval-table">
-            <thead>
-                <tr class="ev-group">
-                    <th rowspan="2" class="align-bottom" style="background:#f8f9fb;">Intern</th>
-                    <th colspan="2" class="text-center border-bottom-0"><i class="ti ti-building"></i> From the agency</th>
-                    <th colspan="2" class="text-center border-bottom-0"><i class="ti ti-user"></i> From the intern</th>
-                </tr>
-                <tr>
-                    @foreach ($internCodes as $code)
-                        <th>{{ $short($code) }} <span class="ev-sub">{{ $titles[$code] }}</span></th>
-                    @endforeach
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($internRows as $row)
-                    @php $got = $row->forms->filter()->count(); @endphp
-                    <tr id="student-{{ $row->student->id }}" class="eval-row">
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="ev-avatar">{{ $initials($row->student->user->name) }}</span>
-                                <div style="min-width:0;">
-                                    <div class="fw-semibold">{{ $row->student->user->name }} <span class="ev-count">{{ $got }}/{{ count($internCodes) }}</span></div>
-                                    <div class="text-secondary" style="font-size:.76rem;">
-                                        {{ $row->student->user->id_number }}
-                                        @if ($isCoordinator && $row->student->program) &middot; <span class="badge text-bg-light border">{{ $row->student->program->code }}</span> @endif
-                                        &middot; {{ $row->deployment->hte?->name }}
-                                    </div>
-                                </div>
+        <div class="il-card">
+            <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">The interns</p>
+            <p class="text-secondary small mb-3">The agency rates each intern (Forms 13, 21) and each intern rates the agency (Forms 23c, 20). Neither side sees the other's.</p>
+            @forelse ($interns as $irow)
+                @php $got = $irow->forms->filter()->count(); @endphp
+                <div id="student-{{ $irow->student->id }}" class="eval-row border rounded-3 mb-2 overflow-hidden">
+                    <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light">
+                        <span class="ev-avatar">{{ $initials($irow->student->user->name) }}</span>
+                        <div class="flex-grow-1" style="min-width:0;">
+                            <div class="fw-semibold">{{ $irow->student->user->name }} <span class="ev-count">{{ $got }}/{{ count($internCodes) }}</span></div>
+                            <div class="text-secondary" style="font-size:.76rem;">
+                                {{ $irow->student->user->id_number }}
+                                @if ($isCoordinator && $irow->student->program) &middot; <span class="badge text-bg-light border">{{ $irow->student->program->code }}</span> @endif
+                                @if ($irow->deployment->end_date) &middot; finished {{ $irow->deployment->end_date->format('M d, Y') }} @endif
                             </div>
-                        </td>
+                        </div>
+                    </div>
+                    <div class="row g-0">
                         @foreach ($internCodes as $code)
-                            @php $doc = $row->forms[$code]; @endphp
-                            <td class="text-nowrap">
+                            @php $doc = $irow->forms[$code]; $fromAgency = in_array($code, \App\Support\EvaluationRouting::HTE_INTERN_CODES, true); @endphp
+                            <div class="col-md-6 px-3 py-2 border-top d-flex align-items-center gap-2 flex-wrap">
+                                <span class="flex-grow-1" style="min-width:170px;">
+                                    <span class="d-block small fw-semibold">{{ $titles[$code] }}</span>
+                                    <span class="d-block text-secondary" style="font-size:.72rem;">{{ $short($code) }} &middot; {{ $fromAgency ? 'the agency rates the intern' : 'the intern rates the agency' }}</span>
+                                </span>
                                 @if ($doc)
                                     <span class="ev-pill ok"><i class="ti ti-circle-check"></i> RECEIVED</span>
                                     <span class="ev-acts">
                                         <a href="{{ route('instructor.evaluations.show', $doc) }}" target="_blank" class="ev-act" title="View"><i class="ti ti-eye"></i></a>
                                         <a href="{{ route('instructor.evaluations.show', ['document' => $doc, 'download' => 1]) }}" target="_blank" class="ev-act" title="Download"><i class="ti ti-download"></i></a>
-                                        @include('instructor.evaluations._lock', ['doc' => $doc, 'canLock' => $instructor->ownsProgram($row->deployment->internship)])
+                                        @include('instructor.evaluations._lock', ['doc' => $doc, 'canLock' => $instructor->ownsProgram($irow->deployment->internship)])
                                     </span>
                                 @elseif (! isset($requirements[$code]))
                                     <span class="text-secondary">&mdash;</span>
                                 @else
-                                    <span class="ev-pill wait"><i class="ti ti-clock"></i> Waiting</span>
+                                    <span class="ev-pill wait"><i class="ti ti-clock"></i> Not sent yet</span>
                                 @endif
-                            </td>
+                            </div>
                         @endforeach
-                    </tr>
-                @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-5"><i class="ti ti-inbox fs-3 d-block mb-1"></i>No completed internships yet.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
-</div>
-{{-- Interns of one agency, opened from "Your interns there" --}}
-<div class="modal fade" id="agencyInternsModal" tabindex="-1" aria-labelledby="agencyInternsTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h2 class="modal-title h6 fw-bold mb-0" id="agencyInternsTitle">Your interns there</h2>
-                    <div class="small text-secondary" id="agencyInternsCount"></div>
+                    </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="px-3 pt-3">
-                <input type="search" class="form-control" id="agencyInternsSearch" placeholder="Search by name or ID number" autocomplete="off">
-            </div>
-            <div class="modal-body pt-2">
-                <ul class="list-group list-group-flush" id="agencyInternsList"></ul>
-                <p class="text-secondary small text-center my-3 d-none" id="agencyInternsNone">No intern matches this search.</p>
-            </div>
+            @empty
+                <p class="text-secondary small text-center my-3">No intern has finished here yet.</p>
+            @endforelse
         </div>
     </div>
 </div>
+<style>
+    .il-form-list .list-group-item { border-left: 3px solid transparent; }
+    .il-form-list .active-form { background: rgba(28, 63, 102, 0.07); border-left-color: var(--il-navy, #1c3f66); }
+    .eval-row:target { box-shadow: 0 0 0 2px #f0c94a; }
+</style>
 <script>
 (function () {
-    var modal = document.getElementById('agencyInternsModal');
-    if (!modal) return;
-    var list = document.getElementById('agencyInternsList'), search = document.getElementById('agencyInternsSearch'),
-        title = document.getElementById('agencyInternsTitle'), count = document.getElementById('agencyInternsCount'),
-        none = document.getElementById('agencyInternsNone');
-    function filter() {
-        var q = search.value.trim().toLowerCase(), shown = 0;
-        list.querySelectorAll('li').forEach(function (li) {
-            var ok = !q || li.dataset.search.indexOf(q) > -1;
-            li.classList.toggle('d-none', !ok);
-            if (ok) shown++;
+    var box = document.getElementById('evalAgencySearch');
+    if (!box) return;
+    box.addEventListener('input', function () {
+        var q = box.value.trim().toLowerCase(), shown = 0;
+        document.querySelectorAll('#evalAgencyList a').forEach(function (a) {
+            var ok = !q || a.dataset.search.indexOf(q) > -1;
+            a.classList.toggle('d-none', !ok); if (ok) shown++;
         });
-        none.classList.toggle('d-none', shown > 0);
-    }
-    modal.addEventListener('show.bs.modal', function (e) {
-        var btn = e.relatedTarget, tpl = document.getElementById(btn.dataset.list);
-        title.textContent = btn.dataset.agency;
-        list.innerHTML = tpl ? tpl.innerHTML : '';
-        var n = list.querySelectorAll('li').length;
-        count.textContent = n + (n === 1 ? ' intern' : ' interns') + ' finished their internship here';
-        search.value = '';
-        filter();
+        document.getElementById('evalAgencyNone').classList.toggle('d-none', shown > 0);
     });
-    modal.addEventListener('shown.bs.modal', function () { search.focus(); });
-    search.addEventListener('input', filter);
 })();
 </script>
+@endif
 @endsection

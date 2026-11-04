@@ -38,6 +38,8 @@ class EvaluationController extends Controller
         $programId = $isCoordinator && $programs->contains('id', $wanted) ? $wanted : null;
 
         $agencies = AgencyEvaluations::agenciesFor($instructor, $programId);
+        // Like Document Review: the agencies on the left, one open on the right (?hte_id=).
+        $hteId = (int) $request->query('hte_id') ?: null;
 
         $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
             ->where('is_active', true)
@@ -75,7 +77,7 @@ class EvaluationController extends Controller
             ]),
         ])->sortBy(fn ($row) => $row->student->user->name)->values();
 
-        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor'));
+        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor', 'hteId'));
     }
 
     /** Read or (?download=1) download a received evaluation, or your own Form 23a. */

@@ -13,7 +13,7 @@
           @if ($locked) onsubmit="return confirm('Unlock this evaluation so it can be edited again?')" @endif>
         @csrf
         <button type="submit" class="ev-act {{ $locked ? 'ev-locked' : '' }}"
-                title="{{ $locked ? 'Locked — click to unlock for a correction' : ($closed ? 'Editing closed '.$until?->format('M j') : 'Can be edited until '.$until?->format('M j').' — click to lock now') }}">
+                title="{{ $locked ? 'Locked — click to unlock for a correction' : ($closed ? 'Editing closed '.$until?->format('M j').' — click to lock' : 'The sender can still edit it until '.$until?->format('M j').' — click to lock now') }}">
             <i class="ti {{ $locked ? 'ti-lock' : 'ti-lock-open' }}"></i><span class="visually-hidden">{{ $locked ? 'Unlock' : 'Lock' }}</span>
         </button>
     </form>
