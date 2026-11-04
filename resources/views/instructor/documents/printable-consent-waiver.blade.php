@@ -175,10 +175,11 @@
     </ol>
 
     <p class="signed">
-        Signed at <span class="line medium">{{ $signedAt }}</span>, Pangasinan.
-        This <span class="line short">{{ $signedDay }}</span> day of
-        <span class="line medium">{{ $signedMonth }}</span>,
-20<span class="line short">{{ $signedYear }}</span>.
+        {{-- Left blank: the place and date are written by hand when the form is signed. --}}
+        Signed at <span class="line medium">&nbsp;</span>, Pangasinan.
+        This <span class="line short">&nbsp;</span> day of
+        <span class="line medium">&nbsp;</span>,
+20<span class="line short">&nbsp;</span>.
     </p>
 
     <div class="signature-area">

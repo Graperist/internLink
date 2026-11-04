@@ -165,9 +165,9 @@ class FormSignatoriesTest extends TestCase
             ->assertSeeInOrder(['Maria Tabucol', 'Signature over Printed Name of Parent/Guardian'])
             ->getContent();
 
-        // "Signed at Alaminos City, Pangasinan." - not "Pangasinan, Pangasinan"
-        $this->assertStringNotContainsString('Pangasinan</span>, Pangasinan', $html);
-        $this->assertMatchesRegularExpression('/Signed at <span class="line medium">Alaminos City<\/span>, Pangasinan/', $html);
-        $this->assertMatchesRegularExpression('/20<span class="line short">26<\/span>/', $html);
+        // "Signed at ___, Pangasinan. This ___ day of ___, 20__." is left blank (handwritten).
+        $this->assertMatchesRegularExpression('/Signed at <span class="line medium">&nbsp;<\/span>, Pangasinan/', $html);
+        $this->assertMatchesRegularExpression('/This <span class="line short">&nbsp;<\/span> day of\s*<span class="line medium">&nbsp;<\/span>,\s*20<span class="line short">&nbsp;<\/span>/', $html);
+        $this->assertStringNotContainsString('October', $html);
     }
 }

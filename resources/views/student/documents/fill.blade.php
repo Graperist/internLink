@@ -597,26 +597,8 @@
                 @enderror
             </div>
 
-            <h2 class="h6 fw-bold mt-4 mb-3">Signing Information</h2>
-            <div class="row g-3">
-                <div class="col-md-7">
-                    <label class="il-form-label" for="consent_signed_city">Signed at</label>
-                    <input type="text" class="form-control" id="consent_signed_city" name="signed_city"
-                           value="{{ $consentSignedCity }}" readonly required>
-                    <div class="form-text">Automatically taken from your assigned campus location.</div>
-                </div>
-
-                <div class="col-md-5">
-                    <label class="il-form-label" for="consent_signed_date">This day of</label>
-                    <input type="date" class="form-control" id="consent_signed_date" name="signed_date"
-                           value="{{ $consentSignedDate }}" required>
-                    <div class="form-text">
-                        Choose the date from the calendar. If the form was returned, you can change this date before resubmitting.
-                    </div>
-                    @error('signed_date')
-                        <div class="text-danger small mt-1">{{ $message }}</div>
-                    @enderror
-                </div>
+            <div class="alert alert-light border small mt-4 mb-0">
+                <i class="ti ti-pencil"></i> "Signed at ____, Pangasinan. This ____ day of ____, 20__" is left blank on the printed form: write it by hand when you sign.
             </div>
 
         @elseif ($requirement->code === 'TRAINING_LIABILITY')

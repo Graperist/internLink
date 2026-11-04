@@ -438,7 +438,7 @@ class DocumentController extends Controller
         }
 
         // Consent and Waiver: the student only chooses the partner agency,
-        // confirms the address, and picks the signing date. Name, course,
+        // and confirms the address (the signing place and date are handwritten). Name, course,
         // required hours, and "signed at" come from trusted records (user,
         // program, campus) so they cannot be altered from dev tools.
         if ($requirement->code === 'PARENT_CONSENT') {
@@ -452,7 +452,6 @@ class DocumentController extends Controller
                         $query->where('campus_id', $student->campus_id)
                     ),
                 ],
-                'signed_date' => ['required', 'date'],
             ] + $this->attachmentRules($requirement, $internship), self::ATTACHMENT_MESSAGES);
 
             $requiredHours = (int) ($internship->requiredHours()
@@ -468,7 +467,7 @@ class DocumentController extends Controller
 
             if (blank($signedCity)) {
                 return back()->withInput()->withErrors([
-                    'signed_date' => 'Your campus location is not configured. Please ask the Coordinator to set the campus address in Campus Settings.',
+                    'company_name' => 'Your campus location is not configured. Please ask the Coordinator to set the campus address in Campus Settings.',
                 ]);
             }
 
@@ -479,7 +478,8 @@ class DocumentController extends Controller
                 'required_hours' => (string) $requiredHours,
                 'company_name' => $selected['company_name'],
                 'signed_city' => $signedCity,
-                'signed_date' => \Carbon\Carbon::parse($selected['signed_date'])->toDateString(),
+                // "Signed at ___, this ___ day of ___" is handwritten on the printed copy.
+                'signed_date' => '',
             ];
 
             $wasReturned = $internship->documents()
