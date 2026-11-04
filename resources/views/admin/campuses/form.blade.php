@@ -86,14 +86,14 @@
             const { codeUsed, codeBad, nameUsed } = check(true);
             if (codeBad) {
                 e.preventDefault();
-                alert('The campus code must be 2 to 3 capital letters (A-Z), e.g. ACC or BC.');
+                (window.ilAlert || window.alert)('The campus code must be 2 to 3 capital letters (A-Z), e.g. ACC or BC.');
                 code.focus();
                 return;
             }
             if (codeUsed || nameUsed) {
                 e.preventDefault();
                 const what = [codeUsed ? 'the campus code ' + code.value.trim().toUpperCase() : null, nameUsed ? 'the campus name' : null].filter(Boolean).join(' and ');
-                alert('This campus already exists: ' + what + ' is already used by another campus (it may be under Archived campuses).');
+                (window.ilAlert || window.alert)('This campus already exists: ' + what + ' is already used by another campus (it may be under Archived campuses).');
             }
         });
         check();

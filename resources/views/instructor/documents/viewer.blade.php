@@ -187,7 +187,7 @@
                     <label class="small fw-bold text-uppercase text-secondary mb-2 d-block" style="letter-spacing:.03em;" for="viewer_remarks">Remarks for the student</label>
                     <textarea name="remarks" id="viewer_remarks" class="form-control mb-2" rows="4" maxlength="2000"
                               placeholder="What needs to be corrected? (required when returning)">{{ old('remarks') }}</textarea>
-                    <button type="submit" class="btn btn-danger w-100 mb-2" onclick="return document.getElementById('viewer_remarks').value.trim() !== '' || (alert('Add remarks so the student knows what to correct.'), false);">
+                    <button type="submit" class="btn btn-danger w-100 mb-2" onclick="return document.getElementById('viewer_remarks').value.trim() !== '' || ((window.ilAlert || window.alert)('Add remarks so the student knows what to correct.'), false);">
                         <i class="ti ti-arrow-back-up"></i> Return to student
                     </button>
                 </form>
