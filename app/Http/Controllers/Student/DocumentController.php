@@ -979,6 +979,55 @@ class DocumentController extends Controller
             ->with('status', 'Training day for '.$logEntry->entry_date->format('M d, Y').' updated.');
     }
 
+    /** One Form 19 week of the student's own, while it can still be changed (not sent yet, or returned). */
+    private function editableWeek(DocumentRequirement $requirement, int $packet): Document
+    {
+        abort_unless($requirement->code === 'WEEKLY_REPORT', 404);
+        $internship = auth()->user()->student?->currentInternship;
+        abort_unless($internship, 422);
+        $document = $internship->documents()->where('document_requirement_id', $requirement->id)
+            ->where('packet_number', $packet)->with(['entries.values'])->firstOrFail();
+        abort_unless(in_array($document->status, ['draft', 'returned'], true), 403,
+            'This week has already been sent to your instructor and can no longer be edited here.');
+
+        return $document;
+    }
+
+    public function editWeek(DocumentRequirement $requirement, int $packet): View
+    {
+        $document = $this->editableWeek($requirement, $packet);
+        $entries = $document->entries->sortBy('entry_date')->values();
+        $due = \App\Support\TrainingWeeks::dueDateFor($document);
+
+        return view('student.documents.week-edit', compact('requirement', 'document', 'entries', 'due'));
+    }
+
+    public function updateWeek(Request $request, DocumentRequirement $requirement, int $packet): RedirectResponse
+    {
+        $document = $this->editableWeek($requirement, $packet);
+        $validated = $request->validate([
+            'days' => ['required', 'array'],
+            'days.*.tasks_accomplished' => ['required', 'string', 'max:4000'],
+            'days.*.knowledge_skills_learned' => ['required', 'string', 'max:4000'],
+        ], [
+            'days.*.tasks_accomplished.required' => 'Fill in the tasks accomplished for every day.',
+            'days.*.knowledge_skills_learned.required' => 'Fill in the knowledge, skills and values learned for every day.',
+        ]);
+
+        DB::transaction(function () use ($document, $validated) {
+            foreach ($document->entries as $entry) {
+                if (! isset($validated['days'][$entry->id])) {
+                    continue;
+                }
+                foreach (['tasks_accomplished', 'knowledge_skills_learned'] as $key) {
+                    $entry->values()->updateOrCreate(['field_key' => $key], ['value' => $validated['days'][$entry->id][$key]]);
+                }
+            }
+        });
+
+        return redirect()->route('student.documents.log', $requirement)->with('status', 'Week '.$packet.' updated.');
+    }
+
     /**
      * Delete one daily entry from a log (e.g. a training day in the Form 19
      * weekly report) - for when the student made a mistake. Allowed under the

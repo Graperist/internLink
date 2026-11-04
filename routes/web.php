@@ -339,6 +339,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/documents/{requirement}/log/entry/{entry}/edit', [StudentDocumentController::class, 'editEntry'])->whereNumber('entry')->name('documents.log.entry.edit');
         Route::put('/documents/{requirement}/log/entry/{entry}', [StudentDocumentController::class, 'updateEntry'])->whereNumber('entry')->name('documents.log.entry.update');
         Route::delete('/documents/{requirement}/log/entry/{entry}',[StudentDocumentController::class, 'destroyEntry'])->whereNumber('entry')->name('documents.log.entry.destroy');
+        Route::get('/documents/{requirement}/log/week/{packet}/edit', [StudentDocumentController::class, 'editWeek'])->whereNumber('packet')->name('documents.log.week.edit');
+        Route::put('/documents/{requirement}/log/week/{packet}', [StudentDocumentController::class, 'updateWeek'])->whereNumber('packet')->name('documents.log.week.update');
         Route::delete('/documents/{requirement}/log/week/{weekStart}', [StudentDocumentController::class, 'destroyWeek'])->name('documents.log.week.destroy');
         Route::post('/documents/{requirement}/log/submit', [StudentDocumentController::class, 'submitLog'])->name('documents.log.submit');
         // Form 19: each week is submitted (and reviewed) on its own; {packet} is the week number.

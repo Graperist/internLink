@@ -127,7 +127,7 @@
                                             <i class="ti ti-chevron-right log-chevron fs-5 text-secondary"></i>
                                             <span>
                                                 <span class="fw-bold d-block">{{ $beforeWeekOne ? 'Before Week 1' : 'Week '.$weekNumber }}</span>
-                                                <span class="text-secondary small">{{ $start->format('M d') }} – {{ $end->format('M d, Y') }} · {{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}@unless ($beforeWeekOne) · <span class="{{ $late === 'missing' ? 'text-danger fw-semibold' : '' }}">Due {{ $due->format('M d, g:i A') }}</span>@endunless</span>
+                                                <span class="text-secondary small">{{ $weekEntries->count() }} {{ $weekEntries->count() === 1 ? 'day' : 'days' }}@unless ($beforeWeekOne) · <span class="{{ $late === 'missing' ? 'text-danger fw-semibold' : '' }}">Due {{ $due->format('M d, g:i A') }}</span>@endunless</span>
                                             </span>
                                         </button>
                                         <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
@@ -154,7 +154,9 @@
                                                    class="btn btn-sm {{ $forSigning ? 'btn-outline-primary' : 'btn-outline-secondary' }}"
                                                    title="{{ $forSigning ? 'Download, print and have it signed' : 'Download a copy of this week' }}"><i class="ti ti-download"></i> Download</a>
                                             @endif
-                                            @if ($canEditWeek)
+                                            @if ($canEditWeek && ! $beforeWeekOne && $doc)
+                                                <a href="{{ route('student.documents.log.week.edit', [$requirement, $weekNumber]) }}" class="btn btn-sm btn-outline-primary"><i class="ti ti-pencil"></i> Edit week</a>
+                                            @elseif ($canEditWeek && $beforeWeekOne)
                                                 <form method="POST" action="{{ route('student.documents.log.week.destroy', [$requirement, $weekStart]) }}" class="d-inline">
                                                     @csrf
                                                     @method('DELETE')
@@ -188,7 +190,6 @@
                                                         <th style="width:14%;">Date</th>
                                                         <th style="width:40%;">Tasks Accomplished</th>
                                                         <th>Knowledge, Skills, Values Learned</th>
-                                                        @if ($canEditWeek)<th style="width:1%;"></th>@endif
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -197,21 +198,6 @@
                                                             <td class="text-nowrap">{{ $entry->entry_date->format('M d, Y') }}</td>
                                                             <td style="white-space:pre-line;">{{ $entry->value('tasks_accomplished') }}</td>
                                                             <td style="white-space:pre-line;">{{ $entry->value('knowledge_skills_learned') }}</td>
-                                                            @if ($canEditWeek)
-                                                                <td class="text-end text-nowrap">
-                                                                    @unless ($beforeWeekOne)
-                                                                        <a href="{{ route('student.documents.log.entry.edit', [$requirement, $entry->id]) }}" class="btn btn-sm btn-outline-primary px-2" title="Edit this day" aria-label="Edit this day"><i class="ti ti-pencil"></i></a>
-                                                                    @endunless
-                                                                    <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}" class="d-inline">
-                                                                        @csrf
-                                                                        @method('DELETE')
-                                                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete this day" aria-label="Delete this day"
-                                                                                onclick="return confirm('Delete the entry for {{ $entry->entry_date->format('M d, Y') }}? This cannot be undone.')">
-                                                                            <i class="ti ti-trash"></i>
-                                                                        </button>
-                                                                    </form>
-                                                                </td>
-                                                            @endif
                                                         </tr>
                                                     @endforeach
                                                 </tbody>

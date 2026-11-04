@@ -130,7 +130,8 @@ class DownloadByWeekTest extends TestCase
 
         $html = $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk()
             ->assertDontSee('Week 0')->getContent();
-        $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">Sep 28 – Oct 04, 2026#u', $html);
-        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 09 – Oct 15, 2026#u', $html);
+        // Weeks show their due date (2 days after the week's 7th day), not a date range.
+        $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">1 day · <span class="[^"]*">Due Oct 06#u', $html);
+        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">1 day · <span class="[^"]*">Due Oct 17#u', $html);
     }
 }

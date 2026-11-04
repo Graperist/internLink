@@ -84,7 +84,7 @@ class Form19WeeklyReviewTest extends TestCase
 
         // The student sees months, then weeks.
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
-            ->assertSeeInOrder(['October 2026', 'Week 1', 'With your instructor', 'Week 2', 'Submit week', 'November 2026', 'Week 3', 'Nov 06 – Nov 12, 2026']);
+            ->assertSeeInOrder(['October 2026', 'Week 1', 'With your instructor', 'Week 2', 'Submit week', 'November 2026', 'Week 3', 'Due Nov 14']);
 
         // The instructor sees each week on its own, grouped by month, and approves Week 1 for printing.
         $week1 = Document::where('packet_number', 1)->firstOrFail();
@@ -335,29 +335,37 @@ class Form19WeeklyReviewTest extends TestCase
         $this->actingAs($this->studentUser)->get($download)->assertOk()->assertSee('pdfStatus', false);
     }
 
-    public function test_the_student_edits_a_day_until_the_week_is_sent(): void
+    public function test_the_student_edits_a_week_until_it_is_sent(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-05 09:00:00'));
         $this->addDay('2026-10-01')->assertSessionHasNoErrors();
-        $entry = \App\Models\DocumentEntry::firstOrFail();
-        $edit = route('student.documents.log.entry.edit', [$this->form19, $entry->id]);
+        $this->addDay('2026-10-02')->assertSessionHasNoErrors();
+        [$day1, $day2] = \App\Models\DocumentEntry::orderBy('entry_date')->get()->all();
+        $edit = route('student.documents.log.week.edit', [$this->form19, 1]);
 
-        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee($edit, false);
-        $this->actingAs($this->studentUser)->get($edit)->assertOk()->assertSee('Edit Training Day');
-        $this->actingAs($this->studentUser)->put(route('student.documents.log.entry.update', [$this->form19, $entry->id]), [
-            'tasks_accomplished' => 'Fixed the printer', 'knowledge_skills_learned' => 'Patience',
-        ])->assertRedirect(route('student.documents.log', $this->form19));
-        $this->assertSame('Fixed the printer', $entry->fresh()->value('tasks_accomplished'));
-        $this->assertSame('Patience', $entry->fresh()->value('knowledge_skills_learned'));
+        // Edit week instead of delete; no per-day delete.
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSee($edit, false)->assertSee('Edit week')->assertDontSee('Delete this day')->assertDontSee('Delete week');
+        $this->actingAs($this->studentUser)->get($edit)->assertOk()->assertSee('Edit Week 1')
+            ->assertSeeInOrder(['Thursday, Oct 01, 2026', 'Friday, Oct 02, 2026']);
+        $this->actingAs($this->studentUser)->put(route('student.documents.log.week.update', [$this->form19, 1]), ['days' => [
+            $day1->id => ['tasks_accomplished' => 'Fixed the printer', 'knowledge_skills_learned' => 'Patience'],
+            $day2->id => ['tasks_accomplished' => 'Filed reports', 'knowledge_skills_learned' => 'Order'],
+        ]])->assertRedirect(route('student.documents.log', $this->form19))->assertSessionHas('status', 'Week 1 updated.');
+        $this->assertSame('Fixed the printer', $day1->fresh()->value('tasks_accomplished'));
+        $this->assertSame('Order', $day2->fresh()->value('knowledge_skills_learned'));
+        $this->actingAs($this->studentUser)->put(route('student.documents.log.week.update', [$this->form19, 1]), ['days' => [
+            $day1->id => ['tasks_accomplished' => '', 'knowledge_skills_learned' => 'x'],
+        ]])->assertSessionHasErrors();
 
         // Sent to the instructor: no more edits (returned opens it again).
-        $entry->document->update(['status' => 'submitted']);
+        $day1->document->update(['status' => 'submitted']);
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertDontSee($edit, false);
         $this->actingAs($this->studentUser)->get($edit)->assertForbidden();
-        $this->actingAs($this->studentUser)->put(route('student.documents.log.entry.update', [$this->form19, $entry->id]), [
-            'tasks_accomplished' => 'x', 'knowledge_skills_learned' => 'y',
-        ])->assertForbidden();
-        $entry->document->update(['status' => 'returned']);
+        $this->actingAs($this->studentUser)->put(route('student.documents.log.week.update', [$this->form19, 1]), ['days' => [
+            $day1->id => ['tasks_accomplished' => 'x', 'knowledge_skills_learned' => 'y'],
+        ]])->assertForbidden();
+        $day1->document->update(['status' => 'returned']);
         $this->actingAs($this->studentUser)->get($edit)->assertOk();
     }
 
@@ -382,14 +390,14 @@ class Form19WeeklyReviewTest extends TestCase
         $this->assertEquals([1 => 1, 2 => 2],
             Document::where('document_requirement_id', $this->form19->id)->withCount('entries')->get()->pluck('entries_count', 'packet_number')->sortKeys()->all());
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
-            ->assertSeeInOrder(['Week 1', 'Oct 24 – Oct 30, 2026', 'Week 2', 'Nov 03 – Nov 09, 2026', 'Due Nov 11'])
-            ->assertSee('Submit on Nov 09');
+            ->assertSeeInOrder(['Week 1', 'Due Nov 01', 'Week 2', '2 days', 'Due Nov 11'])
+            ->assertSee('Submit on Nov 09')->assertDontSee('Nov 03 – Nov 09');
 
         // Deleting Week 2's first day moves its start to the next day logged.
         $nov03 = DocumentEntry::whereDate('entry_date', '2026-11-03')->firstOrFail();
         $this->actingAs($this->studentUser)->delete(route('student.documents.log.entry.destroy', [$this->form19, $nov03->id]))->assertRedirect();
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
-            ->assertSee('Nov 04 – Nov 10, 2026');
+            ->assertSee('Submit on Nov 10');
 
         // Once Week 2 is sent, a new week can't start before it.
         Document::where('packet_number', 2)->update(['status' => 'submitted']);
