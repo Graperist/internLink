@@ -12,6 +12,7 @@ class Internship extends Model
 
     protected $casts = [
         'week_one_date' => 'date',
+        'evaluation_deadline_at' => 'datetime',
     ];
 
     public function student()

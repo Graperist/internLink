@@ -41,6 +41,35 @@ class EvaluationController extends Controller
         // Like Document Review: the agencies on the left, one open on the right (?hte_id=).
         $hteId = (int) $request->query('hte_id') ?: null;
 
+        // The other partner agencies (interns still training there, or none placed
+        // yet this term): listed too, their evaluations open once an intern finishes.
+        [$academicYear, $semester] = \App\Support\Term::current();
+        $scope = fn ($q) => $instructor->limitToEvaluationScope($q)->when($programId, fn ($q) => $q->where('program_id', $programId));
+        $training = \App\Models\Deployment::whereIn('status', ['pending', 'active'])->whereHas('internship', $scope)
+            ->with(['hte', 'internship.student.user'])->get()->filter(fn ($d) => $d->hte)->groupBy('hte_id');
+        $listed = \App\Models\HteListing::where('academic_year', $academicYear)->where('semester', $semester)
+            ->where(fn ($q) => $scope($q))->with('hte')->get()->filter(fn ($l) => $l->hte)->pluck('hte', 'hte_id');
+        $waitingAgencies = collect($listed)->union($training->map(fn ($d) => $d->first()->hte))
+            ->reject(fn ($hte, $id) => $agencies->has($id))
+            ->map(fn ($hte, $id) => (object) [
+                'hte' => $hte,
+                'training' => $training->get($id, collect())->count(),
+                'students' => $training->get($id, collect())->map(fn ($d) => $d->internship?->student)->filter()->sortBy(fn ($st) => $st->user?->name)->values(),
+            ])
+            ->sortBy(fn ($r) => $r->hte->name)->values();
+        // ?student_id= opens that intern's agency and shows only them.
+        $studentId = (int) $request->query('student_id') ?: null;
+
+        // Agencies whose interns are still training: listed too, their evaluations open when an intern finishes.
+        $inTraining = \App\Models\Deployment::where('status', 'active')
+            ->whereHas('internship', fn ($q) => $instructor->limitToEvaluationScope($q)->when($programId, fn ($q) => $q->where('program_id', $programId)))
+            ->whereNotIn('hte_id', $agencies->keys())
+            ->with(['hte', 'internship.student.user'])
+            ->get()->filter(fn ($d) => $d->hte)
+            ->groupBy('hte_id')
+            ->map(fn ($ds) => (object) ['hte' => $ds->first()->hte, 'deployments' => $ds->sortBy(fn ($d) => $d->internship->student->user->name)->values()])
+            ->sortBy(fn ($row) => $row->hte->name)->values();
+
         $requirements = DocumentRequirement::where('campus_id', $instructor->campus_id)
             ->where('is_active', true)
             ->whereIn('code', array_keys(EvaluationRouting::FORMS))
@@ -77,7 +106,7 @@ class EvaluationController extends Controller
             ]),
         ])->sortBy(fn ($row) => $row->student->user->name)->values();
 
-        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor', 'hteId'));
+        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor', 'hteId', 'waitingAgencies', 'studentId', 'inTraining'));
     }
 
     /** Read or (?download=1) download a received evaluation, or your own Form 23a. */
@@ -135,6 +164,83 @@ class EvaluationController extends Controller
         $text = $days === 0 ? 'until the day the internship ends' : "for {$days} ".\Illuminate\Support\Str::plural('day', $days).' after the internship ends';
 
         return back()->with('status', "{$instructor->program->code}: students and HTEs can edit their evaluations {$text}, unless you lock one sooner.");
+    }
+
+    /**
+     * The editing deadline for one partner agency's evaluations (Forms 13, 21,
+     * 23b) in the program you handle - or cleared, back to the program's days.
+     */
+    public function agencyDeadline(\Illuminate\Http\Request $request, \App\Models\Hte $hte): RedirectResponse
+    {
+        $instructor = $this->subjectInstructor();
+        abort_unless($instructor->program_id && (int) $hte->campus_id === (int) $instructor->campus_id, 403);
+        abort_unless(\App\Models\Deployment::where('hte_id', $hte->id)->where('status', 'completed')
+            ->whereHas('internship', fn ($q) => $instructor->limitToOwnProgram($q))->exists(), 403,
+            'Only the subject instructor of a program whose students finished here sets this deadline.');
+        $due = $this->validatedDeadline($request);
+
+        if ($due === null) {
+            \App\Models\EvaluationDeadline::where('hte_id', $hte->id)->where('program_id', $instructor->program_id)->delete();
+            $message = "{$hte->name} is back to the program's editing deadline.";
+        } else {
+            \App\Models\EvaluationDeadline::updateOrCreate(
+                ['hte_id' => $hte->id, 'program_id' => $instructor->program_id],
+                ['due_at' => $due, 'set_by_user_id' => auth()->id()]
+            );
+            $message = "{$hte->name} can edit its evaluations until ".$due->format('M d, Y g:i A').'.';
+            // The agency is told.
+            \App\Models\HteRepresentative::where('hte_id', $hte->id)->whereNotNull('user_id')->pluck('user_id')
+                ->each(fn ($userId) => \App\Models\Notification::create([
+                    'user_id' => $userId, 'type' => 'evaluation_deadline',
+                    'title' => 'Evaluation deadline: '.$due->format('M d, g:i A'),
+                    'message' => 'You can submit or edit your evaluations until '.$due->format('l, M d, Y \\a\\t g:i A').'.',
+                    'url' => route('hte.evaluations', [], false),
+                ]));
+        }
+        \App\Support\AuditLogger::record('evaluation.deadline', $message, auth()->user(), $request);
+
+        return back()->with('status', $message);
+    }
+
+    /** The editing deadline for one intern's own evaluations (Forms 23c, 20) - or cleared. */
+    public function studentDeadline(\Illuminate\Http\Request $request, \App\Models\Internship $internship): RedirectResponse
+    {
+        $instructor = $this->subjectInstructor();
+        abort_unless($instructor->ownsProgram($internship), 403);
+        $due = $this->validatedDeadline($request);
+        $name = $internship->student?->user?->name ?? 'The intern';
+
+        $internship->forceFill(['evaluation_deadline_at' => $due])->save();
+        if ($due === null) {
+            $message = "{$name} is back to the program's editing deadline.";
+        } else {
+            $message = "{$name} can edit their evaluations until ".$due->format('M d, Y g:i A').'.';
+            if ($userId = $internship->student?->user_id) {
+                \App\Models\Notification::create([
+                    'user_id' => $userId, 'type' => 'evaluation_deadline',
+                    'title' => 'Evaluation deadline: '.$due->format('M d, g:i A'),
+                    'message' => 'You can submit or edit your evaluations of your agency until '.$due->format('l, M d, Y \\a\\t g:i A').'.',
+                    'url' => route('student.hte', [], false),
+                ]);
+            }
+        }
+        \App\Support\AuditLogger::record('evaluation.deadline', $message, auth()->user(), $request);
+
+        return back()->with('status', $message);
+    }
+
+    /** The picked date and time, or null for "Use the program's deadline". */
+    private function validatedDeadline(\Illuminate\Http\Request $request): ?\Carbon\Carbon
+    {
+        if ($request->boolean('clear')) {
+            return null;
+        }
+        $value = $request->validate(
+            ['due_at' => ['required', 'date_format:Y-m-d\\TH:i']],
+            ['due_at.*' => 'Pick the deadline date and time.']
+        )['due_at'];
+
+        return \Carbon\Carbon::createFromFormat('Y-m-d\\TH:i', $value);
     }
 
     private function authorizeView(Document $document, $instructor): void

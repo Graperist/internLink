@@ -348,6 +348,29 @@ class EvaluationRoutingTest extends TestCase
             ->assertSee('Your evaluation of the agency');
     }
 
+    public function test_agencies_with_interns_still_training_are_listed_and_a_student_can_be_picked(): void
+    {
+        // A third agency whose intern is still training.
+        $training = Hte::forceCreate(['campus_id' => $this->campus->id, 'name' => 'Proxy Hotel', 'address' => 'Lucap']);
+        $user = $this->makeUser('student', 'S-3');
+        $s3 = Student::forceCreate(['user_id' => $user->id, 'campus_id' => $this->campus->id, 'program_id' => $this->program->id]);
+        $i3 = Internship::forceCreate(['student_id' => $s3->id, 'campus_id' => $this->campus->id, 'program_id' => $this->program->id, 'status' => 'deployed', 'required_hours' => 486]);
+        Deployment::forceCreate(['internship_id' => $i3->id, 'hte_id' => $training->id, 'status' => 'active', 'start_date' => '2026-10-01']);
+
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations'))->assertOk()
+            ->assertSeeInOrder(['Interns still training', 'Proxy Hotel', '1 intern still training']);
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['hte_id' => $training->id]))->assertOk()
+            ->assertSee('No intern has finished here yet')->assertSee($user->name)
+            ->assertDontSee(route('instructor.agency-evaluations.create', $training));
+
+        // Filter by student: their agency opens with only them.
+        $otherId = $this->otherStudentUser->student->id;
+        $this->actingAs($this->instructorUser)->get(route('instructor.evaluations', ['student_id' => $otherId]))->assertOk()
+            ->assertSee('Showing <strong>'.$this->otherStudentUser->name.'</strong> only', false)
+            ->assertSee('id="student-'.$otherId.'"', false)
+            ->assertDontSee('id="student-'.$this->studentUser->student->id.'"', false);
+    }
+
     public function test_form_23a_stays_with_the_instructor(): void
     {
         $document = $this->instructorSubmits();
@@ -539,6 +562,44 @@ class EvaluationRoutingTest extends TestCase
         $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
         $this->actingAs($this->hteUser)->get(route('hte.students'))->assertOk()
             ->assertSee('Submitted')->assertDontSee('Not Yet Submitted')->assertDontSee('of 2 submitted');
+    }
+
+    public function test_the_instructor_sets_a_deadline_for_one_agency_and_for_one_intern(): void
+    {
+        $this->deployment->update(['end_date' => now()->toDateString()]);
+        $form21 = $this->hteSubmits('TRAINING_SUPERVISOR_FEEDBACK');
+        $form20 = $this->studentSubmits('STUDENT_FEEDBACK_FORM');
+        $internship = $this->deployment->internship;
+        $page = route('instructor.evaluations', ['hte_id' => $this->hte->id]);
+
+        $this->actingAs($this->instructorUser)->get($page)->assertOk()
+            ->assertSee(route('instructor.evaluations.agency-deadline', $this->hte), false)
+            ->assertSee(route('instructor.evaluations.student-deadline', $internship), false)
+            ->assertSee('the program default: 7 days after the internship ends');
+
+        // The agency: 3 days. The intern: 20 days.
+        $agencyDue = now()->addDays(3)->setTime(17, 0);
+        $studentDue = now()->addDays(20)->setTime(17, 0);
+        $this->actingAs($this->instructorUser)->put(route('instructor.evaluations.agency-deadline', $this->hte), ['due_at' => $agencyDue->format('Y-m-d\\TH:i')])->assertSessionHasNoErrors();
+        $this->actingAs($this->instructorUser)->put(route('instructor.evaluations.student-deadline', $internship), ['due_at' => $studentDue->format('Y-m-d\\TH:i')])->assertSessionHasNoErrors();
+        $this->assertSame($agencyDue->format('Y-m-d H:i'), \App\Support\EvaluationEditWindow::editableUntil($form21->fresh())->format('Y-m-d H:i'));
+        $this->assertSame($studentDue->format('Y-m-d H:i'), \App\Support\EvaluationEditWindow::editableUntil($form20->fresh())->format('Y-m-d H:i'));
+        $this->actingAs($this->instructorUser)->get($page)->assertOk()
+            ->assertSee('until '.$agencyDue->format('M d, Y g:i A'))->assertSee('until '.$studentDue->format('M d, Y g:i A'));
+        // Both are told.
+        $this->assertTrue(Notification::where('user_id', $this->hteUser->id)->where('type', 'evaluation_deadline')->exists());
+        $this->assertTrue(Notification::where('user_id', $this->studentUser->id)->where('type', 'evaluation_deadline')->exists());
+
+        // After the agency's deadline the HTE can't edit; the intern still can.
+        $this->travel(10)->days();
+        $this->assertFalse(\App\Support\EvaluationEditWindow::canEdit($form21->fresh()));
+        $this->assertTrue(\App\Support\EvaluationEditWindow::canEdit($form20->fresh()));
+
+        // Back to the program default; another program's instructor can't set them.
+        $this->actingAs($this->instructorUser)->put(route('instructor.evaluations.student-deadline', $internship), ['clear' => 1])->assertSessionHasNoErrors();
+        $this->assertNull($internship->fresh()->evaluation_deadline_at);
+        $this->actingAs($this->otherProgramInstructorUser)->put(route('instructor.evaluations.student-deadline', $internship), ['due_at' => $studentDue->format('Y-m-d\\TH:i')])->assertForbidden();
+        $this->actingAs($this->otherProgramInstructorUser)->put(route('instructor.evaluations.agency-deadline', $this->hte), ['due_at' => $studentDue->format('Y-m-d\\TH:i')])->assertForbidden();
     }
 
     public function test_editing_closes_at_the_deadline_or_when_the_instructor_locks_it(): void

@@ -163,6 +163,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/evaluations', [EvaluationController::class, 'index'])->name('evaluations');
         Route::get('/evaluations/{document}', [EvaluationController::class, 'show'])->whereNumber('document')->name('evaluations.show');
         Route::put('/evaluations/edit-days', [EvaluationController::class, 'editDays'])->name('evaluations.edit-days');
+        Route::put('/evaluations/agencies/{hte}/deadline', [EvaluationController::class, 'agencyDeadline'])->name('evaluations.agency-deadline');
+        Route::put('/evaluations/interns/{internship}/deadline', [EvaluationController::class, 'studentDeadline'])->name('evaluations.student-deadline');
         Route::post('/evaluations/{document}/lock', [EvaluationController::class, 'lock'])->whereNumber('document')->name('evaluations.lock');
         Route::post('/evaluations/{document}/unlock', [EvaluationController::class, 'unlock'])->whereNumber('document')->name('evaluations.unlock');
 

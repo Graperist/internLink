@@ -87,8 +87,8 @@
         <div class="d-flex align-items-center flex-wrap gap-3">
             <span class="ev-icon gold"><i class="ti ti-clock-edit"></i></span>
             <div class="flex-grow-1" style="min-width: 260px;">
-                <div class="fw-bold small">Editing deadline &middot; {{ $instructor->program->code }}@if ($isCoordinator) <span class="badge rounded-pill text-bg-primary ms-1">Your program</span>@endif</div>
-                <div class="text-secondary" style="font-size:.78rem;">Students and HTEs can change a submitted evaluation until this many days after the internship ends. Lock one sooner with <i class="ti ti-lock-open"></i>.</div>
+                <div class="fw-bold small">Editing deadline &middot; {{ $instructor->program->code }} <span class="fw-normal text-secondary">(program default)</span>@if ($isCoordinator) <span class="badge rounded-pill text-bg-primary ms-1">Your program</span>@endif</div>
+                <div class="text-secondary" style="font-size:.78rem;">Students and HTEs can change a submitted evaluation until this many days after the internship ends. Set a different deadline for one agency or one intern below, or lock one sooner with <i class="ti ti-lock-open"></i>.</div>
             </div>
             <div class="input-group input-group-sm" style="width: 120px;">
                 <input type="number" name="evaluation_edit_days" id="evalEditDays" class="form-control" min="0" max="90" required aria-label="Days to edit after the internship ends"
@@ -107,14 +107,23 @@
         'got' => ($row->self ? 1 : 0) + $agencyInterns($row)->sum(fn ($r) => $r->forms->filter()->count()),
         'of' => (isset($requirements['PARTNER_AGENCY_EVAL_SELF']) ? 1 : 0) + $agencyInterns($row)->count() * collect($internCodes)->filter(fn ($c) => isset($requirements[$c]))->count(),
     ];
+    // Filter by student (?student_id=): opens their agency with only them.
+    $studentId = (int) request('student_id') ?: null;
+    $pickedIntern = $studentId ? $internRows->first(fn ($r) => (int) $r->student->id === $studentId) : null;
+    if ($pickedIntern) { $hteId = $pickedIntern->deployment->hte_id; }
     // Which agency is open: ?hte_id=, else the first one waiting on you, else the first.
-    $selected = $agencyRows->firstWhere(fn ($r) => (int) $r->hte->id === (int) $hteId)
-        ?? $agencyRows->first(fn ($r) => $r->canEvaluate && ! $r->mine)
-        ?? $agencyRows->first();
-    $linkFor = fn ($row) => route('instructor.evaluations', array_filter(['hte_id' => $row->hte->id, 'program_id' => $isCoordinator ? ($programId ?? 'all') : null]));
+    $selected = $agencyRows->first(fn ($r) => (int) $r->hte->id === (int) $hteId);
+    $selectedWaiting = $selected ? null : $waitingAgencies->first(fn ($r) => (int) $r->hte->id === (int) $hteId);
+    if (! $selected && ! $selectedWaiting) {
+        $selected = $agencyRows->first(fn ($r) => $r->canEvaluate && ! $r->mine) ?? $agencyRows->first();
+        $selectedWaiting = $selected ? null : $waitingAgencies->first();
+    }
+    $keep = fn (array $extra) => route('instructor.evaluations', array_filter($extra + ['program_id' => $isCoordinator ? ($programId ?? 'all') : null]));
+    $linkFor = fn ($row) => $keep(['hte_id' => $row->hte->id]);
+    $deadlineText = fn ($set) => $set ? 'until '.$set->format('M d, Y g:i A') : ($instructor->program ? (($d = $instructor->program->evaluation_edit_days ?? \App\Support\EvaluationEditWindow::DEFAULT_DAYS) === 0 ? '— the program default: until the internship ends' : "— the program default: {$d} ".\Illuminate\Support\Str::plural('day', $d).' after the internship ends') : '— the program default');
 @endphp
 
-@if ($agencyRows->isEmpty())
+@if ($agencyRows->isEmpty() && $waitingAgencies->isEmpty())
     <div class="il-card text-center text-secondary py-5">
         <i class="ti ti-building fs-3 d-block mb-1"></i>
         No evaluations yet &mdash; they open once one of your students completes their internship.
@@ -128,11 +137,16 @@
                 <span class="small fw-bold text-uppercase text-secondary" style="letter-spacing:.03em;">Partner agencies</span>
                 <span class="small text-secondary">{{ $evaluated }} / {{ $toEvaluate }} evaluated</span>
             </div>
-            @if ($agencyRows->count() > 5)
-                <div class="px-3 pb-2">
-                    <input type="search" class="form-control form-control-sm" id="evalAgencySearch" placeholder="Search partner agency…" autocomplete="off">
-                </div>
-            @endif
+            <form method="GET" action="{{ route('instructor.evaluations') }}" class="px-3 pb-2 d-flex flex-column gap-2">
+                @if ($isCoordinator)<input type="hidden" name="program_id" value="{{ $programId ?? 'all' }}">@endif
+                <select name="student_id" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Filter by student">
+                    <option value="">All students</option>
+                    @foreach ($internRows->sortBy(fn ($r) => $r->student->user->name) as $r)
+                        <option value="{{ $r->student->id }}" @selected($studentId === $r->student->id)>{{ $r->student->user->name }} ({{ $r->student->user->id_number }})</option>
+                    @endforeach
+                </select>
+                <input type="search" class="form-control form-control-sm" id="evalAgencySearch" placeholder="Search agency or student…" autocomplete="off">
+            </form>
             <div class="list-group list-group-flush il-form-list" id="evalAgencyList">
                 @foreach ($agencyRows as $row)
                     @php
@@ -143,25 +157,67 @@
                             $f['of'] > 0 && $f['got'] >= $f['of'] => ['ti-circle-check-filled', 'text-success', 'All received'],
                             default => ['ti-clock', 'text-secondary', $f['got'].' of '.$f['of'].' forms received'],
                         };
+                        $searchText = \Illuminate\Support\Str::lower($row->hte->name.' '.$agencyInterns($row)->map(fn ($r) => $r->student->user->name.' '.$r->student->user->id_number)->join(' '));
                     @endphp
-                    <a href="{{ $linkFor($row) }}" data-search="{{ \Illuminate\Support\Str::lower($row->hte->name) }}"
+                    <a href="{{ $linkFor($row) }}" data-search="{{ $searchText }}"
                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}" @if ($isOpen) aria-current="true" @endif>
                         <i class="ti {{ $icon }} {{ $color }} fs-5 flex-shrink-0"></i>
                         <span class="flex-grow-1" style="min-width:0;">
                             <span class="d-block small fw-semibold" style="overflow-wrap:anywhere;">{{ $row->hte->name }}</span>
-                            <span class="d-block text-secondary" style="font-size:.72rem;">{{ $agencyInterns($row)->count() }} {{ \Illuminate\Support\Str::plural('intern', $agencyInterns($row)->count()) }} &middot; {{ $note }}</span>
+                            <span class="d-block text-secondary" style="font-size:.72rem;">{{ $agencyInterns($row)->count() }} {{ \Illuminate\Support\Str::plural('intern', $agencyInterns($row)->count()) }} finished &middot; {{ $note }}</span>
                         </span>
                         <span class="small fw-semibold flex-shrink-0 {{ $isOpen ? 'text-secondary' : 'text-primary' }}">{{ $isOpen ? 'Open' : 'View' }}</span>
                     </a>
                 @endforeach
-                <div class="list-group-item small text-secondary text-center d-none" id="evalAgencyNone">No partner agency matches.</div>
+                @if ($waitingAgencies->isNotEmpty())
+                    <div class="list-group-item bg-light small fw-semibold text-secondary py-1">Interns still training &middot; not evaluated yet</div>
+                    @foreach ($waitingAgencies as $w)
+                        @php $isOpen = $selectedWaiting && $w->hte->id === $selectedWaiting->hte->id; @endphp
+                        <a href="{{ $keep(['hte_id' => $w->hte->id]) }}" data-search="{{ \Illuminate\Support\Str::lower($w->hte->name) }}"
+                           class="list-group-item list-group-item-action d-flex align-items-center gap-2 {{ $isOpen ? 'active-form' : '' }}">
+                            <i class="ti ti-hourglass text-secondary fs-5 flex-shrink-0"></i>
+                            <span class="flex-grow-1" style="min-width:0;">
+                                <span class="d-block small fw-semibold text-secondary" style="overflow-wrap:anywhere;">{{ $w->hte->name }}</span>
+                                <span class="d-block text-secondary" style="font-size:.72rem;">{{ $w->training ? $w->training.' '.\Illuminate\Support\Str::plural('intern', $w->training).' still training' : 'No intern placed yet' }}</span>
+                            </span>
+                        </a>
+                    @endforeach
+                @endif
+                <div class="list-group-item small text-secondary text-center d-none" id="evalAgencyNone">No partner agency or student matches.</div>
             </div>
         </div>
     </div>
 
     {{-- Right: only the open agency --}}
     <div class="col-lg-8">
-        @php $row = $selected; $interns = $agencyInterns($row); @endphp
+    @if ($selectedWaiting)
+        <div class="il-card">
+            <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">Partner agency</p>
+            <h2 class="h5 fw-bold mb-1">{{ $selectedWaiting->hte->name }}</h2>
+            <div class="text-secondary small mb-3"><i class="ti ti-map-pin"></i> {{ $selectedWaiting->hte->address ?: '—' }}</div>
+            <div class="text-center text-secondary py-4">
+                <i class="ti ti-hourglass fs-3 d-block mb-1"></i>
+                No intern has finished here yet{{ $selectedWaiting->training ? ' — '.$selectedWaiting->training.' '.\Illuminate\Support\Str::plural('intern', $selectedWaiting->training).' still training' : '' }}.
+                The evaluations for this agency open once an intern completes their internship.
+            </div>
+            @if ($selectedWaiting->students->isNotEmpty())
+                <ul class="list-group list-group-flush border-top">
+                    @foreach ($selectedWaiting->students as $st)
+                        <li class="list-group-item d-flex justify-content-between align-items-center small">
+                            <span><span class="fw-semibold">{{ $st->user->name }}</span> <span class="text-secondary">{{ $st->user->id_number }}</span></span>
+                            <span class="text-secondary">still training</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        </div>
+    @else
+        @php
+            $row = $selected;
+            $interns = $agencyInterns($row);
+            if ($pickedIntern) { $interns = $interns->filter(fn ($r) => (int) $r->student->id === $studentId)->values(); }
+            $agencySet = \App\Support\EvaluationEditWindow::agencyDeadline($row->hte->id, $instructor->program_id);
+        @endphp
         <div class="il-card mb-3">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
                 <div>
@@ -169,7 +225,7 @@
                     <h2 class="h5 fw-bold mb-1">{{ $row->hte->name }}</h2>
                     <div class="text-secondary small"><i class="ti ti-map-pin"></i> {{ $row->hte->address ?: '—' }}</div>
                 </div>
-                <span class="ev-pill wait"><i class="ti ti-users"></i> {{ $interns->count() }} {{ \Illuminate\Support\Str::plural('intern', $interns->count()) }} finished here</span>
+                <span class="ev-pill wait"><i class="ti ti-users"></i> {{ $agencyInterns($row)->count() }} {{ \Illuminate\Support\Str::plural('intern', $agencyInterns($row)->count()) }} finished here</span>
             </div>
         </div>
 
@@ -214,13 +270,28 @@
                     @endif
                 </div>
             </div>
+            {{-- The agency's own deadline (Forms 13, 21, 23b) --}}
+            @include('instructor.evaluations._deadline', [
+                'who' => 'The agency can send or edit its evaluations (Forms 13, 21, 23b)',
+                'current' => $deadlineText($agencySet), 'set' => $agencySet,
+                'action' => $row->canEvaluate ? route('instructor.evaluations.agency-deadline', $row->hte) : null,
+                'field' => 'agency-'.$row->hte->id,
+            ])
         </div>
 
         <div class="il-card">
-            <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">For each intern</p>
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <p class="small fw-bold text-uppercase text-secondary mb-1" style="letter-spacing:.03em;">For each intern</p>
+                @if ($pickedIntern)
+                    <span class="small">Showing <strong>{{ $pickedIntern->student->user->name }}</strong> only &middot; <a href="{{ $keep(['hte_id' => $row->hte->id]) }}" class="text-decoration-none">show all interns here</a></span>
+                @endif
+            </div>
             <p class="text-secondary small mb-3">The agency rates each intern (Forms 13, 21) and each intern rates the agency (Forms 23c, 20). Neither side sees the other's.</p>
             @forelse ($interns as $irow)
-                @php $got = $irow->forms->filter()->count(); @endphp
+                @php
+                    $got = $irow->forms->filter()->count();
+                    $studentSet = $irow->deployment->internship->evaluation_deadline_at ? \Carbon\CarbonImmutable::parse($irow->deployment->internship->evaluation_deadline_at) : null;
+                @endphp
                 <div id="student-{{ $irow->student->id }}" class="eval-row border rounded-3 mb-2 overflow-hidden">
                     <div class="d-flex align-items-center gap-2 px-3 py-2 bg-light">
                         <span class="ev-avatar">{{ $initials($irow->student->user->name) }}</span>
@@ -256,11 +327,20 @@
                             </div>
                         @endforeach
                     </div>
+                    <div class="px-3 pb-2">
+                        @include('instructor.evaluations._deadline', [
+                            'who' => $irow->student->user->name.' can send or edit their evaluations (Forms 23c, 20)',
+                            'current' => $deadlineText($studentSet), 'set' => $studentSet,
+                            'action' => $instructor->ownsProgram($irow->deployment->internship) ? route('instructor.evaluations.student-deadline', $irow->deployment->internship) : null,
+                            'field' => 'student-'.$irow->student->id,
+                        ])
+                    </div>
                 </div>
             @empty
                 <p class="text-secondary small text-center my-3">No intern has finished here yet.</p>
             @endforelse
         </div>
+    @endif
     </div>
 </div>
 <style>

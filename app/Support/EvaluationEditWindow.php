@@ -27,11 +27,19 @@ class EvaluationEditWindow
         }
         $internship = $document->internship;
         $days = (int) ($internship?->program?->evaluation_edit_days ?? self::DEFAULT_DAYS);
-        $ended = $internship?->deployment?->end_date ?? $document->created_at;
-        if (! $ended) {
-            return null;
+
+        // A deadline the instructor set: for the student (the forms the intern
+        // fills) or for the partner agency (the forms the HTE fills).
+        $set = self::setDeadline($document);
+        if ($set) {
+            $until = $set;
+        } else {
+            $ended = $internship?->deployment?->end_date ?? $document->created_at;
+            if (! $ended) {
+                return null;
+            }
+            $until = CarbonImmutable::parse($ended)->addDays($days)->endOfDay();
         }
-        $until = CarbonImmutable::parse($ended)->addDays($days)->endOfDay();
 
         // Unlocked again by the instructor: a fresh window from the unlock.
         if ($document->unlocked_at ?? null) {
@@ -39,6 +47,48 @@ class EvaluationEditWindow
         }
 
         return $until;
+    }
+
+    /** Who fills this evaluation: 'student' or 'hte' (null when neither). */
+    public static function filledBy(?Document $document): ?string
+    {
+        $code = $document?->requirement?->code;
+
+        return match (true) {
+            in_array($code, EvaluationRouting::STUDENT_CODES, true) => 'student',
+            in_array($code, array_merge(EvaluationRouting::HTE_INTERN_CODES, ['PARTNER_AGENCY_EVAL_SELF']), true) => 'hte',
+            default => null,
+        };
+    }
+
+    /** The deadline the instructor set for this evaluation's sender, or null (then the program's days apply). */
+    public static function setDeadline(Document $document): ?CarbonImmutable
+    {
+        $internship = $document->internship;
+        if (! $internship) {
+            return null;
+        }
+        if (self::filledBy($document) === 'student') {
+            return $internship->evaluation_deadline_at ? CarbonImmutable::parse($internship->evaluation_deadline_at) : null;
+        }
+        if (self::filledBy($document) === 'hte') {
+            $hteId = $document->hte_id ?: $internship->deployment?->hte_id;
+
+            return self::agencyDeadline($hteId, $internship->program_id);
+        }
+
+        return null;
+    }
+
+    /** The deadline set for a partner agency's evaluations in a program, or null. */
+    public static function agencyDeadline(?int $hteId, ?int $programId): ?CarbonImmutable
+    {
+        if (! $hteId || ! $programId || ! \Illuminate\Support\Facades\Schema::hasTable('evaluation_deadlines')) {
+            return null;
+        }
+        $due = \App\Models\EvaluationDeadline::where('hte_id', $hteId)->where('program_id', $programId)->value('due_at');
+
+        return $due ? CarbonImmutable::parse($due) : null;
     }
 
     public static function isLockedByInstructor(?Document $document): bool
