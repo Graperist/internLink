@@ -437,7 +437,6 @@
                                                 @if ($packetStatus !== 'draft')
                                                 <div class="d-flex gap-2 flex-wrap mt-1 align-items-center">
                                                     <a href="{{ route('instructor.documents.show', $packet) }}" class="btn btn-sm btn-outline-primary py-0">Open</a>
-                                                    <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'preview' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">View</a>
                                                     <a href="{{ route('instructor.documents.printable', ['document' => $packet, 'download' => 1]) }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Download"><i class="ti ti-download"></i></a>
                                                     @if (in_array($packetStatus, ['submitted', 'for_review']))
                                                         @if ($canAct)@include('partials.approve-button', ['step' => 'print', 'document' => $packet, 'name' => $weekName, 'class' => 'btn btn-sm btn-primary py-0'])@endif
