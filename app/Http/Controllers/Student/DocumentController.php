@@ -926,6 +926,50 @@ class DocumentController extends Controller
     }
 
     /**
+     * A Form 19 training day of the student's own, while its week can still
+     * be changed (not sent yet, or returned for correction).
+     */
+    private function editableWeeklyEntry(DocumentRequirement $requirement, int $entry): DocumentEntry
+    {
+        abort_unless($requirement->code === 'WEEKLY_REPORT', 404);
+        $internship = auth()->user()->student?->currentInternship;
+        abort_unless($internship, 422);
+        $logEntry = DocumentEntry::whereHas('document', fn ($q) => $q
+            ->where('internship_id', $internship->id)
+            ->where('document_requirement_id', $requirement->id))
+            ->with(['document', 'values'])->findOrFail($entry);
+        abort_unless(in_array($logEntry->document->status, ['draft', 'returned'], true), 403,
+            'This week has already been sent to your instructor and can no longer be edited here.');
+
+        return $logEntry;
+    }
+
+    public function editEntry(DocumentRequirement $requirement, int $entry): View
+    {
+        $entry = $this->editableWeeklyEntry($requirement, $entry);
+
+        return view('student.documents.entry-edit', compact('requirement', 'entry'));
+    }
+
+    public function updateEntry(Request $request, DocumentRequirement $requirement, int $entry): RedirectResponse
+    {
+        $logEntry = $this->editableWeeklyEntry($requirement, $entry);
+        $validated = $request->validate([
+            'tasks_accomplished' => ['required', 'string', 'max:4000'],
+            'knowledge_skills_learned' => ['required', 'string', 'max:4000'],
+        ]);
+
+        DB::transaction(function () use ($logEntry, $validated) {
+            foreach (['tasks_accomplished', 'knowledge_skills_learned'] as $key) {
+                $logEntry->values()->updateOrCreate(['field_key' => $key], ['value' => $validated[$key]]);
+            }
+        });
+
+        return redirect()->route('student.documents.log', $requirement)
+            ->with('status', 'Training day for '.$logEntry->entry_date->format('M d, Y').' updated.');
+    }
+
+    /**
      * Delete one daily entry from a log (e.g. a training day in the Form 19
      * weekly report) - for when the student made a mistake. Allowed under the
      * same rule as adding an entry: not once the form has been printed for
@@ -1403,10 +1447,8 @@ class DocumentController extends Controller
         $student = auth()->user()->student;
         abort_unless($student && $document->internship->student_id === $student->id, 403);
         abort_unless($document->requirement->workflow_mode === 'print_sign', 404);
-        // A Form 19 week can be downloaded any time (a copy of what's written so far);
-        // other forms once the instructor approved them for printing.
-        abort_unless($document->requirement->code === 'WEEKLY_REPORT'
-            || in_array($document->status, ['printed', 'completed', 'approved'], true), 403,
+        // Every form (each Form 19 week too) once the instructor approved it for printing.
+        abort_unless(in_array($document->status, ['printed', 'completed', 'approved'], true), 403,
             'Your instructor has to approve this form for printing first.');
 
         $document->load('fieldValues', 'entries.values', 'requirement.fieldDefinitions', 'internship.student.user');

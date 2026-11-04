@@ -11,9 +11,8 @@
         $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $entries->pluck('entry_date'));
         $weeks = $anchor ? \App\Support\TrainingWeeks::group($entries, $anchor) : collect();
         $weekDocs = $packets->keyBy('packet_number');
-        // Days fold into weeks, weeks into months - a week is filed under the
-        // month it ends in (Oct 31 - Nov 06 is under November).
-        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->addDays(6)->format('Y-m'), true);
+        // Days fold into weeks, weeks into months.
+        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->format('Y-m'), true);
         $status = fn ($doc) => match ($doc?->status) {
             'submitted', 'for_review' => ['With your instructor', 'text-bg-warning'],
             'printed' => ['Print, sign & upload', 'text-bg-info'],
@@ -140,8 +139,8 @@
                                                     <button type="submit" class="btn btn-sm btn-primary"><i class="ti ti-send"></i> Submit week</button>
                                                 </form>
                                             @endif
-                                            {{-- Every week can be downloaded (Form 19 for that week); printing for signatures waits for the instructor. --}}
-                                            @if ($doc && ! $beforeWeekOne && $weekEntries->isNotEmpty())
+                                            {{-- A week can be downloaded once the instructor approved it for printing. --}}
+                                            @if ($doc && ! $beforeWeekOne && $weekEntries->isNotEmpty() && in_array($doc->status, ['printed', 'completed', 'approved'], true))
                                                 @php $forSigning = in_array($doc->status, ['printed', 'completed'], true) && ! filled($doc->file_path); @endphp
                                                 <a href="{{ route('student.documents.printable', ['document' => $doc, 'download' => 1]) }}" target="_blank"
                                                    class="btn btn-sm {{ $forSigning ? 'btn-outline-primary' : 'btn-outline-secondary' }}"
@@ -191,8 +190,11 @@
                                                             <td style="white-space:pre-line;">{{ $entry->value('tasks_accomplished') }}</td>
                                                             <td style="white-space:pre-line;">{{ $entry->value('knowledge_skills_learned') }}</td>
                                                             @if ($canEditWeek)
-                                                                <td class="text-end">
-                                                                    <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}">
+                                                                <td class="text-end text-nowrap">
+                                                                    @unless ($beforeWeekOne)
+                                                                        <a href="{{ route('student.documents.log.entry.edit', [$requirement, $entry->id]) }}" class="btn btn-sm btn-outline-primary px-2" title="Edit this day" aria-label="Edit this day"><i class="ti ti-pencil"></i></a>
+                                                                    @endunless
+                                                                    <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}" class="d-inline">
                                                                         @csrf
                                                                         @method('DELETE')
                                                                         <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete this day" aria-label="Delete this day"

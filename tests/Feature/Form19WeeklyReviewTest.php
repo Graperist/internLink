@@ -316,16 +316,47 @@ class Form19WeeklyReviewTest extends TestCase
             ->assertSee('Week 1')->assertSee('Due Oct 08, 5:00 PM');
     }
 
-    public function test_the_student_downloads_any_week(): void
+    public function test_a_week_downloads_only_once_approved_for_printing(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-10-05 09:00:00'));
         $this->addDay('2026-10-01')->assertSessionHasNoErrors();
         $week = \App\Models\Document::where('document_requirement_id', $this->form19->id)->where('packet_number', 1)->firstOrFail();
-        $this->assertSame('draft', $week->status);
+        $download = route('student.documents.printable', ['document' => $week, 'download' => 1]);
 
-        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
-            ->assertSee(route('student.documents.printable', ['document' => $week, 'download' => 1]), false)->assertSee('Download a copy of this week');
-        $this->actingAs($this->studentUser)->get(route('student.documents.printable', ['document' => $week, 'download' => 1]))->assertOk()
-            ->assertSee('pdfStatus', false);
+        foreach (['draft', 'submitted'] as $status) {
+            $week->update(['status' => $status]);
+            $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertDontSee($download, false);
+            $this->actingAs($this->studentUser)->get($download)->assertForbidden();
+        }
+
+        $week->update(['status' => 'printed']);
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee($download, false);
+        $this->actingAs($this->studentUser)->get($download)->assertOk()->assertSee('pdfStatus', false);
+    }
+
+    public function test_the_student_edits_a_day_until_the_week_is_sent(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 09:00:00'));
+        $this->addDay('2026-10-01')->assertSessionHasNoErrors();
+        $entry = \App\Models\DocumentEntry::firstOrFail();
+        $edit = route('student.documents.log.entry.edit', [$this->form19, $entry->id]);
+
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertSee($edit, false);
+        $this->actingAs($this->studentUser)->get($edit)->assertOk()->assertSee('Edit Training Day');
+        $this->actingAs($this->studentUser)->put(route('student.documents.log.entry.update', [$this->form19, $entry->id]), [
+            'tasks_accomplished' => 'Fixed the printer', 'knowledge_skills_learned' => 'Patience',
+        ])->assertRedirect(route('student.documents.log', $this->form19));
+        $this->assertSame('Fixed the printer', $entry->fresh()->value('tasks_accomplished'));
+        $this->assertSame('Patience', $entry->fresh()->value('knowledge_skills_learned'));
+
+        // Sent to the instructor: no more edits (returned opens it again).
+        $entry->document->update(['status' => 'submitted']);
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()->assertDontSee($edit, false);
+        $this->actingAs($this->studentUser)->get($edit)->assertForbidden();
+        $this->actingAs($this->studentUser)->put(route('student.documents.log.entry.update', [$this->form19, $entry->id]), [
+            'tasks_accomplished' => 'x', 'knowledge_skills_learned' => 'y',
+        ])->assertForbidden();
+        $entry->document->update(['status' => 'returned']);
+        $this->actingAs($this->studentUser)->get($edit)->assertOk();
     }
 }

@@ -336,7 +336,9 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::get('/documents/{requirement}/log', [StudentDocumentController::class, 'showLog'])->name('documents.log');
         Route::get('/documents/{requirement}/log/entry', [StudentDocumentController::class, 'createEntry'])->name('documents.log.entry.create');
         Route::post('/documents/{requirement}/log/entry', [StudentDocumentController::class, 'storeEntry'])->name('documents.log.entry.store');
-        Route::delete('/documents/{requirement}/log/entry/{entry}', [StudentDocumentController::class, 'destroyEntry'])->whereNumber('entry')->name('documents.log.entry.destroy');
+        Route::get('/documents/{requirement}/log/entry/{entry}/edit', [StudentDocumentController::class, 'editEntry'])->whereNumber('entry')->name('documents.log.entry.edit');
+        Route::put('/documents/{requirement}/log/entry/{entry}', [StudentDocumentController::class, 'updateEntry'])->whereNumber('entry')->name('documents.log.entry.update');
+        Route::delete('/documents/{requirement}/log/entry/{entry}',[StudentDocumentController::class, 'destroyEntry'])->whereNumber('entry')->name('documents.log.entry.destroy');
         Route::delete('/documents/{requirement}/log/week/{weekStart}', [StudentDocumentController::class, 'destroyWeek'])->name('documents.log.week.destroy');
         Route::post('/documents/{requirement}/log/submit', [StudentDocumentController::class, 'submitLog'])->name('documents.log.submit');
         // Form 19: each week is submitted (and reviewed) on its own; {packet} is the week number.
