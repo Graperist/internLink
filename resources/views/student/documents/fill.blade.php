@@ -597,10 +597,6 @@
                 @enderror
             </div>
 
-            <div class="alert alert-light border small mt-4 mb-0">
-                <i class="ti ti-pencil"></i> "Signed at ____, Pangasinan. This ____ day of ____, 20__" is left blank on the printed form: write it by hand when you sign.
-            </div>
-
         @elseif ($requirement->code === 'TRAINING_LIABILITY')
             @php
                 $liabilityValue = fn (string $key, $default = '') => old(
