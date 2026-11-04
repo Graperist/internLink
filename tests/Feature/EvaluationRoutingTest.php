@@ -371,6 +371,21 @@ class EvaluationRoutingTest extends TestCase
             ->assertDontSee('id="student-'.$this->studentUser->student->id.'"', false);
     }
 
+    public function test_the_hte_filters_its_interns_by_academic_year(): void
+    {
+        $name = $this->studentUser->name;
+        $year = \App\Support\Term::forDate(\Carbon\Carbon::parse($this->deployment->start_date))[0];
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations', ['academic_year' => $year]))->assertOk()
+            ->assertSee($name)->assertSee('Your Interns · AY '.$year)->assertSee('Show all years');
+
+        $start = (int) substr($year, 0, 4);
+        $other = ($start - 3).'-'.($start - 2);
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations', ['academic_year' => $other]))->assertOk()
+            ->assertDontSee($name)->assertSee('No interns to evaluate for AY '.$other);
+        $this->actingAs($this->hteUser)->get(route('hte.evaluations', ['academic_year' => 'all']))->assertOk()
+            ->assertSee($name)->assertSee('Back to AY');
+    }
+
     public function test_form_23a_stays_with_the_instructor(): void
     {
         $document = $this->instructorSubmits();

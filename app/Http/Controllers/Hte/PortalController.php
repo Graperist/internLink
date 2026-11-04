@@ -33,13 +33,25 @@ class PortalController extends Controller
         return view('hte.assigned-students', compact('representative', 'deployments'));
     }
 
-    public function evaluations(): View
+    public function evaluations(\Illuminate\Http\Request $request): View
     {
         $representative = $this->representative();
+
+        // Filter by academic year (the year each internship started in); "all" shows every year.
+        $currentYear = \App\Support\Term::current()[0];
+        $year = $request->query('academic_year') === 'all'
+            ? 'all'
+            : (\App\Support\Term::normalizeAcademicYear($request->query('academic_year')) ?: $currentYear);
+        if ($year !== 'all' && ! \App\Support\Term::isValidAcademicYear($year)) {
+            $year = $currentYear;
+        }
+        $yearOf = fn ($d) => \App\Support\Term::forDate(\Carbon\Carbon::parse($d->start_date ?? $d->end_date ?? $d->created_at))[0];
+
         $deployments = Deployment::where('hte_id', $representative->hte_id)
             ->where('status', 'completed')
             ->with(['internship.student.user', 'internship.student.program', 'internship.documents'])
             ->get()
+            ->when($year !== 'all', fn ($all) => $all->filter(fn ($d) => $yearOf($d) === $year))
             ->sortBy(fn ($d) => $d->internship->student->user->name)
             ->values();
 
@@ -52,7 +64,7 @@ class PortalController extends Controller
         $selfRequirement = $requirements->get('PARTNER_AGENCY_EVAL_SELF');
         $selfEvaluation = $selfRequirement ? \App\Support\AgencyEvaluations::find($selfRequirement, $representative->hte_id) : null;
 
-        return view('hte.evaluations', compact('representative', 'deployments', 'requirements', 'selfRequirement', 'selfEvaluation'));
+        return view('hte.evaluations', compact('representative', 'deployments', 'requirements', 'selfRequirement', 'selfEvaluation', 'year', 'currentYear'));
     }
 
     /**

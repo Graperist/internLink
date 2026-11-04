@@ -60,12 +60,26 @@
 </div>
 
 <div class="il-card mb-3">
-    <div class="d-flex align-items-center gap-2 mb-3">
+    <div class="d-flex align-items-start gap-2 mb-3 flex-wrap">
         <span class="il-tile-icon sm"><i class="ti ti-users"></i></span>
-        <div>
-            <h2 class="h6 fw-bold mb-0">Your Interns</h2>
+        <div class="flex-grow-1" style="min-width: 260px;">
+            <h2 class="h6 fw-bold mb-0">Your Interns{{ $year === 'all' ? '' : ' · AY '.$year }}</h2>
             <div class="text-secondary small">Click an intern's name to evaluate them. Your evaluation goes to their Subject Instructor; the intern does not see it.</div>
         </div>
+        {{-- Filter by academic year --}}
+        <form method="GET" action="{{ route('hte.evaluations') }}" style="width: 230px;">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text">AY</span>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'hte_eval_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true, 'small' => true])
+            </div>
+            <div class="small mt-1 text-end">
+                @if ($year === 'all')
+                    <span class="text-secondary">All years &middot;</span> <a href="{{ route('hte.evaluations') }}">Back to AY {{ $currentYear }}</a>
+                @else
+                    <a href="{{ route('hte.evaluations', ['academic_year' => 'all']) }}">Show all years</a>
+                @endif
+            </div>
+        </form>
     </div>
     <div class="table-responsive">
         <table class="table align-middle mb-0 eval-table">
@@ -135,7 +149,7 @@
                         @endforeach
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="text-center text-secondary py-5"><i class="ti ti-clipboard-list fs-2 d-block mb-1"></i>No interns to evaluate yet. An intern appears here once their internship is completed.</td></tr>
+                    <tr><td colspan="5" class="text-center text-secondary py-5"><i class="ti ti-clipboard-list fs-2 d-block mb-1"></i>{{ $year === 'all' ? 'No interns to evaluate yet.' : 'No interns to evaluate for AY '.$year.'.' }} An intern appears here once their internship is completed.</td></tr>
                 @endforelse
             </tbody>
         </table>
