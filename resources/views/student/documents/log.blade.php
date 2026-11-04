@@ -6,13 +6,21 @@
 @if ($requirement->code === 'WEEKLY_REPORT')
     @php
         $entries = $entries ?? ($document?->entries ?? collect());
-        // Week 1 starts on the first DTR day (or an earlier entry). Each week is
-        // its own Form 19, reviewed by the instructor as soon as it is finished.
-        $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship, $entries->pluck('entry_date'));
-        $weeks = $anchor ? \App\Support\TrainingWeeks::group($entries, $anchor) : collect();
+        // A week starts on the first day logged after the previous week ended
+        // and covers 7 days. Each week is its own Form 19, reviewed by the
+        // instructor as soon as it is finished.
+        $f19Weeks = \App\Support\TrainingWeeks::form19Weeks($internship)->filter(fn ($w) => $w['dates'] !== []);
+        $weekOf = [];
+        foreach ($f19Weeks as $w) {
+            foreach ($w['dates'] as $d) { $weekOf[$d] = $w['start']->toDateString(); }
+        }
+        $weekByStart = $f19Weeks->keyBy(fn ($w) => $w['start']->toDateString());
+        $weeks = $entries->sortBy(fn ($e) => $e->entry_date->timestamp)
+            ->groupBy(fn ($e) => $weekOf[$e->entry_date->toDateString()] ?? $e->entry_date->toDateString())->sortKeys();
         $weekDocs = $packets->keyBy('packet_number');
-        // Days fold into weeks, weeks into months.
-        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->format('Y-m'), true);
+        // Days fold into weeks, weeks into months - a week is filed under the
+        // month it ends in (Oct 31 - Nov 06 is under November).
+        $months = $weeks->groupBy(fn ($weekEntries, $weekStart) => \Carbon\Carbon::parse($weekStart)->addDays(6)->format('Y-m'), true);
         $status = fn ($doc) => match ($doc?->status) {
             'submitted', 'for_review' => ['With your instructor', 'text-bg-warning'],
             'printed' => ['Print, sign & upload', 'text-bg-info'],
@@ -57,15 +65,14 @@
         </div>
 
         @php
-            $todayStart = $anchor && now()->startOfDay()->gte($anchor) ? \App\Support\TrainingWeeks::weekStart(now(), $anchor) : null;
-            $todayNumber = $todayStart ? \App\Support\TrainingWeeks::number($todayStart, $anchor) : null;
-            $todayDoc = $todayNumber ? $weekDocs->get($todayNumber) : null;
+            $todayWeek = $f19Weeks->first(fn ($w) => $w['number'] >= 1 && now()->startOfDay()->betweenIncluded($w['start'], $w['end']));
+            $todayDoc = $todayWeek ? $weekDocs->get($todayWeek['number']) : null;
         @endphp
         @if ($todayDoc && ! $editable($todayDoc))
             <div class="alert alert-info small py-2">
                 <i class="ti ti-info-circle"></i>
-                This week (Week {{ $todayNumber }}, {{ $todayStart->format('M d') }} – {{ $todayStart->copy()->addDays(6)->format('M d, Y') }}) has already been sent to your instructor, so no more days can be added to it.
-                You can add days again from <strong>{{ $todayStart->copy()->addDays(7)->format('M d, Y') }}</strong>, when Week {{ $todayNumber + 1 }} starts.
+                This week (Week {{ $todayWeek['number'] }}, {{ $todayWeek['start']->format('M d') }} – {{ $todayWeek['end']->format('M d, Y') }}) has already been sent to your instructor, so no more days can be added to it.
+                You can add days again from <strong>{{ $todayWeek['end']->copy()->addDay()->format('M d, Y') }}</strong>; Week {{ $todayWeek['number'] + 1 }} starts on the first day you log.
             </div>
         @endif
 
@@ -83,7 +90,7 @@
                 @php
                     $monthId = 'month-'.$month;
                     $monthOpen = $loop->last;
-                    $monthDocs = $monthWeeks->keys()->map(fn ($ws) => $weekDocs->get(\App\Support\TrainingWeeks::number(\Carbon\Carbon::parse($ws), $anchor)));
+                    $monthDocs = $monthWeeks->keys()->map(fn ($ws) => $weekDocs->get($weekByStart->get($ws)['number'] ?? -1));
                 @endphp
                 <div class="border rounded-3 mb-2 overflow-hidden log-month">
                     <button type="button" class="w-100 btn btn-link text-reset text-decoration-none px-3 py-2 d-flex align-items-center gap-2 text-start log-toggle {{ $monthOpen ? '' : 'collapsed' }}"
@@ -99,13 +106,14 @@
                         <div class="p-2">
                             @foreach ($monthWeeks as $weekStart => $weekEntries)
                                 @php
+                                    $thisWeek = $weekByStart->get($weekStart);
                                     $start = \Carbon\Carbon::parse($weekStart);
-                                    $end = $start->copy()->addDays(6);
-                                    $weekNumber = \App\Support\TrainingWeeks::number($start, $anchor);
+                                    $end = $thisWeek['end'] ?? $start->copy()->addDays(6);
+                                    $weekNumber = $thisWeek['number'] ?? 0;
                                     $doc = $weekNumber >= 1 ? $weekDocs->get($weekNumber) : $weekEntries->first()?->document;
                                     $beforeWeekOne = $weekNumber < 1;
                                     $finished = \App\Support\TrainingWeeks::weekFinished($start, $internship);
-                                    $due = \App\Support\TrainingWeeks::dueDate($start, $internship);
+                                    $due = $thisWeek ? \App\Support\TrainingWeeks::dueDateOfWeek($thisWeek, $internship) : now();
                                     $late = $beforeWeekOne ? null : \App\Support\TrainingWeeks::lateness($doc, $due);
                                     [$label, $color] = $status($doc);
                                     $canEditWeek = $editable($doc);

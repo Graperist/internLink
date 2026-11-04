@@ -199,12 +199,19 @@
         ->sortBy('entry_date')
         ->values();
 
-    // Weeks start on the day the student first logged their DTR (7 days each).
-    $weeks = \App\Support\TrainingWeeks::group($allEntries, \App\Support\TrainingWeeks::anchorFor($document));
+    // A week starts on the first day logged after the previous week ended (7 days).
+    $f19Weeks = \App\Support\TrainingWeeks::form19Weeks($document->internship);
+    $weekOf = [];
+    foreach ($f19Weeks as $w) {
+        foreach ($w['dates'] as $d) { $weekOf[$d] = $w['start']->toDateString(); }
+    }
+    $weekEnds = $f19Weeks->mapWithKeys(fn ($w) => [$w['start']->toDateString() => $w['end']]);
+    $weeks = $allEntries->groupBy(fn ($e) => $weekOf[\Carbon\Carbon::parse($e->entry_date)->toDateString()] ?? \Carbon\Carbon::parse($e->entry_date)->toDateString())->sortKeys();
 
-    // Download by week (?week=...): only that week's page.
-    if ($onlyWeek = \App\Support\TrainingWeeks::requested($document->internship)) {
-        $weeks = $weeks->filter(fn ($entries, $start) => $start === $onlyWeek->toDateString());
+    // Download by week (?week=...): only the page of the week that day is in.
+    $onlyWeek = request()->query('week');
+    if (is_string($onlyWeek) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $onlyWeek)) {
+        $weeks = $weeks->filter(fn ($entries, $start) => $onlyWeek >= $start && $onlyWeek <= ($weekEnds[$start] ?? \Carbon\Carbon::parse($start)->addDays(6))->toDateString());
     }
 
     /*
@@ -239,7 +246,7 @@
     @foreach ($weeks as $weekStart => $weekEntries)
         @php
             $weekStartDate = \Carbon\Carbon::parse($weekStart);
-            $weekEndDate = $weekStartDate->copy()->addDays(6);
+            $weekEndDate = ($weekEnds[$weekStart] ?? $weekStartDate->copy()->addDays(6))->copy();
 
             /*
              * Only use actual dates present in the report for the displayed

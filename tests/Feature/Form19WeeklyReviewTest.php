@@ -25,10 +25,10 @@ class Form19WeeklyReviewTest extends TestCase
 {
     use RefreshDatabase;
 
-    private User $studentUser;
+    protected User $studentUser;
     private User $instructorUser;
     private Internship $internship;
-    private DocumentRequirement $form19;
+    protected DocumentRequirement $form19;
 
     protected function setUp(): void
     {
@@ -69,8 +69,9 @@ class Form19WeeklyReviewTest extends TestCase
         foreach (['2026-10-01', '2026-10-02', '2026-10-08', '2026-11-06'] as $date) {
             $this->addDay($date)->assertSessionHasNoErrors();
         }
-        // Week 1 = Oct 01-07, Week 2 = Oct 08-14, Week 6 = Nov 05-11.
-        $this->assertEquals([1 => 2, 2 => 1, 6 => 1],
+        // Week 1 = Oct 01-07, Week 2 = Oct 08-14, then Week 3 starts on the next
+        // day logged (Nov 06-12) - the days with no training are skipped.
+        $this->assertEquals([1 => 2, 2 => 1, 3 => 1],
             Document::where('document_requirement_id', $this->form19->id)->withCount('entries')->get()->pluck('entries_count', 'packet_number')->sortKeys()->all());
 
         // Submitting Week 1 doesn't touch Week 2: the student keeps logging.
@@ -83,7 +84,7 @@ class Form19WeeklyReviewTest extends TestCase
 
         // The student sees months, then weeks.
         $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
-            ->assertSeeInOrder(['October 2026', 'Week 1', 'With your instructor', 'Week 2', 'Submit week', 'November 2026', 'Week 6']);
+            ->assertSeeInOrder(['October 2026', 'Week 1', 'With your instructor', 'Week 2', 'Submit week', 'November 2026', 'Week 3', 'Nov 06 – Nov 12, 2026']);
 
         // The instructor sees each week on its own, grouped by month, and approves Week 1 for printing.
         $week1 = Document::where('packet_number', 1)->firstOrFail();
@@ -156,7 +157,7 @@ class Form19WeeklyReviewTest extends TestCase
         // Days of a week that was sent are refused, with the next week's start named.
         $this->actingAs($this->studentUser)->get(route('student.documents.log.entry.create', $this->form19))->assertOk()
             ->assertSee('lockedWeekWarning')->assertSee('"start":"2026-10-01"', false);
-        $this->addDay('2026-10-03')->assertSessionHasErrors(['entry_date' => 'Week 1 (Oct 01 – Oct 07, 2026) has already been sent to your instructor, so no more days can be added to it. The next week starts on Oct 08, 2026.']);
+        $this->addDay('2026-10-03')->assertSessionHasErrors(['entry_date' => 'Week 1 (Oct 01 – Oct 07, 2026) has already been sent to your instructor, so no more days can be added to it. Your next week starts on the first day you log after Oct 07, 2026.']);
     }
 
     public function test_the_page_says_when_this_week_is_already_sent(): void
@@ -358,5 +359,41 @@ class Form19WeeklyReviewTest extends TestCase
         ])->assertForbidden();
         $entry->document->update(['status' => 'returned']);
         $this->actingAs($this->studentUser)->get($edit)->assertOk();
+    }
+
+    public function test_a_week_that_crosses_months_is_filed_under_the_month_it_ends_in(): void
+    {
+        foreach (['2026-10-01', '2026-10-30'] as $date) {   // Week 1 = Oct 01-07, Week 2 = Oct 30 - Nov 05
+            $this->addDay($date)->assertSessionHasNoErrors();
+        }
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSeeInOrder(['October 2026', 'Week 1', 'November 2026', 'Week 2']);
+        $this->actingAs($this->instructorUser)->get(route('instructor.documents', ['student' => $this->internship->student_id, 'form' => $this->form19->id]))->assertOk()
+            ->assertSeeInOrder(['October 2026', 'Week 1', 'November 2026', 'Week 2']);
+    }
+
+    public function test_a_week_starts_on_the_first_day_logged_after_the_last_week(): void
+    {
+        // The user's case: Week 1 = Oct 24-30; nothing logged until Nov 03.
+        $this->travelTo(CarbonImmutable::parse('2026-11-04 12:00:00'));
+        foreach (['2026-10-24', '2026-11-03', '2026-11-04'] as $date) {
+            $this->addDay($date)->assertSessionHasNoErrors();
+        }
+        $this->assertEquals([1 => 1, 2 => 2],
+            Document::where('document_requirement_id', $this->form19->id)->withCount('entries')->get()->pluck('entries_count', 'packet_number')->sortKeys()->all());
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSeeInOrder(['Week 1', 'Oct 24 – Oct 30, 2026', 'Week 2', 'Nov 03 – Nov 09, 2026', 'Due Nov 11'])
+            ->assertSee('Submit on Nov 09');
+
+        // Deleting Week 2's first day moves its start to the next day logged.
+        $nov03 = DocumentEntry::whereDate('entry_date', '2026-11-03')->firstOrFail();
+        $this->actingAs($this->studentUser)->delete(route('student.documents.log.entry.destroy', [$this->form19, $nov03->id]))->assertRedirect();
+        $this->actingAs($this->studentUser)->get(route('student.documents.log', $this->form19))->assertOk()
+            ->assertSee('Nov 04 – Nov 10, 2026');
+
+        // Once Week 2 is sent, a new week can't start before it.
+        Document::where('packet_number', 2)->update(['status' => 'submitted']);
+        $this->addDay('2026-11-02')->assertSessionHasErrors('entry_date');
+        $this->addDay('2026-10-27')->assertSessionHasNoErrors();   // inside Week 1 (still a draft)
     }
 }

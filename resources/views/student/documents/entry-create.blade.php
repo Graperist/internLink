@@ -6,19 +6,12 @@
 @if ($requirement->code === 'WEEKLY_REPORT')
     @php
         $selectedDate = old('entry_date', now()->toDateString());
-        $selected = \Carbon\Carbon::parse($selectedDate);
-        // Weeks start on the day the student first logged their DTR; with no DTR
-        // or entries yet, the day being added starts Week 1.
-        $weekStart = isset($weekAnchor) && $weekAnchor
-            ? \App\Support\TrainingWeeks::weekStart($selected, $weekAnchor)
-            : $selected->copy()->startOfDay();
-        $weekEnd = $weekStart->copy()->addDays(6);
     @endphp
 
     <div class="il-page-header">
         <div>
             <h1 class="il-page-title">Add Training Day to Form 19</h1>
-            <p class="text-secondary mb-0">This entry becomes one row inside the weekly report for {{ $weekStart->format('M d') }} – {{ $weekEnd->format('M d, Y') }}.</p>
+            <p class="text-secondary mb-0">This entry becomes one row of your weekly report. A week starts on the first day you log after your last week ended and covers 7 days from there.</p>
         </div>
         <a href="{{ route('student.documents.log', $requirement) }}" class="il-btn-secondary text-decoration-none">
             <i class="ti ti-arrow-left"></i> Back to Weekly Report
@@ -88,10 +81,8 @@
                 var week = null;
                 locked.forEach(function (w) { if (input.value >= w.start && input.value <= w.end) { week = w; } });
                 if (week) {
-                    var next = new Date(week.end + 'T00:00:00');
-                    next.setDate(next.getDate() + 1);
-                    lockedWarning.textContent = 'Week ' + week.number + ' (' + week.label + ') has already been sent to your instructor, so no more days can be added to it. The next week starts on '
-                        + next.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + '.';
+                    lockedWarning.textContent = 'Week ' + week.number + ' (' + week.label + ') has already been sent to your instructor, so no more days can be added to it. Pick a day after '
+                        + new Date(week.end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + '.';
                 }
                 lockedWarning.classList.toggle('d-none', !week);
                 button.disabled = duplicate || !!week;

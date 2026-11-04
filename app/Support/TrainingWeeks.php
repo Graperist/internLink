@@ -9,9 +9,9 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Form 19 weeks begin on the day the student first logged their DTR (not on a
- * fixed Monday): Week 1 = that day .. +6, Week 2 = the next 7 days, etc.
- * Before any DTR exists, the earliest Form 19 entry date is used instead.
+ * Form 19 weeks: see form19Weeks() - each week starts on the first day the
+ * student logs after the previous one ended. The 7-day grid helpers below
+ * (anchorForInternship, weekStart, number, list) are for Form 17 / DTR.
  */
 class TrainingWeeks
 {
@@ -72,6 +72,116 @@ class TrainingWeeks
         return $earliest;
     }
 
+    /**
+     * The Form 19 weeks of an internship. A week starts on the first day the
+     * student logs after the previous week ended - not on a fixed 7-day grid -
+     * and covers 7 calendar days from there, so days with no training
+     * (Sundays, holidays, days off) between weeks are skipped. Weeks already
+     * sent to the instructor keep their first day and number.
+     *
+     * Keyed by week number, in order: ['number', 'start', 'end', 'dates' => [Y-m-d, ...]].
+     * Week 0 holds days logged before a fixed Week 1 (old records).
+     * $extraDates are counted as if logged (to see where a new day would go).
+     */
+    public static function form19Weeks(Internship $internship, iterable $extraDates = []): Collection
+    {
+        $extra = collect($extraDates)->filter()->map(fn ($d) => Carbon::parse($d)->toDateString())->values()->all();
+        $key = $internship->id.'|'.implode(',', $extra);
+        $cache = request()->attributes->get('form19_weeks', []);
+        if (isset($cache[$key])) {
+            return $cache[$key];
+        }
+
+        $entries = \App\Models\DocumentEntry::whereHas('document', fn ($q) => $q->where('internship_id', $internship->id)
+            ->whereHas('requirement', fn ($r) => $r->where('code', 'WEEKLY_REPORT')))
+            ->with('document')->get()->toBase();
+
+        // Weeks sent to the instructor: [first day => week number].
+        $fixed = [];
+        foreach ($entries->groupBy('document_id') as $docEntries) {
+            $doc = $docEntries->first()->document;
+            if ($doc && $doc->status !== 'draft' && $doc->packet_number) {
+                $fixed[$docEntries->map(fn ($e) => Carbon::parse($e->entry_date)->toDateString())->min()] = (int) $doc->packet_number;
+            }
+        }
+
+        $dates = $entries->map(fn ($e) => Carbon::parse($e->entry_date)->toDateString())
+            ->merge($extra)->unique()->sort()->values();
+
+        // Week 1 is fixed once a week was sent (or the instructor set a due date);
+        // with nothing logged yet it starts on the deployment's start date.
+        $pinned = $internship->getAttribute('week_one_date');
+        $first = $pinned ? Carbon::parse($pinned)->startOfDay() : null;
+        if (! $first && $dates->isEmpty()) {
+            $deployment = $internship->deployment()->whereIn('status', ['active', 'completed'])->first();
+            $first = $deployment?->start_date ? Carbon::parse($deployment->start_date)->startOfDay() : null;
+        }
+
+        $weeks = collect();
+        $before = $first ? $dates->filter(fn ($d) => $d < $first->toDateString())->values() : collect();
+        if ($before->isNotEmpty()) {
+            $weeks->put(0, ['number' => 0, 'start' => Carbon::parse($before->first()), 'end' => $first->copy()->subDay(), 'dates' => $before->all()]);
+        }
+
+        $current = $first ? ['number' => 1, 'start' => $first, 'end' => $first->copy()->addDays(6), 'dates' => []] : null;
+        $number = $first ? 1 : 0;
+        foreach ($dates as $date) {
+            if ($first && $date < $first->toDateString()) {
+                continue;
+            }
+            $day = Carbon::parse($date)->startOfDay();
+            if ($current && $day->lte($current['end']) && (! isset($fixed[$date]) || $fixed[$date] === $current['number'])) {
+                $current['dates'][] = $date;
+
+                continue;
+            }
+            if ($current) {
+                if ($day->lte($current['end'])) {
+                    $current['end'] = $day->copy()->subDay();   // a sent week starts inside it (old records)
+                }
+                $weeks->put($current['number'], $current);
+            }
+            $number = $fixed[$date] ?? $number + 1;
+            $current = ['number' => $number, 'start' => $day, 'end' => $day->copy()->addDays(6), 'dates' => [$date]];
+        }
+        if ($current) {
+            $weeks->put($current['number'], $current);
+        }
+
+        $cache[$key] = $weeks;
+        request()->attributes->set('form19_weeks', $cache);
+
+        return $weeks;
+    }
+
+    /** Forgets the remembered weeks (after days are added, moved or deleted). */
+    public static function forgetWeeks(): void
+    {
+        request()->attributes->remove('form19_weeks');
+    }
+
+    /** The Form 19 week that $date is in (counting it as logged). */
+    public static function form19WeekOf(Internship $internship, Carbon $date): ?array
+    {
+        $day = $date->toDateString();
+
+        return self::form19Weeks($internship, [$day])->first(fn ($week) => in_array($day, $week['dates'], true));
+    }
+
+    /** The week starting on $start, or null. */
+    public static function form19WeekStarting(Internship $internship, Carbon $start): ?array
+    {
+        return self::form19Weeks($internship)->first(fn ($week) => $week['start']->isSameDay($start));
+    }
+
+    /** The due date of a week from form19Weeks(). */
+    public static function dueDateOfWeek(array $week, Internship $internship): Carbon
+    {
+        $set = self::setDueDates($internship)[$week['number']] ?? null;
+
+        return $set ? $set->copy() : self::defaultDueDate($week['start'], $internship);
+    }
+
     /** The Form 19 (Weekly Report) documents of an internship. */
     public static function form19Documents(Internship $internship): Collection
     {
@@ -90,39 +200,47 @@ class TrainingWeeks
         if ($internship->week_one_date) {
             return Carbon::parse($internship->week_one_date)->startOfDay();
         }
-        $anchor = self::anchorForInternship($internship);
+        $anchor = self::form19Weeks($internship)->first(fn ($week) => $week['number'] >= 1)['start'] ?? null;
         if ($anchor) {
             $internship->forceFill(['week_one_date' => $anchor->toDateString()])->save();
+            self::forgetWeeks();
         }
 
         return $anchor;
     }
 
     /**
-     * Before Week 1 is fixed, every week is still a draft and its start can
-     * move (e.g. the student adds an earlier day, or logs an earlier DTR). This
-     * puts every entry into the document of the week it now falls in, so the
-     * week numbers stored on the documents always match what is shown.
+     * Puts every day of a week not sent yet into the Form 19 document of the
+     * week it now falls in (weeks move when days are added or deleted), so
+     * the week numbers on the documents always match what is shown. Weeks
+     * already sent are left as they are.
      */
     public static function syncDraftWeeks(Internship $internship): void
     {
-        if ($internship->week_one_date) {
-            return;
-        }
+        self::forgetWeeks();
         $docs = self::form19Documents($internship);
-        if ($docs->isEmpty() || $docs->contains(fn ($doc) => $doc->status !== 'draft')) {
+        if ($docs->isEmpty()) {
             return;
         }
-        $anchor = self::anchorForInternship($internship);
-        if (! $anchor) {
-            return;
+        $numberOf = [];
+        foreach (self::form19Weeks($internship) as $week) {
+            foreach ($week['dates'] as $date) {
+                $numberOf[$date] = $week['number'];
+            }
         }
 
         $byNumber = $docs->keyBy('packet_number');
         $template = $docs->first();
-        foreach (\App\Models\DocumentEntry::whereIn('document_id', $docs->pluck('id'))->get() as $entry) {
-            $number = self::number(self::weekStart(Carbon::parse($entry->entry_date), $anchor), $anchor);
+        $drafts = $docs->where('status', 'draft');
+        foreach (\App\Models\DocumentEntry::whereIn('document_id', $drafts->pluck('id'))->get() as $entry) {
+            $number = $numberOf[Carbon::parse($entry->entry_date)->toDateString()] ?? null;
+            if (! $number) {
+                continue;   // before Week 1: left where it is
+            }
             $target = $byNumber->get($number);
+            if ($target && $target->status !== 'draft') {
+                continue;
+            }
             if (! $target) {
                 $target = Document::create([
                     'internship_id' => $internship->id,
@@ -139,10 +257,11 @@ class TrainingWeeks
         }
 
         foreach ($byNumber as $doc) {
-            if (! $doc->entries()->exists()) {
+            if ($doc->status === 'draft' && ! $doc->entries()->exists()) {
                 $doc->delete();
             }
         }
+        self::forgetWeeks();
     }
 
     /**
@@ -199,35 +318,26 @@ class TrainingWeeks
      */
     public static function dueDate(Carbon $weekStart, Internship $internship): Carbon
     {
-        $anchor = self::anchorForInternship($internship);
-        if ($anchor) {
-            $set = self::setDueDates($internship)[self::number($weekStart, $anchor)] ?? null;
-            if ($set) {
-                return $set->copy();
-            }
-        }
+        $week = self::form19WeekStarting($internship, $weekStart);
 
-        return self::defaultDueDate($weekStart, $internship);
+        return $week ? self::dueDateOfWeek($week, $internship) : self::defaultDueDate($weekStart, $internship);
     }
 
     /** Was this week's due date picked by the instructor (not the default)? */
     public static function dueDateIsSet(Carbon $weekStart, Internship $internship): bool
     {
-        $anchor = self::anchorForInternship($internship);
+        $week = self::form19WeekStarting($internship, $weekStart);
 
-        return $anchor && isset(self::setDueDates($internship)[self::number($weekStart, $anchor)]);
+        return $week && isset(self::setDueDates($internship)[$week['number']]);
     }
 
     /** The due date of one week's Form 19 document, or null if it has no week. */
     public static function dueDateFor(Document $document): ?Carbon
     {
         $internship = $document->internship;
-        $anchor = $internship ? self::anchorForInternship($internship) : null;
-        if (! $anchor || ! $document->packet_number) {
-            return null;
-        }
+        $week = $internship && $document->packet_number ? self::form19Weeks($internship)->get((int) $document->packet_number) : null;
 
-        return self::dueDate($anchor->copy()->addDays(7 * ((int) $document->packet_number - 1)), $internship);
+        return $week ? self::dueDateOfWeek($week, $internship) : null;
     }
 
     /**

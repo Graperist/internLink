@@ -335,9 +335,11 @@
                                 // Weeks are grouped by month to keep a 486-hour internship readable.
                                 // An empty draft is not a week yet (nothing logged in it).
                                 $form19Packets = $form19Packets->reject(fn ($p) => $p->status === 'draft' && $p->entries->isEmpty())->values();
-                                $f19Anchor = $internship ? \App\Support\TrainingWeeks::anchorForInternship($internship) : null;
-                                $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => $f19Anchor
-                                    ? $f19Anchor->copy()->addDays(((int) $p->packet_number - 1) * 7 + 6)->format('Y-m') : 'all');   // the month the week ends in
+                                // A week starts on the first day the student logged after the previous week ended (7 days).
+                                $f19Weeks = $internship ? \App\Support\TrainingWeeks::form19Weeks($internship) : collect();
+                                $f19Anchor = $f19Weeks->isNotEmpty() ? $f19Weeks->first()['start'] : null;
+                                $f19Months = $form19Packets->sortBy('packet_number')->groupBy(fn ($p) => ($w = $f19Weeks->get((int) $p->packet_number))
+                                    ? $w['start']->copy()->addDays(6)->format('Y-m') : 'all');   // the month the week ends in
                                 $toCheck = fn ($p) => in_array($p->status, ['submitted', 'for_review'], true) || ($p->status === 'completed' && $p->file_path);
                             @endphp
                             <div class="small text-secondary mb-2">
@@ -347,7 +349,7 @@
                                     &middot; <span class="text-warning fw-semibold">{{ $n }} waiting for your review</span>
                                 @endif
                                 @php
-                                    $f19Late = $f19Anchor && $internship ? $form19Packets->countBy(fn ($p) => \App\Support\TrainingWeeks::lateness($p, \App\Support\TrainingWeeks::dueDate($f19Anchor->copy()->addDays(7 * ((int) $p->packet_number - 1)), $internship))) : collect();
+                                    $f19Late = $f19Anchor && $internship ? $form19Packets->countBy(fn ($p) => ($w = $f19Weeks->get((int) $p->packet_number)) ? \App\Support\TrainingWeeks::lateness($p, \App\Support\TrainingWeeks::dueDateOfWeek($w, $internship)) : null) : collect();
                                 @endphp
                                 @if ($f19Late->get('late'))
                                     &middot; <span class="text-warning fw-semibold">{{ $f19Late->get('late') }} late</span>
@@ -358,11 +360,13 @@
                             </div>
                             @if ($f19Anchor && $internship)
                                 @php
-                                    // Weeks so far plus the next one, for setting a due date like an MS Teams assignment.
-                                    $f19Today = now()->startOfDay()->gte($f19Anchor) ? \App\Support\TrainingWeeks::number(\App\Support\TrainingWeeks::weekStart(now(), $f19Anchor), $f19Anchor) : 0;
-                                    $f19LastWeek = max($f19Today + 1, (int) $form19Packets->max('packet_number'), 1);
+                                    // The weeks so far, for setting a due date like an MS Teams assignment
+                                    // (a week exists once the student logs its first day).
+                                    $f19Pickable = $f19Weeks->filter(fn ($w) => $w['number'] >= 1);
+                                    $f19Today = $f19Pickable->first(fn ($w) => now()->startOfDay()->betweenIncluded($w['start'], $w['end']))['number'] ?? $f19Pickable->keys()->last();
                                     $f19Set = \App\Support\TrainingWeeks::setDueDates($internship);
                                     $f19Pick = (int) old('week_number', $f19Today ?: 1);
+                                    $f19PickWeek = $f19Pickable->get($f19Pick) ?? $f19Pickable->first();
                                 @endphp
                                 @if ($canAct)
                                     <form method="POST" action="{{ route('instructor.documents.week-due', $student) }}" class="border rounded p-2 mb-2 d-flex flex-wrap align-items-end gap-2" style="background:#fafbfc;">
@@ -371,18 +375,18 @@
                                         <div>
                                             <label class="form-label small fw-semibold mb-1" for="f19Week"><i class="ti ti-calendar-due"></i> Due date for</label>
                                             <select name="week_number" id="f19Week" class="form-select form-select-sm" style="min-width: 220px;">
-                                                @for ($w = 1; $w <= $f19LastWeek; $w++)
-                                                    @php $ws = $f19Anchor->copy()->addDays(7 * ($w - 1)); $wd = \App\Support\TrainingWeeks::dueDate($ws, $internship); @endphp
+                                                @foreach ($f19Pickable as $w => $fw)
+                                                    @php $wd = \App\Support\TrainingWeeks::dueDateOfWeek($fw, $internship); @endphp
                                                     <option value="{{ $w }}" data-due="{{ $wd->format('Y-m-d\TH:i') }}" @selected($w === $f19Pick)>
-                                                        Week {{ $w }} ({{ $ws->format('M d') }} – {{ $ws->copy()->addDays(6)->format('M d') }}){{ isset($f19Set[$w]) ? ' · set' : '' }}
+                                                        Week {{ $w }} ({{ $fw['start']->format('M d') }} – {{ $fw['end']->format('M d') }}){{ isset($f19Set[$w]) ? ' · set' : '' }}
                                                     </option>
-                                                @endfor
+                                                @endforeach
                                             </select>
                                         </div>
                                         <div>
                                             <label class="form-label small fw-semibold mb-1" for="f19DueAt">Date and time</label>
                                             <input type="datetime-local" name="due_at" id="f19DueAt" class="form-control form-control-sm @error('due_at') is-invalid @enderror"
-                                                   value="{{ old('due_at', \App\Support\TrainingWeeks::dueDate($f19Anchor->copy()->addDays(7 * ($f19Pick - 1)), $internship)->format('Y-m-d\TH:i')) }}">
+                                                   value="{{ old('due_at', $f19PickWeek ? \App\Support\TrainingWeeks::dueDateOfWeek($f19PickWeek, $internship)->format('Y-m-d\TH:i') : '') }}">
                                         </div>
                                         <button type="submit" class="btn btn-sm btn-primary">Save due date</button>
                                         <button type="submit" name="clear" value="1" class="btn btn-sm btn-link text-secondary px-1" formnovalidate title="Use the default due date for this week">Use default</button>
@@ -410,9 +414,10 @@
                                         @foreach ($monthWeeks as $packet)
                                             @php
                                                 $packetStatus = $packet->status;
-                                                $weekStart = $f19Anchor?->copy()->addDays(((int) $packet->packet_number - 1) * 7);
+                                                $thisWeek = $f19Weeks->get((int) $packet->packet_number);
+                                                $weekStart = $thisWeek['start'] ?? null;
                                                 $weekName = 'Week '.($packet->packet_number ?? 1);
-                                                $due = $weekStart && $internship ? \App\Support\TrainingWeeks::dueDate($weekStart, $internship) : null;
+                                                $due = $thisWeek && $internship ? \App\Support\TrainingWeeks::dueDateOfWeek($thisWeek, $internship) : null;
                                                 $late = $due ? \App\Support\TrainingWeeks::lateness($packet, $due) : null;
                                             @endphp
                                             <div class="border-top px-2 py-2">
@@ -420,7 +425,7 @@
                                                     <div>
                                                         <span class="fw-semibold small">{{ $weekName }}</span>
                                                         <span class="text-secondary" style="font-size:.75rem;">
-                                                            @if ($weekStart) {{ $weekStart->format('M d') }} – {{ $weekStart->copy()->addDays(6)->format('M d') }} &middot; @endif
+                                                            @if ($thisWeek) {{ $thisWeek['start']->format('M d') }} – {{ $thisWeek['end']->format('M d') }} &middot; @endif
                                                             {{ $packet->entries->count() }} {{ \Illuminate\Support\Str::plural('day', $packet->entries->count()) }}
                                                             @if ($due) &middot; due {{ $due->format('M d, g:i A') }}@if (\App\Support\TrainingWeeks::dueDateIsSet($weekStart, $internship)) <i class="ti ti-calendar-check text-primary" title="Due date set by the instructor"></i>@endif @endif
                                                         </span>

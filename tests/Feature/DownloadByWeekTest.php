@@ -123,7 +123,7 @@ class DownloadByWeekTest extends TestCase
     public function test_an_entry_before_the_first_dtr_day_is_week_1_not_week_0(): void
     {
         $form19 = $this->requirement('WEEKLY_REPORT', 'Form 19 – Internship/Practicum Weekly Report', '19');
-        foreach ([[1, '2026-09-28'], [2, '2026-10-09']] as [$number, $date]) {   // first DTR day is Oct 01
+        foreach ([[1, '2026-09-28'], [2, '2026-10-09']] as [$number, $date]) {   // first DTR day is Oct 01; Week 2 starts on the next day logged
             $doc = Document::forceCreate(['internship_id' => $this->internship->id, 'document_requirement_id' => $form19->id, 'packet_number' => $number, 'status' => 'draft']);
             DocumentEntry::forceCreate(['document_id' => $doc->id, 'entry_date' => $date]);
         }
@@ -131,6 +131,6 @@ class DownloadByWeekTest extends TestCase
         $html = $this->actingAs($this->studentUser)->get(route('student.documents.log', $form19))->assertOk()
             ->assertDontSee('Week 0')->getContent();
         $this->assertMatchesRegularExpression('#Week 1</span>\s*<span class="text-secondary small">Sep 28 – Oct 04, 2026#u', $html);
-        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 05 – Oct 11, 2026#u', $html);
+        $this->assertMatchesRegularExpression('#Week 2</span>\s*<span class="text-secondary small">Oct 09 – Oct 15, 2026#u', $html);
     }
 }

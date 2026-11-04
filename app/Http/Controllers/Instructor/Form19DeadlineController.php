@@ -43,8 +43,7 @@ class Form19DeadlineController extends Controller
         abort_unless($instructor && $instructor->canActOn($student), 403);
         $internship = $student->currentInternship;
         abort_unless($internship, 404);
-        $anchor = \App\Support\TrainingWeeks::anchorForInternship($internship);
-        abort_unless($anchor, 422, 'This intern has no weeks yet - they start when the deployment starts.');
+        abort_unless(\App\Support\TrainingWeeks::form19Weeks($internship)->isNotEmpty(), 422, 'This intern has no weeks yet - they start when the deployment starts.');
 
         $validated = $request->validate([
             'week_number' => ['required', 'integer', 'min:1', 'max:200'],
@@ -59,8 +58,12 @@ class Form19DeadlineController extends Controller
         if (! $internship->getAttribute('week_one_date')) {
             \App\Support\TrainingWeeks::pin($internship);
         }
-        $weekStart = $anchor->copy()->addDays(7 * ($week - 1));
-        $label = 'Week '.$week.' ('.$weekStart->format('M d').' – '.$weekStart->copy()->addDays(6)->format('M d').')';
+        $thisWeek = \App\Support\TrainingWeeks::form19Weeks($internship)->get($week);
+        if (! $thisWeek || $week < 1) {
+            return back()->withErrors(['due_at' => 'Week '.$week.' has not started yet: a week starts on the first day the intern logs.'])->withInput();
+        }
+        $weekStart = $thisWeek['start'];
+        $label = 'Week '.$week.' ('.$weekStart->format('M d').' – '.$thisWeek['end']->format('M d').')';
 
         if ($request->boolean('clear')) {
             \App\Models\Form19DueDate::where('internship_id', $internship->id)->where('week_number', $week)->delete();

@@ -85,8 +85,9 @@ class SendWeeklyReportReminders extends Command
     {
         $sent = 0;
         $deploymentId = $internship->deployment->id;
-        $anchor = TrainingWeeks::anchorForInternship($internship, $weeks->flatMap(fn ($d) => $d->entries)->pluck('entry_date'));
-        $todayWeek = $anchor && $today->gte($anchor) ? TrainingWeeks::number(TrainingWeeks::weekStart($today, $anchor), $anchor) : null;
+        // A week starts on the first day logged after the previous week ended (7 days).
+        $f19Weeks = TrainingWeeks::form19Weeks($internship)->filter(fn ($w) => $w['number'] >= 1);
+        $todayWeek = $f19Weeks->first(fn ($w) => $today->copy()->startOfDay()->betweenIncluded($w['start'], $w['start']->copy()->addDays(6)))['number'] ?? null;
         $document = $todayWeek ? $weeks->get($todayWeek) : null;   // this week's Form 19
         $locked = $document && in_array($document->status, self::SUBMITTED, true);
 
@@ -114,12 +115,12 @@ class SendWeeklyReportReminders extends Command
         // 2) Today is the last day of a 7-day week and that week isn't submitted.
         $alreadySubmitted = $locked;
 
-        if ($anchor && ! $alreadySubmitted) {
-            $dayIndex = (int) $anchor->diffInDays($today, false);
-
-            if ($dayIndex >= 6 && ($dayIndex + 1) % 7 === 0) {
-                $weekNumber = intdiv($dayIndex + 1, 7);
-                $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
+        $endingToday = $f19Weeks->first(fn ($w) => $w['start']->copy()->addDays(6)->isSameDay($today));
+        if ($endingToday && ! ($weeks->get($endingToday['number']) && in_array($weeks->get($endingToday['number'])->status, self::SUBMITTED, true))) {
+            {
+                $weekNumber = $endingToday['number'];
+                $weekStart = $endingToday['start'];
+                $document = $weeks->get($weekNumber);
 
                 if ($this->trainedInWeek($deploymentId, $document, $weekStart)) {
                     $hasEntries = $document && $this->hasEntriesInWeek($document, $weekStart);
@@ -142,11 +143,10 @@ class SendWeeklyReportReminders extends Command
         }
 
         // 3) A week due later today or tomorrow (its own due date, or the default) and not sent yet.
-        if ($anchor) {
-            $current = $today->gte($anchor) ? TrainingWeeks::number(TrainingWeeks::weekStart($today, $anchor), $anchor) : 0;
-            for ($weekNumber = max(1, $current - 3); $weekNumber <= $current + 1; $weekNumber++) {
-                $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
-                $due = TrainingWeeks::dueDate($weekStart, $internship);
+        {
+            foreach ($f19Weeks->take(-5) as $weekNumber => $f19Week) {
+                $weekStart = $f19Week['start'];
+                $due = TrainingWeeks::dueDateOfWeek($f19Week, $internship);
                 $dueSoon = ($due->isSameDay($today) && $due->gt(now())) || $due->isSameDay($today->copy()->addDay());
                 $weekDoc = $weeks->get($weekNumber);
                 if (! $dueSoon || ($weekDoc && in_array($weekDoc->status, self::SUBMITTED, true))
@@ -171,20 +171,12 @@ class SendWeeklyReportReminders extends Command
 
     private function overdueNotice(Student $student, $internship, $weeks, Carbon $today): int
     {
-        $anchor = TrainingWeeks::anchorForInternship($internship, $weeks->flatMap(fn ($d) => $d->entries)->pluck('entry_date'));
-
-        if (! $anchor) {
-            return 0;
-        }
-
         // Recent weeks that are past their due date and still not sent.
-        $dayIndex = (int) $anchor->diffInDays($today, false);
-        $completed = intdiv($dayIndex, 7); // weeks finished so far
         $sent = 0;
 
-        for ($weekNumber = max(1, $completed - 3); $weekNumber <= $completed; $weekNumber++) {
-            $weekStart = $anchor->copy()->addDays(($weekNumber - 1) * 7);
-            $due = TrainingWeeks::dueDate($weekStart, $internship);
+        foreach (TrainingWeeks::form19Weeks($internship)->filter(fn ($w) => $w['number'] >= 1)->take(-5) as $weekNumber => $f19Week) {
+            $weekStart = $f19Week['start'];
+            $due = TrainingWeeks::dueDateOfWeek($f19Week, $internship);
             $document = $weeks->get($weekNumber);   // that week's Form 19
             if ($document && in_array($document->status, self::SUBMITTED, true)) {
                 continue;
