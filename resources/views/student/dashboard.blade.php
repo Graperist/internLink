@@ -81,25 +81,37 @@
     <div class="col-lg-8">
         <div class="il-card">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-checklist"></i></span> My Document Checklist</h2>
-                <span class="text-secondary small">{{ $submittedCount }} of {{ $checklist->count() }} complete</span>
+                <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2"><span class="il-tile-icon sm"><i class="ti ti-history"></i></span> Recent Updates</h2>
+                <a href="{{ route('student.documents') }}" class="small fw-semibold text-decoration-none">My Documents &rarr;</a>
             </div>
 
-            @forelse ($checklist as $row)
-                <a
-                    href="{{ route('student.documents') }}"
-                    class="il-row-link {{ ! $loop->last ? 'border-bottom' : '' }}"
-                >
-                    <div class="d-flex align-items-center gap-2">
-                        <i class="ti {{ $row['document'] ? 'ti-circle-check-filled text-primary' : 'ti-circle text-secondary' }}"></i>
-                        <span>{{ $row['requirement']->name }}</span>
+            @php
+                $where = fn ($doc) => match ($doc->status) {
+                    'submitted', 'for_review' => ['With your instructor', 'text-warning-emphasis', 'ti-clock'],
+                    'returned' => ['Returned - correct it', 'text-danger', 'ti-arrow-back-up'],
+                    'printed' => ['Print, sign & upload', 'text-primary', 'ti-printer'],
+                    'completed' => filled($doc->file_path) ? ['Signed copy - with your instructor', 'text-warning-emphasis', 'ti-signature'] : ['Upload the signed copy', 'text-primary', 'ti-upload'],
+                    'approved' => ['Approved', 'text-success', 'ti-circle-check'],
+                    default => [ucfirst((string) $doc->status), 'text-secondary', 'ti-point'],
+                };
+            @endphp
+            @forelse ($recentSubmissions as $doc)
+                @php [$label, $color, $icon] = $where($doc); @endphp
+                <a href="{{ $doc->requirement->is_repeating ? route('student.documents.log', $doc->requirement) : route('student.documents', ['form' => $doc->document_requirement_id]) }}"
+                   class="il-row-link {{ ! $loop->last ? 'border-bottom' : '' }}">
+                    <div class="d-flex align-items-center gap-2" style="min-width: 0;">
+                        <i class="ti {{ $icon }} {{ $color }}"></i>
+                        <span class="text-truncate">{{ $doc->requirement->name }}{{ $doc->packet_number ? ' · Week '.$doc->packet_number : '' }}</span>
                     </div>
-                    <span class="text-secondary small">
-                        {{ $row['document'] ? 'Submitted '.$row['document']->submitted_at?->format('M d') : 'Not submitted' }}
-                    </span>
+                    <div class="text-end flex-shrink-0 ms-2">
+                        <div class="small fw-semibold {{ $color }}">{{ $label }}</div>
+                        <div class="text-secondary" style="font-size: .75rem;">Submitted {{ $doc->submitted_at?->format('M d') }}</div>
+                    </div>
                 </a>
             @empty
-                <p class="text-secondary small mb-0">No document requirements set up for your campus yet.</p>
+                <p class="text-center text-secondary py-4 mb-0">
+                    Nothing submitted yet. Start with your forms in <a href="{{ route('student.documents') }}">My Documents</a>.
+                </p>
             @endforelse
         </div>
     </div>

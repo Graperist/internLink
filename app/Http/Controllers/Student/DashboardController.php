@@ -59,9 +59,18 @@ class DashboardController extends Controller
 
         $submittedCount = $checklist->filter(fn ($row) => $row['document'] !== null)->count();
 
+        // Recent submissions (like the instructor's dashboard): the forms the
+        // student sent most recently and where each one stands now.
+        $recentSubmissions = $internship
+            ? $internship->documents()->with('requirement')
+                ->whereNotNull('submitted_at')->where('status', '!=', 'draft')
+                ->whereHas('requirement', fn ($q) => $q->where('is_active', true))
+                ->orderByDesc('updated_at')->take(6)->get()
+            : collect();
+
         return view('student.dashboard', compact(
             'student', 'internship', 'requiredHours', 'hoursRendered',
-            'hoursRemaining', 'hoursPercent', 'checklist', 'submittedCount'
+            'hoursRemaining', 'hoursPercent', 'checklist', 'submittedCount', 'recentSubmissions'
         ));
     }
 }
