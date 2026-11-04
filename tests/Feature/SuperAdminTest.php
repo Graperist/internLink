@@ -280,8 +280,8 @@ class SuperAdminTest extends TestCase
         Campus::forceCreate(['code' => 'BC', 'name' => 'PSU - Bayambang Campus', 'status' => 'active']);
 
         $html = $this->actingAs($this->admin)->get(route('admin.dashboard'))->assertOk()
-            ->assertSee('Active campuses')->assertSee('Documents waiting for review')
-            ->assertSeeInOrder(['3', 'Student interns', '1', 'Deployed now', '1', 'Completed', '1', 'Documents waiting for review'])
+            ->assertSee('Campuses')->assertDontSee('Active campuses')->assertDontSee('Documents waiting for review')
+            ->assertSeeInOrder(['3', 'Student interns', '1', 'Deployed now', '1', 'Completed'])
             ->assertSeeInOrder(['PSU - Alaminos City Campus', 'Add coordinator'])
             ->assertSee('PSU - Bayambang Campus')
             ->getContent();

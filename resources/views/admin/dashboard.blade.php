@@ -5,11 +5,10 @@
 @section('content')
 @php
     $tiles = [
-        ['ti-building-community', $totals['campuses'], 'Active campuses'],
+        ['ti-building-community', $totals['campuses'], 'Campuses'],
         ['ti-users', $totals['students'], 'Student interns'],
         ['ti-briefcase', $totals['deployed'], 'Deployed now'],
         ['ti-circle-check', $totals['completed'], 'Completed'],
-        ['ti-file-search', $totals['waiting'], 'Documents waiting for review'],
     ];
 @endphp
 <style>
