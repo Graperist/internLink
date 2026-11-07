@@ -12,23 +12,67 @@
 </div>
 
 @if (session('provisioned_account'))
-    @php $acct = session('provisioned_account'); @endphp
-    <div class="il-badge-generated mb-3">
-        @if ($acct['reset'])
-            <strong>{{ $acct['name'] }}</strong>'s password was reset.
-        @else
-            <strong>{{ $acct['name'] }}</strong>'s OJT Coordinator account was created for <strong>{{ $acct['campus'] }}</strong>.
-        @endif
-        @if ($acct['emailed'] === true)
-            <span class="d-block mt-1"><i class="ti ti-mail-check"></i> The sign-in details were emailed to <strong>{{ $acct['email'] }}</strong>.</span>
-        @elseif ($acct['emailed'] === false)
-            <span class="d-block mt-1 text-danger"><i class="ti ti-mail-off"></i> The email to {{ $acct['email'] }} couldn't be sent. Share these sign-in details with the coordinator yourself.</span>
-        @else
-            Share these sign-in details with the coordinator.
-        @endif
-        The password is temporary: they choose their own when they first sign in. It is shown once.
-        <div class="mt-2">ID number: <code>{{ $acct['id_number'] }}</code> &nbsp;&middot;&nbsp; Temporary password: <code>{{ $acct['password'] }}</code></div>
+    @php
+        $acct = session('provisioned_account');
+        $acctMessage = 'PSU Intern-Link sign-in details'."\n"
+            .'Name: '.$acct['name']."\n"
+            .'ID number: '.$acct['id_number']."\n"
+            .'Temporary password: '.$acct['password']."\n"
+            .'Sign in at: '.route('login')."\n"
+            .'You will be asked to set your own password the first time you sign in.';
+    @endphp
+    {{-- The new sign-in details pop up (shown once), like enrolling a student. --}}
+    <div class="modal fade" id="credentialsModal" tabindex="-1" aria-labelledby="credentialsTitle" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h6 fw-bold" id="credentialsTitle">
+                        <i class="ti ti-circle-check text-success"></i>
+                        {{ ! empty($acct['reset']) ? 'Password reset' : 'Coordinator account created' }}
+                    </h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small mb-3">
+                        @if (! empty($acct['reset']))
+                            <strong>{{ $acct['name'] }}</strong>'s password was reset.
+                        @else
+                            <strong>{{ $acct['name'] }}</strong>'s OJT Coordinator account was created for <strong>{{ $acct['campus'] }}</strong>.
+                        @endif
+                        Send these sign-in details to the coordinator. The password is shown only this once.
+                    </p>
+                    <div class="p-3 rounded mb-2" style="background:#f4f6f9;">
+                        <div class="d-flex justify-content-between small mb-1"><span class="text-secondary">ID number</span> <code class="fs-6">{{ $acct['id_number'] }}</code></div>
+                        <div class="d-flex justify-content-between small"><span class="text-secondary">Temporary password</span> <code class="fs-6">{{ $acct['password'] }}</code></div>
+                    </div>
+                    @if ($acct['emailed'] === true)
+                        <p class="small text-success mb-1"><i class="ti ti-mail-check"></i> Also emailed to <strong>{{ $acct['email'] }}</strong>.</p>
+                    @elseif ($acct['emailed'] === false)
+                        <p class="small text-danger mb-1"><i class="ti ti-mail-off"></i> The email to {{ $acct['email'] }} couldn't be sent. Share these details yourself.</p>
+                    @endif
+                    <p class="text-secondary mb-0" style="font-size:.78rem;">They will set their own password the first time they sign in.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-primary" id="copyCredentials" data-message="{{ $acctMessage }}">
+                        <i class="ti ti-copy"></i> Copy as message
+                    </button>
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Done</button>
+                </div>
+            </div>
+        </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const modal = document.getElementById('credentialsModal');
+        if (window.bootstrap && modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+        const copy = document.getElementById('copyCredentials');
+        copy?.addEventListener('click', function () {
+            navigator.clipboard?.writeText(copy.dataset.message).then(function () {
+                copy.innerHTML = '<i class="ti ti-check"></i> Copied - paste it in Messenger';
+            });
+        });
+    });
+    </script>
 @endif
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
 
