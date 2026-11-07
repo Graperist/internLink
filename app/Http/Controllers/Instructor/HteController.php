@@ -68,13 +68,14 @@ class HteController extends Controller
             'placed' => (int) $listings->sum('interns_count'),
             'open' => (int) $listings->sum(fn ($l) => $l->slots ? max($l->slots - $l->interns_count, 0) : 0),
             'missing_slots' => $listings->whereNull('slots')->count(),
-            'unplaced' => $isCurrentTerm
-                ? $instructor->visibleStudents()
-                    ->when($programId, fn ($q) => $q->where('program_id', $programId))
-                    ->whereHas('currentInternship', fn ($q) => $q->where('status', 'pre_deployment'))
-                    ->whereDoesntHave('currentInternship.deployment')
-                    ->count()
-                : null,
+            // Students enrolled in this term who have no placement yet.
+            'unplaced' => $instructor->visibleStudents()
+                ->where('academic_year', $academicYear)
+                ->where('semester', $semester)
+                ->when($programId, fn ($q) => $q->where('program_id', $programId))
+                ->whereHas('currentInternship', fn ($q) => $q->where('status', 'pre_deployment'))
+                ->whereDoesntHave('currentInternship.deployment')
+                ->count(),
         ];
 
         [$prevYear, $prevSemester] = Term::previous($academicYear, $semester);
@@ -346,24 +347,20 @@ class HteController extends Controller
     // ------------------------------------------------------------------
 
     /**
-     * Interns per program + HTE in a term: deployments whose start date (or,
-     * before the OJT has started, the date the placement was made) falls in
-     * the term. Keyed "programId|hteId".
+     * Interns per program + HTE in a term: placements of the students
+     * enrolled in that academic year and semester. Keyed "programId|hteId".
      *
      * @return array<string,int>
      */
     public static function internCounts(int $campusId, string $academicYear, string $semester): array
     {
-        [$from, $to] = Term::range($academicYear, $semester);
-
         return Deployment::query()
             ->join('internships', 'internships.id', '=', 'deployments.internship_id')
+            ->join('students', 'students.id', '=', 'internships.student_id')
             ->where('internships.campus_id', $campusId)
             ->whereIn('deployments.status', ['pending', 'active', 'completed'])
-            ->where(fn ($q) => $q
-                ->whereBetween('deployments.start_date', [$from->toDateString(), $to->toDateString()])
-                ->orWhere(fn ($q) => $q->whereNull('deployments.start_date')
-                    ->whereBetween('deployments.created_at', [$from, $to])))
+            ->where('students.academic_year', $academicYear)
+            ->where('students.semester', $semester)
             ->selectRaw('internships.program_id, deployments.hte_id, count(distinct internships.student_id) as total')
             ->groupBy('internships.program_id', 'deployments.hte_id')
             ->get()

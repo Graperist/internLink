@@ -63,7 +63,7 @@
     <div class="d-flex align-items-start gap-2 mb-3 flex-wrap">
         <span class="il-tile-icon sm"><i class="ti ti-users"></i></span>
         <div class="flex-grow-1" style="min-width: 260px;">
-            <h2 class="h6 fw-bold mb-0">Your Interns{{ $year === 'all' ? '' : ' · AY '.$year }}</h2>
+            <h2 class="h6 fw-bold mb-0">Your Interns{{ $year === 'all' ? '' : ' · AY '.$year }}{{ $semester ? ' · '.$semester : '' }}</h2>
             <div class="text-secondary small">Click an intern's name to evaluate them. Your evaluation goes to their Subject Instructor; the intern does not see it.</div>
         </div>
         {{-- Filter by academic year --}}
@@ -71,6 +71,9 @@
             <div class="input-group input-group-sm">
                 <span class="input-group-text">AY</span>
                 @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'hte_eval_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true, 'small' => true])
+            </div>
+            <div class="mt-1">
+                @include('partials.semester-select', ['name' => 'semester', 'id' => 'hte_eval_sem', 'value' => (string) $semester, 'allowAll' => true, 'autoSubmit' => true, 'small' => true])
             </div>
             <div class="small mt-1 text-end">
                 @if ($year === 'all')

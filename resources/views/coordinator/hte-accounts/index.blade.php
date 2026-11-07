@@ -108,6 +108,9 @@
                 @endif
             </div>
         </div>
+        <div class="col-md-2">
+            @include('partials.semester-select', ['name' => 'semester', 'id' => 'hte_sem', 'value' => (string) $semester, 'allowAll' => true, 'autoSubmit' => true])
+        </div>
         <div class="col-md il-search">
             <i class="ti ti-search"></i>
             <input
@@ -122,7 +125,7 @@
             <button type="submit" class="btn btn-primary">
                 <i class="ti ti-search"></i> Search
             </button>
-            @if (request()->filled('search'))
+            @if (request()->filled('search') || $semester)
                 <a href="{{ route('instructor.hte-accounts.index', ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </div>

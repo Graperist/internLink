@@ -33,8 +33,10 @@ class DocumentController extends Controller
             ->orderBy('name')->get();
         $stageTotals = DocumentRepositoryController::stageTotals($campusId);
 
+        [$year, $currentYear] = $this->selectedYear($request);
+
         // Evaluations are not tracked here: they go to the Subject Instructor only.
-        return view('coordinator.documents.index', compact('students', 'programs', 'requirements', 'stageTotals'));
+        return view('coordinator.documents.index', compact('students', 'programs', 'requirements', 'stageTotals', 'year', 'currentYear'));
     }
 
     private function filteredStudents(Request $request)
@@ -77,7 +79,38 @@ class DocumentController extends Controller
             $query->where('program_id', $programId);
         }
 
+        // Past years' files stay here: pick the academic year and semester
+        // the interns were enrolled in (the current year by default).
+        [$year] = $this->selectedYear($request);
+        if ($year !== 'all') {
+            $query->where('academic_year', $year);
+        }
+        if (\App\Support\Term::isValidSemester($semester = $request->query('semester'))) {
+            $query->where('semester', $semester);
+        }
+
         return $query->latest('id');
+    }
+
+    /**
+     * The academic year typed in the filter: the current one by default,
+     * "all" (or the box left empty) for every year.
+     *
+     * @return array{0:string,1:string} [selected year or 'all', current year]
+     */
+    private function selectedYear(Request $request): array
+    {
+        $current = \App\Support\Term::current()[0];
+        if (! $request->has('academic_year')) {
+            return [$current, $current];
+        }
+        $typed = (string) $request->query('academic_year');
+        if ($typed === '' || $typed === 'all') {
+            return ['all', $current];
+        }
+        $year = \App\Support\Term::normalizeAcademicYear($typed);
+
+        return [\App\Support\Term::isValidAcademicYear($year) ? $year : $current, $current];
     }
 
     private function withDocsByCode(Student $student): Student

@@ -91,7 +91,11 @@ class DocumentReviewController extends Controller
                     ->whereIn('audience', ['student', 'coordinator'])
                     ->whereNotIn('code', \App\Support\EvaluationRouting::studentToHteCodes()))
             ]);
+        // The list shows one academic year (the current one) and, if picked,
+        // one semester; a student opened directly is found in any term.
+        $term = \App\Support\TermFilter::fromRequest($request);
         $advisees = $instructor->advisees()
+            ->when(! $request->filled('student'), fn ($q) => $term->applyToStudents($q))
             // Archived students are left out (their records stay).
             ->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))
 
@@ -415,6 +419,7 @@ class DocumentReviewController extends Controller
             'programs' => $programs,
             'agencies' => $agencies,
             'instructor' => $instructor,
+            'term' => \App\Support\TermFilter::fromRequest($request),
         ]);
     }
 

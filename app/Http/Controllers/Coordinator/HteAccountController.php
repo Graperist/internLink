@@ -48,11 +48,15 @@ class HteAccountController extends Controller
         if ($year !== 'all' && ! \App\Support\Term::isValidAcademicYear($year)) {
             $year = $currentYear;
         }
+        // 1st or 2nd Semester: agencies on that semester's partner list (or made during it).
+        $semester = \App\Support\Term::isValidSemester($s = $request->query('semester')) ? $s : null;
         if ($year !== 'all') {
-            [$from, $to] = \App\Support\Term::range($year);
+            [$from, $to] = $semester ? \App\Support\Term::range($year, $semester) : \App\Support\Term::yearRange($year);
             $query->where(fn ($q) => $q
-                ->whereHas('hte.listings', fn ($l) => $l->where('academic_year', $year))
+                ->whereHas('hte.listings', fn ($l) => $l->where('academic_year', $year)->when($semester, fn ($l) => $l->where('semester', $semester)))
                 ->orWhereBetween('hte_representatives.created_at', [$from, $to]));
+        } elseif ($semester) {
+            $query->whereHas('hte.listings', fn ($l) => $l->where('semester', $semester));
         }
 
         $archived = (clone $query)->whereHas('user', fn ($u) => $u->where('status', 'archived'))->get()
@@ -70,7 +74,7 @@ class HteAccountController extends Controller
             }
         }
 
-        return view('coordinator.hte-accounts.index', compact('accounts', 'archived', 'year', 'currentYear'));
+        return view('coordinator.hte-accounts.index', compact('accounts', 'archived', 'year', 'currentYear', 'semester'));
     }
 
     /**

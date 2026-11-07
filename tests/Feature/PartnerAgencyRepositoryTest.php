@@ -83,14 +83,14 @@ class PartnerAgencyRepositoryTest extends TestCase
         return HteListing::forceCreate(['campus_id' => $this->campus->id, 'program_id' => $program->id, 'hte_id' => $hte->id, 'academic_year' => $ay, 'semester' => $sem, 'slots' => $slots]);
     }
 
-    private function placedStudent(Program $program, Hte $hte, string $id, string $start = '2027-01-20'): Student
+    private function placedStudent(Program $program, Hte $hte, string $id, string $start = '2027-01-20', string $year = '2026-2027', string $semester = '2nd Semester'): Student
     {
         $user = User::forceCreate([
             'campus_id' => $this->campus->id, 'role_id' => $this->roles['student']->id, 'id_number' => $id,
             'name' => "Student {$id}", 'email' => strtolower($id).'@s.local', 'password' => Hash::make('x'),
             'status' => 'active', 'must_change_password' => false,
         ]);
-        $student = Student::forceCreate(['user_id' => $user->id, 'campus_id' => $this->campus->id, 'program_id' => $program->id, 'hours_rendered' => 0]);
+        $student = Student::forceCreate(['user_id' => $user->id, 'campus_id' => $this->campus->id, 'program_id' => $program->id, 'hours_rendered' => 0, 'academic_year' => $year, 'semester' => $semester]);
         $internship = Internship::forceCreate(['student_id' => $student->id, 'campus_id' => $this->campus->id, 'program_id' => $program->id, 'required_hours' => 486, 'status' => 'deployed']);
         Deployment::forceCreate(['internship_id' => $internship->id, 'hte_id' => $hte->id, 'status' => 'active', 'start_date' => $start, 'end_date' => '2027-04-30']);
 
@@ -100,14 +100,18 @@ class PartnerAgencyRepositoryTest extends TestCase
     public function test_term_helper(): void
     {
         $this->assertSame(['2026-2027', '2nd Semester'], Term::current());
-        // The internship is only in the 2nd Semester.
-        $this->assertSame(['2nd Semester'], Term::SEMESTERS);
-        $this->assertSame(['2026-2027', '2nd Semester'], Term::forDate(CarbonImmutable::parse('2026-12-01')));
+        // Interns can be in the 1st or the 2nd Semester.
+        $this->assertSame(['1st Semester', '2nd Semester'], Term::SEMESTERS);
+        $this->assertSame(['2026-2027', '1st Semester'], Term::forDate(CarbonImmutable::parse('2026-12-01')));
         $this->assertSame(['2026-2027', '2nd Semester'], Term::forDate(CarbonImmutable::parse('2027-06-15')));
-        $this->assertSame(['2027-2028', '2nd Semester'], Term::forDate(CarbonImmutable::parse('2027-08-01')));
-        $this->assertSame(['2025-2026', '2nd Semester'], Term::previous('2026-2027', '2nd Semester'));
-        // The term covers the whole academic year, so an October start still counts.
+        $this->assertSame(['2027-2028', '1st Semester'], Term::forDate(CarbonImmutable::parse('2027-08-01')));
+        $this->assertSame(['2026-2027', '1st Semester'], Term::previous('2026-2027', '2nd Semester'));
+        $this->assertSame(['2025-2026', '2nd Semester'], Term::previous('2026-2027', '1st Semester'));
+        [$from, $to] = Term::range('2026-2027', '1st Semester');
+        $this->assertSame(['2026-08-01', '2026-12-31'], [$from->toDateString(), $to->toDateString()]);
         [$from, $to] = Term::range('2026-2027', '2nd Semester');
+        $this->assertSame(['2027-01-01', '2027-07-31'], [$from->toDateString(), $to->toDateString()]);
+        [$from, $to] = Term::yearRange('2026-2027');
         $this->assertSame(['2026-08-01', '2027-07-31'], [$from->toDateString(), $to->toDateString()]);
     }
 
@@ -252,11 +256,14 @@ class PartnerAgencyRepositoryTest extends TestCase
         $this->placedStudent($this->bshm, $listing->hte, '23-AC-0001');
         $this->placedStudent($this->bshm, $listing->hte, '23-AC-0002');
         $this->placedStudent($this->bsit, $listing->hte, '23-AC-0003');             // other program
-        $this->placedStudent($this->bshm, $listing->hte, '23-AC-0004', '2026-03-01'); // last academic year
-        $this->placedStudent($this->bshm, $listing->hte, '23-AC-0005', '2026-09-01'); // early start, same academic year
+        $this->placedStudent($this->bshm, $listing->hte, '23-AC-0004', '2026-03-01', '2025-2026'); // last academic year
+        $this->placedStudent($this->bshm, $listing->hte, '23-AC-0005', '2026-09-01'); // early start, enrolled this term
+        $this->placedStudent($this->bshm, $listing->hte, '23-AC-0006', '2026-09-01', '2026-2027', '1st Semester'); // 1st Semester
 
         $counts = \App\Http\Controllers\Instructor\HteController::internCounts($this->campus->id, '2026-2027', '2nd Semester');
         $this->assertSame(3, $counts[$this->bshm->id.'|'.$listing->hte_id]);
+        $counts = \App\Http\Controllers\Instructor\HteController::internCounts($this->campus->id, '2026-2027', '1st Semester');
+        $this->assertSame(1, $counts[$this->bshm->id.'|'.$listing->hte_id]);
 
         // No delete: archived instead (kept with its interns), and restored.
         $this->actingAs($hm)->get(route('instructor.htes', ['academic_year' => '2026-2027', 'semester' => '2nd Semester']))->assertOk()
@@ -305,18 +312,22 @@ class PartnerAgencyRepositoryTest extends TestCase
         $this->assertMatchesRegularExpression('#Shared Agency</td>\s*<td class="num">2</td>#', $html);
     }
 
-    public function test_the_semester_is_always_the_2nd_semester(): void
+    public function test_the_semester_is_the_1st_or_the_2nd_semester(): void
     {
         $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
         $listing = $this->listing($this->bsit, 'Hundred Islands Eco Resort');
 
-        // No semester to choose on the list, the form or Generate Reports.
+        // 1st or 2nd Semester can be chosen on the list, the form and Generate Reports (no Midyear).
         foreach ([route('instructor.htes'), route('instructor.htes.create'), route('instructor.reports')] as $url) {
             $this->actingAs($coordinator)->get($url)->assertOk()
-                ->assertDontSee('1st Semester')->assertDontSee('Midyear')->assertSee('2nd Semester');
+                ->assertSee('1st Semester')->assertSee('2nd Semester')->assertDontSee('Midyear');
         }
-        // Another semester can't be saved.
-        $this->actingAs($coordinator)->post(route('instructor.htes.store'), ['name' => 'Other Agency', 'academic_year' => '2026-2027', 'semester' => '1st Semester', 'program_id' => $this->bsit->id] + $this->details)
+        // A 1st Semester agency is saved on the 1st Semester list.
+        $this->actingAs($coordinator)->post(route('instructor.htes.store'), ['name' => 'First Sem Agency', 'academic_year' => '2026-2027', 'semester' => '1st Semester', 'program_id' => $this->bsit->id, 'slots' => 2] + $this->details)
+            ->assertSessionHasNoErrors();
+        $this->assertTrue(HteListing::whereHas('hte', fn ($h) => $h->where('name', 'First Sem Agency'))->forTerm('2026-2027', '1st Semester')->exists());
+        // Midyear can't be saved.
+        $this->actingAs($coordinator)->post(route('instructor.htes.store'), ['name' => 'Other Agency', 'academic_year' => '2026-2027', 'semester' => 'Midyear', 'program_id' => $this->bsit->id] + $this->details)
             ->assertSessionHasErrors('semester');
 
         // Old 1st Semester / Midyear listings move to the 2nd Semester (merged with one already there).
@@ -332,10 +343,10 @@ class PartnerAgencyRepositoryTest extends TestCase
     public function test_copy_last_terms_list(): void
     {
         $hm = $this->teacher('instructor', 'ACC-INST-002', $this->bshm);
-        $this->listing($this->bshm, 'Hotel A', '2025-2026');                      // last year's 2nd Semester
-        $this->listing($this->bshm, 'Hotel B', '2025-2026');
+        $this->listing($this->bshm, 'Hotel A', '2026-2027', '1st Semester');      // the term before: this year's 1st Semester
+        $this->listing($this->bshm, 'Hotel B', '2026-2027', '1st Semester');
         $this->listing($this->bshm, 'Hotel B');                                   // already this term
-        $this->listing($this->bsit, 'IT Co', '2025-2026');                        // other program
+        $this->listing($this->bsit, 'IT Co', '2026-2027', '1st Semester');        // other program
 
         $this->actingAs($hm)->post(route('instructor.htes.copy'), ['academic_year' => '2026-2027', 'semester' => '2nd Semester'])
             ->assertRedirect();
@@ -490,5 +501,94 @@ class PartnerAgencyRepositoryTest extends TestCase
             ->assertSee('2nd Semester, AY 2036-2037')
             ->assertSee('type="text" name="academic_year" id="f_ay"', false)
             ->assertSee('value="2036-2037"', false);
+    }
+
+    public function test_students_are_enrolled_in_the_1st_or_the_2nd_semester(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+
+        $this->actingAs($coordinator)->get(route('instructor.interns.create'))->assertOk()
+            ->assertSee('name="semester"', false)->assertSee('1st Semester')->assertSee('2nd Semester');
+        $this->actingAs($coordinator)->post(route('instructor.interns.store'), [
+            'academic_year' => '2026-2027', 'semester' => '1st Semester', 'id_number' => '23-AC-0100',
+            'name' => 'First Sem Intern', 'email' => 'first@s.local', 'program_id' => $this->bsit->id,
+        ])->assertSessionHasNoErrors();
+        $this->actingAs($coordinator)->post(route('instructor.interns.store'), [
+            'academic_year' => '2026-2027', 'id_number' => '23-AC-0101',
+            'name' => 'Second Sem Intern', 'email' => 'second@s.local', 'program_id' => $this->bsit->id,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('1st Semester', User::where('id_number', '23-AC-0100')->first()->student->semester);
+        // Left out: the current semester.
+        $this->assertSame('2nd Semester', User::where('id_number', '23-AC-0101')->first()->student->semester);
+        $this->actingAs($coordinator)->post(route('instructor.interns.store'), [
+            'academic_year' => '2026-2027', 'semester' => 'Midyear', 'id_number' => '23-AC-0102',
+            'name' => 'Bad', 'email' => 'bad@s.local', 'program_id' => $this->bsit->id,
+        ])->assertSessionHasErrors('semester');
+
+        // The student list shows both semesters, or one.
+        $this->actingAs($coordinator)->get(route('instructor.advisees'))->assertOk()
+            ->assertSee('First Sem Intern')->assertSee('Second Sem Intern');
+        $this->actingAs($coordinator)->get(route('instructor.advisees', ['semester' => '1st Semester']))->assertOk()
+            ->assertSee('First Sem Intern')->assertDontSee('Second Sem Intern');
+    }
+
+    public function test_the_repository_shows_past_years_and_semesters(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $listing = $this->listing($this->bsit, 'Repo Agency');
+        $this->placedStudent($this->bsit, $listing->hte, '23-AC-0201');                                        // 2nd Sem 2026-2027
+        $this->placedStudent($this->bsit, $listing->hte, '23-AC-0202', '2026-09-01', '2026-2027', '1st Semester');
+        $this->placedStudent($this->bsit, $listing->hte, '22-AC-0203', '2026-02-01', '2025-2026');             // last year
+
+        // The current academic year by default (both semesters).
+        $this->actingAs($coordinator)->get(route('coordinator.documents'))->assertOk()
+            ->assertSee('23-AC-0201')->assertSee('23-AC-0202')->assertDontSee('22-AC-0203')
+            ->assertSee('name="semester"', false);
+        // One semester.
+        $this->actingAs($coordinator)->get(route('coordinator.documents', ['semester' => '1st Semester']))->assertOk()
+            ->assertSee('23-AC-0202')->assertDontSee('23-AC-0201');
+        // A past year, and all years.
+        $this->actingAs($coordinator)->get(route('coordinator.documents', ['academic_year' => '2025']))->assertOk()
+            ->assertSee('22-AC-0203')->assertDontSee('23-AC-0201');
+        $this->actingAs($coordinator)->get(route('coordinator.documents', ['academic_year' => 'all']))->assertOk()
+            ->assertSee('22-AC-0203')->assertSee('23-AC-0201')->assertSee('23-AC-0202');
+    }
+
+    public function test_the_other_pages_filter_by_academic_year_and_semester(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $listing = $this->listing($this->bsit, 'Term Agency');
+        $this->placedStudent($this->bsit, $listing->hte, '23-AC-0301');                                        // 2nd Sem 2026-2027
+        $this->placedStudent($this->bsit, $listing->hte, '23-AC-0302', '2026-09-01', '2026-2027', '1st Semester');
+        $this->placedStudent($this->bsit, $listing->hte, '22-AC-0303', '2026-02-01', '2025-2026');             // last year
+
+        // Time Frame Monitoring: this year by default, one semester, or all years.
+        $this->actingAs($coordinator)->get(route('instructor.monitoring'))->assertOk()
+            ->assertSee('Student 23-AC-0301')->assertSee('Student 23-AC-0302')->assertDontSee('Student 22-AC-0303')
+            ->assertSee('name="semester"', false);
+        $this->actingAs($coordinator)->get(route('instructor.monitoring', ['semester' => '1st Semester']))->assertOk()
+            ->assertSee('Student 23-AC-0302')->assertDontSee('Student 23-AC-0301');
+        $this->actingAs($coordinator)->get(route('instructor.monitoring', ['academic_year' => 'all']))->assertOk()
+            ->assertSee('Student 22-AC-0303');
+
+        // Dashboard, Document Review, Evaluations and Generate Reports have the filter too.
+        foreach (['instructor.dashboard', 'instructor.documents', 'instructor.evaluations', 'instructor.reports'] as $name) {
+            $this->actingAs($coordinator)->get(route($name, ['semester' => '1st Semester']))->assertOk()
+                ->assertSee('name="semester"', false)->assertSee('AY 2026-2027 (current) · 1st Semester', false);
+        }
+
+        // Announcements: this academic year by default, or one semester of it.
+        $post = ['category' => 'other', 'title' => 'Hello', 'message' => 'Hi', 'audience' => 'all'];
+        if (! array_key_exists('other', \App\Models\Announcement::CATEGORIES)) {
+            $post['category'] = array_key_first(\App\Models\Announcement::CATEGORIES);
+            $post['event_date'] = '2027-02-01';
+        }
+        $this->actingAs($coordinator)->post(route('instructor.announcements.store'), $post)
+            ->assertSessionHas('status', 'Announcement sent to 2 interns of every program.');
+        $this->actingAs($coordinator)->post(route('instructor.announcements.store'), $post + ['recipients_term' => '1st Semester'])
+            ->assertSessionHas('status', 'Announcement sent to 1 intern of every program.');
+        $this->actingAs($coordinator)->post(route('instructor.announcements.store'), $post + ['recipients_term' => 'all'])
+            ->assertSessionHas('status', 'Announcement sent to 3 interns of every program.');
     }
 }

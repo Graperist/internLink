@@ -67,9 +67,7 @@
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-semibold mb-1" for="f_sem">Semester</label>
-            {{-- The internship is only in the 2nd Semester. --}}
-            <input type="text" id="f_sem" class="form-control" value="{{ \App\Support\Term::SEMESTER }}" readonly>
-            <input type="hidden" name="semester" value="{{ \App\Support\Term::SEMESTER }}">
+            @include('partials.semester-select', ['name' => 'semester', 'id' => 'f_sem', 'value' => $semester, 'autoSubmit' => true])
         </div>
         @if ($isCoordinator)
             <div class="col-md-2">
@@ -127,7 +125,7 @@
         <div class="ev-stat {{ $short > 0 ? 'alert-tile' : '' }}">
             <span class="ic"><i class="ti ti-user-question"></i></span>
             <div class="n">{{ $summary['unplaced'] ?? '—' }}</div>
-            <div class="l">{{ $isCurrentTerm ? 'Students still to place' : 'Students to place (current term only)' }}</div>
+            <div class="l">Students still to place</div>
         </div>
     </div>
 </div>

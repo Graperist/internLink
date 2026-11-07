@@ -45,13 +45,18 @@ class PortalController extends Controller
         if ($year !== 'all' && ! \App\Support\Term::isValidAcademicYear($year)) {
             $year = $currentYear;
         }
-        $yearOf = fn ($d) => \App\Support\Term::forDate(\Carbon\Carbon::parse($d->start_date ?? $d->end_date ?? $d->created_at))[0];
+        $semester = \App\Support\Term::isValidSemester($s = $request->query('semester')) ? $s : null;
+        // The term the intern was enrolled in (older records: when the internship started).
+        $termOf = fn ($d) => $d->internship?->student?->academic_year && $d->internship?->student?->semester
+            ? [$d->internship->student->academic_year, $d->internship->student->semester]
+            : \App\Support\Term::forDate(\Carbon\Carbon::parse($d->start_date ?? $d->end_date ?? $d->created_at));
 
         $deployments = Deployment::where('hte_id', $representative->hte_id)
             ->where('status', 'completed')
             ->with(['internship.student.user', 'internship.student.program', 'internship.documents'])
             ->get()
-            ->when($year !== 'all', fn ($all) => $all->filter(fn ($d) => $yearOf($d) === $year))
+            ->when($year !== 'all', fn ($all) => $all->filter(fn ($d) => $termOf($d)[0] === $year))
+            ->when($semester, fn ($all) => $all->filter(fn ($d) => $termOf($d)[1] === $semester))
             ->sortBy(fn ($d) => $d->internship->student->user->name)
             ->values();
 
@@ -64,7 +69,7 @@ class PortalController extends Controller
         $selfRequirement = $requirements->get('PARTNER_AGENCY_EVAL_SELF');
         $selfEvaluation = $selfRequirement ? \App\Support\AgencyEvaluations::find($selfRequirement, $representative->hte_id) : null;
 
-        return view('hte.evaluations', compact('representative', 'deployments', 'requirements', 'selfRequirement', 'selfEvaluation', 'year', 'currentYear'));
+        return view('hte.evaluations', compact('representative', 'deployments', 'requirements', 'selfRequirement', 'selfEvaluation', 'year', 'currentYear', 'semester'));
     }
 
     /**

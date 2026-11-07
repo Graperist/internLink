@@ -271,6 +271,10 @@ class AdviseeController extends Controller
         if ($year !== 'all') {
             $query->where('academic_year', $year);
         }
+        // 1st or 2nd Semester; both by default.
+        if (\App\Support\Term::isValidSemester($semester = $request->query('semester'))) {
+            $query->where('semester', $semester);
+        }
 
         if ($search = $request->query('search')) {
             $query->whereHas('user', fn ($q) => $q

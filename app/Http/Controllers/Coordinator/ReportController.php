@@ -27,7 +27,7 @@ class ReportController extends Controller
      *
      * @return array{programStats: \Illuminate\Support\Collection, hteCount: int, activeMoaCount: int}
      */
-    public static function campusSummary(int $campusId): array
+    public static function campusSummary(int $campusId, ?\App\Support\TermFilter $term = null): array
     {
 
         // Pre-deployment requirements only (live, required, pre-deployment stage).
@@ -38,8 +38,9 @@ class ReportController extends Controller
 
         $programs = Program::where('campus_id', $campusId)->orderBy('name')->get();
 
-        $programStats = $programs->map(function ($program) use ($requiredDocsCount, $incompleteDocsSql) {
-            $base = fn () => Student::where('program_id', $program->id);
+        $programStats = $programs->map(function ($program) use ($requiredDocsCount, $incompleteDocsSql, $term) {
+            // The interns enrolled in the chosen academic year / semester.
+            $base = fn () => $term ? $term->applyToStudents(Student::where('program_id', $program->id)) : Student::where('program_id', $program->id);
 
             return [
                 'program' => $program,
@@ -68,19 +69,21 @@ class ReportController extends Controller
      * Every enrolled student, one row each - the same data as the Intern
      * List table, without pagination, as a downloadable CSV.
      */
-    public function exportInternRoster(): StreamedResponse
+    public function exportInternRoster(\Illuminate\Http\Request $request): StreamedResponse
     {
         $campusId = auth()->user()->campus_id;
+        // The academic year / semester chosen on Generate Reports (current year by default).
+        $term = \App\Support\TermFilter::fromRequest($request);
 
-        $students = Student::with(['user', 'program', 'currentInternship.deployment.hte'])
-            ->where('campus_id', $campusId)
+        $students = $term->applyToStudents(Student::with(['user', 'program', 'currentInternship.deployment.hte'])
+            ->where('campus_id', $campusId))
             ->get();
 
         $callback = function () use ($students) {
             $handle = fopen('php://output', 'w');
 
             fputcsv($handle, [
-                'Name', 'ID Number', 'Program', 'Host Training Establishment',
+                'Name', 'ID Number', 'Program', 'Academic Year', 'Semester', 'Host Training Establishment',
                 'Deployment Status', 'Hours Rendered', 'Required Hours',
             ]);
 
@@ -91,6 +94,8 @@ class ReportController extends Controller
                     $student->user->name,
                     $student->user->id_number,
                     $student->program->code,
+                    $student->academic_year,
+                    $student->semester,
                     $deployment?->hte?->name ?? '',
                     $deployment?->status ? ucfirst($deployment->status) : 'Not deployed',
                     $student->hours_rendered,

@@ -219,9 +219,9 @@ class DocumentController extends Controller
             ? $this->partnerAgencyChoices($student, $internship)
             : collect();
 
-        // Slots per agency for the student's program this term, so a full
+        // Slots per agency for the student's program in their term, so a full
         // agency shows as full and can't be chosen.
-        [$termYear, $termSemester] = \App\Support\Term::current();
+        [$termYear, $termSemester] = $student->term();
         $hteAvailability = $htes->isNotEmpty()
             ? \App\Http\Controllers\Instructor\HteController::availability($student->campus_id, $student->program_id, $termYear, $termSemester)
             : [];
@@ -1569,12 +1569,13 @@ class DocumentController extends Controller
 
     /**
      * Partner agencies a student may choose: their program's list for the
-     * current term. The HTE they are already placed at is always included,
-     * so a later form still shows it even if the list changed.
+     * term they are enrolled in (academic year + semester). The HTE they are
+     * already placed at is always included, so a later form still shows it
+     * even if the list changed.
      */
     private function partnerAgencyChoices($student, $internship)
     {
-        [$academicYear, $semester] = \App\Support\Term::current();
+        [$academicYear, $semester] = $student->term();
 
         $htes = \App\Http\Controllers\Instructor\HteController::listedHtes($student->program_id, $academicYear, $semester);
 

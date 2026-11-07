@@ -4,8 +4,18 @@
 
 @section('content')
 <div class="il-page-header">
-    <h1 class="il-page-title">Generate reports</h1>
+    <div>
+        <h1 class="il-page-title">Generate reports</h1>
+        <p class="small fw-semibold mb-0">{{ $term->label() }}</p>
+    </div>
+    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'rep'])
+    </form>
 </div>
+@php
+    // The trainee reports follow the term chosen above.
+    $termInputs = ['academic_year' => $term->year, 'semester' => $term->semester ?? ''];
+@endphp
 
 @if ($campusSummary)
     {{-- The coordinator: the campus at a glance, then every program's official forms. --}}
@@ -36,7 +46,7 @@
     <div class="il-card mb-3">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h2 class="h6 fw-bold mb-0">Program Summary</h2>
-            <a href="{{ route('coordinator.reports.export-roster') }}" class="small fw-semibold text-decoration-none">
+            <a href="{{ route('coordinator.reports.export-roster', $term->query() + ($term->year === 'all' ? ['academic_year' => 'all'] : [])) }}" class="small fw-semibold text-decoration-none">
                 <i class="ti ti-download"></i> Export Intern Roster (CSV)
             </a>
         </div>
@@ -80,6 +90,7 @@
         <div class="col-md-4">
             <form method="GET" action="{{ route('instructor.reports.student-trainees') }}" target="_blank"
                   class="il-report-card h-100 d-flex flex-column">
+                @foreach ($termInputs as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
                 <div class="d-flex align-items-center gap-2 mb-2"><span class="il-tile-icon sm"><i class="ti ti-users-group"></i></span><p class="fw-semibold mb-0">Masterlist of Student-Trainees</p></div>
                 <p class="text-secondary small mb-3">
                     FM-AA-INT-09 &middot; One page per company, listing the student-trainees placed there
@@ -119,7 +130,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_semester">Semester</label>
-                        <input type="text" class="form-control form-control-sm" id="mpi_semester" name="semester" value="{{ \App\Support\Term::SEMESTER }}" readonly>
+                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'mpi_semester', 'value' => $mpiSemester, 'small' => true])
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_ay">Academic Year</label>
@@ -146,7 +157,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small mb-1" for="dsi_semester">Semester</label>
-                        <input type="text" class="form-control form-control-sm" id="dsi_semester" name="semester" value="2nd Semester" readonly>
+                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'dsi_semester', 'value' => $semester, 'small' => true])
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="dsi_ay">Academic Year</label>
@@ -166,6 +177,7 @@
         <div class="col-md-4">
             <form method="GET" action="{{ route('instructor.reports.site-monitoring') }}" target="_blank"
                   class="il-report-card h-100 d-flex flex-column">
+                @foreach ($termInputs as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
                 <div class="d-flex align-items-center gap-2 mb-2"><span class="il-tile-icon sm"><i class="ti ti-map-pin-check"></i></span><p class="fw-semibold mb-0">Internship Site Monitoring Report</p></div>
                 <p class="text-secondary small mb-3">
                     FM-AA-INT-16 &middot; For a visit to a company: its student-trainees are filled in; the feedback is written in during the visit

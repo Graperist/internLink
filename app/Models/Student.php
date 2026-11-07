@@ -6,14 +6,24 @@ use Illuminate\Database\Eloquent\Model;
 
 class Student extends Model
 {
-    protected $fillable = ['user_id', 'campus_id', 'program_id', 'instructor_id', 'hours_rendered', 'academic_year'];
+    protected $fillable = ['user_id', 'campus_id', 'program_id', 'instructor_id', 'hours_rendered', 'academic_year', 'semester'];
 
     protected static function booted(): void
     {
-        // Enrolled for an academic year; the current one unless given.
+        // Enrolled for an academic year and semester; the current term unless given.
         static::creating(function (Student $student) {
-            $student->academic_year ??= \App\Support\Term::current()[0];
+            [$year, $semester] = \App\Support\Term::current();
+            $student->academic_year ??= $year;
+            $student->semester ??= $semester;
         });
+    }
+
+    /** @return array{0:string,1:string} the term the student is enrolled in */
+    public function term(): array
+    {
+        [$year, $semester] = \App\Support\Term::current();
+
+        return [$this->academic_year ?: $year, $this->semester ?: $semester];
     }
 
     public function user()

@@ -32,18 +32,22 @@ class InternAccountController extends Controller
         $programs = $this->programsFor($instructor);
         $selectedProgram = $instructor->programForNewRecord($request->query('program_id')) ?? $instructor->program_id;
 
-        $academicYear = \App\Support\Term::current()[0];
+        [$academicYear, $semester] = \App\Support\Term::current();
 
-        return view('instructor.advisees.create', compact('instructor', 'programs', 'selectedProgram', 'academicYear'));
+        return view('instructor.advisees.create', compact('instructor', 'programs', 'selectedProgram', 'academicYear', 'semester'));
     }
 
     public function store(Request $request): RedirectResponse
     {
         $instructor = $this->instructorWithProgram();
-        // Blank means the current academic year.
-        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0]]);
+        // Blank means the current academic year and semester.
+        $request->merge([
+            'academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0],
+            'semester' => $request->input('semester') ?: \App\Support\Term::current()[1],
+        ]);
 
         $data = $request->validate([
+            'semester' => ['required', Rule::in(\App\Support\Term::SEMESTERS)],
             'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
                 if (! \App\Support\Term::isValidAcademicYear($value)) {
                     $fail('Type the academic year like 2026-2027 (or just 2026).');
@@ -83,6 +87,7 @@ class InternAccountController extends Controller
                 'instructor_id' => $handler?->id,
                 'hours_rendered' => 0,
                 'academic_year' => $data['academic_year'],
+                'semester' => $data['semester'],
             ]);
 
             // Every student starts with an internship record so they can fill
@@ -137,18 +142,22 @@ class InternAccountController extends Controller
         $instructor = $this->instructorWithProgram();
         $programs = $this->programsFor($instructor);
 
-        $academicYear = \App\Support\Term::current()[0];
+        [$academicYear, $semester] = \App\Support\Term::current();
 
-        return view('instructor.advisees.import', compact('instructor', 'programs', 'academicYear'));
+        return view('instructor.advisees.import', compact('instructor', 'programs', 'academicYear', 'semester'));
     }
 
     public function import(Request $request): RedirectResponse
     {
         $instructor = $this->instructorWithProgram();
 
-        // Blank means the current academic year.
-        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0]]);
+        // Blank means the current academic year and semester.
+        $request->merge([
+            'academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0],
+            'semester' => $request->input('semester') ?: \App\Support\Term::current()[1],
+        ]);
         $request->validate([
+            'semester' => ['required', Rule::in(\App\Support\Term::SEMESTERS)],
             'file' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:5120'],
             'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
                 if (! \App\Support\Term::isValidAcademicYear($value)) {
@@ -176,7 +185,7 @@ class InternAccountController extends Controller
         $defaultProgram = $instructor->isCoordinator() && $request->filled('program_id')
             ? \App\Models\Program::where('campus_id', $instructor->campus_id)->find($request->input('program_id'))
             : null;
-        $import = new StudentsImport($instructor, $defaultProgram, $request->input('academic_year'));
+        $import = new StudentsImport($instructor, $defaultProgram, $request->input('academic_year'), $request->input('semester'));
         $import->collection(collect($rows));
 
         // Kept (for 2 hours) so the sign-in details can be downloaded as a
@@ -185,10 +194,11 @@ class InternAccountController extends Controller
             session()->put('import_credentials', [
                 'at' => now()->toIso8601String(),
                 'academic_year' => $request->input('academic_year'),
+                'semester' => $request->input('semester'),
                 'rows' => $import->created,
             ]);
         }
-        AuditLogger::record('student.imported', count($import->created).' intern account(s) enrolled by bulk import for AY '.$request->input('academic_year').'.', auth()->user(), $request, null, $instructor->campus_id);
+        AuditLogger::record('student.imported', count($import->created).' intern account(s) enrolled by bulk import for '.$request->input('semester').', AY '.$request->input('academic_year').'.', auth()->user(), $request, null, $instructor->campus_id);
 
         return redirect()->route('instructor.advisees', $this->yearQuery($request->input('academic_year')))->with('import_results', [
             'created' => $import->created,
@@ -277,8 +287,12 @@ class InternAccountController extends Controller
         $student->load('user', 'currentInternship.deployment');
         $user = $student->user;
 
-        $request->merge(['academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? $student->academic_year]);
+        $request->merge([
+            'academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? $student->academic_year,
+            'semester' => $request->input('semester') ?: ($student->semester ?: \App\Support\Term::current()[1]),
+        ]);
         $data = $request->validate([
+            'semester' => ['required', Rule::in(\App\Support\Term::SEMESTERS)],
             'academic_year' => ['required', 'string', function ($attr, $value, $fail) {
                 if (! \App\Support\Term::isValidAcademicYear($value)) {
                     $fail('Type the academic year like 2026-2027 (or just 2026).');
@@ -301,7 +315,7 @@ class InternAccountController extends Controller
 
         DB::transaction(function () use ($user, $student, $data, $newProgram, $instructor) {
             $user->update(['id_number' => $data['id_number'], 'name' => $data['name'], 'email' => $data['email']]);
-            $student->update(['academic_year' => $data['academic_year']]);
+            $student->update(['academic_year' => $data['academic_year'], 'semester' => $data['semester']]);
 
             if ($newProgram) {
                 $handler = $instructor->handlerFor($newProgram);

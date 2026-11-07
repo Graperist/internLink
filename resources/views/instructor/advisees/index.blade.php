@@ -138,7 +138,7 @@
             @else
                 My {{ $instructor->program->code ?? '' }} Student Interns
             @endif
-            &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year.($year === $currentYear ? ' (current)' : '') }}
+            &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year.($year === $currentYear ? ' (current)' : '') }}{{ \App\Support\Term::isValidSemester(request('semester')) ? ' · '.request('semester') : '' }}
         </h2>
         <div class="d-flex align-items-center gap-3">
             <a href="{{ route('instructor.advisees.export', request()->query()) }}" class="small fw-semibold text-decoration-none">
@@ -157,6 +157,9 @@
             @else
                 <a href="{{ route('instructor.advisees', ['academic_year' => 'all']) }}" class="btn btn-outline-secondary btn-sm d-flex align-items-center" title="Show all academic years">All</a>
             @endif
+        </div>
+        <div style="flex: 0 1 160px; min-width: 120px;">
+            @include('partials.semester-select', ['name' => 'semester', 'id' => 'students_sem', 'value' => (string) request('semester'), 'allowAll' => true, 'autoSubmit' => true])
         </div>
         <div class="il-search" style="flex: 1 1 160px; min-width: 130px;">
             <i class="ti ti-search"></i>
@@ -188,7 +191,7 @@
             <option value="not_deployed" @selected(request('status') === 'not_deployed')>Not deployed</option>
         </select>
         <button type="submit" class="btn btn-primary flex-shrink-0" title="Search"><i class="ti ti-search"></i><span class="d-none d-xxl-inline"> Search</span></button>
-        @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id']))
+        @if (request()->hasAny(['search', 'status', 'program_id', 'hte_id', 'semester']))
             <a href="{{ route('instructor.advisees', ['academic_year' => $year]) }}" class="btn btn-sm btn-link flex-shrink-0 px-1">Clear</a>
         @endif
     </form>
@@ -240,7 +243,7 @@
                             <span class="il-row-avatar">{{ \App\Models\User::initialsOf($student->user->name) }}</span>
                             <span>
                                 <span class="fw-semibold d-block">{{ $student->user->name }}</span>
-                                <span class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}</span>
+                                <span class="text-secondary" style="font-size: 0.78rem;">{{ $student->user->id_number }}@if ($student->semester) &middot; {{ $student->semester === \App\Support\Term::FIRST ? '1st Sem' : '2nd Sem' }}@endif</span>
                             </span>
                         </a>
                     </td>
@@ -347,7 +350,7 @@
                     <tr>
                         <td>
                             <span class="fw-semibold d-block text-secondary">{{ $student->user->name }}</span>
-                            <span class="text-secondary" style="font-size:.78rem;">{{ $student->user->id_number }} &middot; {{ $student->program->code ?? '' }} &middot; AY {{ $student->academic_year }}</span>
+                            <span class="text-secondary" style="font-size:.78rem;">{{ $student->user->id_number }} &middot; {{ $student->program->code ?? '' }} &middot; {{ $student->semester ? $student->semester.', ' : '' }}AY {{ $student->academic_year }}</span>
                         </td>
                         <td class="text-end">
                             @if ($instructor->canManageAccountOf($student))

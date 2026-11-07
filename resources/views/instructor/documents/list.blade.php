@@ -37,7 +37,7 @@
         @foreach ($tabs as $key => $label)
             <li class="nav-item">
                 <a class="nav-link {{ $tab === $key ? 'active fw-semibold' : 'text-secondary' }}"
-                   href="{{ route('instructor.documents', array_filter(['tab' => $key === 'queue' ? null : $key, 'search' => request('search'), 'program_id' => request('program_id'), 'hte_id' => request('hte_id')])) }}">
+                   href="{{ route('instructor.documents', array_filter(['tab' => $key === 'queue' ? null : $key, 'search' => request('search'), 'program_id' => request('program_id'), 'hte_id' => request('hte_id')]) + $term->query()) }}">
                     {{ $label }} <span class="badge rounded-pill {{ $tab === $key ? 'text-bg-primary' : 'text-bg-light text-secondary' }}">{{ $counts[$key] }}</span>
                 </a>
             </li>
@@ -46,6 +46,10 @@
 
     <form method="GET" class="row g-2 mb-3">
         <input type="hidden" name="tab" value="{{ $tab === 'queue' ? '' : $tab }}">
+        <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
+            @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'review'])
+            <span class="small text-secondary">{{ $term->label() }}</span>
+        </div>
         <div class="{{ $isCoordinator ? 'col-md-4' : 'col-md-7' }}">
             <input type="text" name="search" class="form-control" placeholder="Search by name or ID number..." value="{{ request('search') }}">
         </div>

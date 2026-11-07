@@ -40,6 +40,15 @@
                     </select>
                 @endif
 
+                <label class="form-label small fw-semibold" for="recipients_term">Interns of</label>
+                <select id="recipients_term" name="recipients_term" class="form-select mb-3">
+                    <option value="" @selected(old('recipients_term', '') === '')>AY {{ $currentYear }} (both semesters)</option>
+                    @foreach (\App\Support\Term::SEMESTERS as $sem)
+                        <option value="{{ $sem }}" @selected(old('recipients_term') === $sem)>{{ $sem }}, AY {{ $currentYear }}</option>
+                    @endforeach
+                    <option value="all" @selected(old('recipients_term') === 'all')>Every academic year</option>
+                </select>
+
                 <label class="form-label small fw-semibold" for="category">Type</label>
                 <select id="category" name="category" class="form-select mb-3">
                     @foreach ($categories as $key => $label)

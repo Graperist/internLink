@@ -37,17 +37,21 @@ class EvaluationController extends Controller
         $wanted = $request->has('program_id') ? (int) $request->query('program_id') : (int) $instructor->program_id;
         $programId = $isCoordinator && $programs->contains('id', $wanted) ? $wanted : null;
 
-        $agencies = AgencyEvaluations::agenciesFor($instructor, $programId);
+        // One academic year (the current one) and, if picked, one semester.
+        $term = \App\Support\TermFilter::fromRequest($request);
+        $agencies = AgencyEvaluations::agenciesFor($instructor, $programId, $term);
         // Like Document Review: the agencies on the left, one open on the right (?hte_id=).
         $hteId = (int) $request->query('hte_id') ?: null;
 
         // The other partner agencies (interns still training there, or none placed
         // yet this term): listed too, their evaluations open once an intern finishes.
-        [$academicYear, $semester] = \App\Support\Term::current();
+        // The chosen term's partner lists (both semesters unless one is picked).
+        $academicYear = $term->year === 'all' ? null : $term->year;
         $scope = fn ($q) => $instructor->limitToEvaluationScope($q)->when($programId, fn ($q) => $q->where('program_id', $programId));
-        $training = \App\Models\Deployment::whereIn('status', ['pending', 'active'])->whereHas('internship', $scope)
+        $training = $term->applyThrough(\App\Models\Deployment::whereIn('status', ['pending', 'active'])->whereHas('internship', $scope), 'internship.student')
             ->with(['hte', 'internship.student.user'])->get()->filter(fn ($d) => $d->hte)->groupBy('hte_id');
-        $listed = \App\Models\HteListing::where('academic_year', $academicYear)->where('semester', $semester)
+        $listed = \App\Models\HteListing::when($academicYear, fn ($q) => $q->where('academic_year', $academicYear))
+            ->when($term->semester, fn ($q) => $q->where('semester', $term->semester))
             ->where(fn ($q) => $scope($q))->with('hte')->get()->filter(fn ($l) => $l->hte)->pluck('hte', 'hte_id');
         $waitingAgencies = collect($listed)->union($training->map(fn ($d) => $d->first()->hte))
             ->reject(fn ($hte, $id) => $agencies->has($id))
@@ -61,7 +65,7 @@ class EvaluationController extends Controller
         $studentId = (int) $request->query('student_id') ?: null;
 
         // Agencies whose interns are still training: listed too, their evaluations open when an intern finishes.
-        $inTraining = \App\Models\Deployment::where('status', 'active')
+        $inTraining = $term->applyThrough(\App\Models\Deployment::where('status', 'active'), 'internship.student')
             ->whereHas('internship', fn ($q) => $instructor->limitToEvaluationScope($q)->when($programId, fn ($q) => $q->where('program_id', $programId)))
             ->whereNotIn('hte_id', $agencies->keys())
             ->with(['hte', 'internship.student.user'])
@@ -106,7 +110,7 @@ class EvaluationController extends Controller
             ]),
         ])->sortBy(fn ($row) => $row->student->user->name)->values();
 
-        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor', 'hteId', 'waitingAgencies', 'studentId', 'inTraining'));
+        return view('instructor.evaluations.index', compact('agencyRows', 'internRows', 'internCodes', 'requirements', 'isCoordinator', 'programs', 'programId', 'instructor', 'hteId', 'waitingAgencies', 'studentId', 'inTraining', 'term'));
     }
 
     /** Read or (?download=1) download a received evaluation, or your own Form 23a. */

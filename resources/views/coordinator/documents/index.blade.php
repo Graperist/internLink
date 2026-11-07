@@ -16,7 +16,9 @@
 
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <h2 class="h6 fw-bold mb-0">All Interns</h2>
+        <h2 class="h6 fw-bold mb-0">
+            All Interns &middot; {{ $year === 'all' ? 'All academic years' : 'AY '.$year.($year === $currentYear ? ' (current)' : '') }}{{ \App\Support\Term::isValidSemester(request('semester')) ? ' · '.request('semester') : '' }}
+        </h2>
         <div class="d-flex gap-3">
             <a href="{{ route('coordinator.repository.create') }}" class="small fw-semibold text-decoration-none">
                 <i class="ti ti-upload"></i> Upload File
@@ -26,6 +28,20 @@
 
     {{-- Search + filters --}}
     <form method="GET" class="row g-2 mb-3 align-items-center">
+        <div class="col-md-auto">
+            <div class="input-group" style="width: 190px;">
+                <span class="input-group-text small px-2">AY</span>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'repo_ay', 'value' => $year === 'all' ? '' : $year, 'autoSubmit' => true])
+                @if ($year === 'all')
+                    <a href="{{ route('coordinator.documents', request()->except(['academic_year', 'page'])) }}" class="btn btn-outline-secondary btn-sm d-flex align-items-center" title="Back to AY {{ $currentYear }}">{{ substr($currentYear, 2, 2) }}-{{ substr($currentYear, 7, 2) }}</a>
+                @else
+                    <a href="{{ route('coordinator.documents', ['academic_year' => 'all'] + request()->except(['academic_year', 'page'])) }}" class="btn btn-outline-secondary btn-sm d-flex align-items-center" title="Show all academic years">All</a>
+                @endif
+            </div>
+        </div>
+        <div class="col-md-2">
+            @include('partials.semester-select', ['name' => 'semester', 'id' => 'repo_sem', 'value' => (string) request('semester'), 'allowAll' => true, 'autoSubmit' => true])
+        </div>
         <div class="col-md il-search">
             <i class="ti ti-search"></i>
             <input
@@ -36,7 +52,7 @@
                 value="{{ request('search') }}"
             >
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <select name="document_requirement_id" class="form-select" onchange="this.form.submit()">
                 <option value="">All File Types</option>
                 @foreach ($requirements as $requirement)
@@ -60,8 +76,8 @@
             <button type="submit" class="btn btn-primary">
                 <i class="ti ti-search"></i> Search
             </button>
-            @if (request()->hasAny(['search', 'program_id', 'document_requirement_id']))
-                <a href="{{ route('coordinator.documents') }}" class="btn btn-sm btn-link">Clear</a>
+            @if (request()->hasAny(['search', 'program_id', 'document_requirement_id', 'semester']))
+                <a href="{{ route('coordinator.documents', $year === $currentYear ? [] : ['academic_year' => $year]) }}" class="btn btn-sm btn-link">Clear</a>
             @endif
         </div>
     </form>
@@ -136,7 +152,7 @@
                             <span>
                                 <span class="fw-semibold d-block">{{ $student->user->name }}</span>
                                 <span class="text-secondary" style="font-size: 0.78rem;">
-                                    {{ $student->user->id_number }} &middot; {{ $student->program->code }}
+                                    {{ $student->user->id_number }} &middot; {{ $student->program->code }}@if ($student->semester) &middot; {{ $student->semester === \App\Support\Term::FIRST ? '1st Sem' : '2nd Sem' }} {{ $student->academic_year }}@endif
                                 </span>
                             </span>
                         </div>

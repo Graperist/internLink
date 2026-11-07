@@ -30,9 +30,9 @@
             Changes to the agency's details are shared with every program that lists it.
         @else
             @if ($instructor->isCoordinator())
-                Added to the <strong>{{ $listing->semester }}, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong> of the program you choose below.
+                Added to the <strong><span data-term-sem>{{ old('semester', $listing->semester) }}</span>, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong> of the program you choose below.
             @else
-                Added to <strong>your program's {{ $listing->semester }}, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong>
+                Added to <strong>your program's <span data-term-sem>{{ old('semester', $listing->semester) }}</span>, AY <span data-term-year>{{ old('academic_year', $listing->academic_year) }}</span> list</strong>
                 ({{ $instructor->program->code }}).
             @endif
             Use this when the agencies already on the list don't have enough slots:
@@ -55,6 +55,10 @@
             input.addEventListener('input', show);
             input.addEventListener('change', show);
             show();
+            var sem = document.getElementById('semester');
+            sem?.addEventListener('change', function () {
+                document.querySelectorAll('[data-term-sem]').forEach(function (el) { el.textContent = sem.value; });
+            });
         });
         </script>
     @endunless
@@ -72,9 +76,7 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small fw-semibold" for="semester">Semester</label>
-                    {{-- The internship is only in the 2nd Semester. --}}
-                    <input type="text" id="semester" class="form-control" value="{{ \App\Support\Term::SEMESTER }}" readonly>
-                    <input type="hidden" name="semester" value="{{ \App\Support\Term::SEMESTER }}">
+                    @include('partials.semester-select', ['name' => 'semester', 'id' => 'semester', 'value' => old('semester', $listing->semester)])
                 </div>
                 @if ($instructor->isCoordinator())
                     <div class="col-12">

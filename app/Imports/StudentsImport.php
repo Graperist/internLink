@@ -41,6 +41,7 @@ class StudentsImport
         private readonly Instructor $instructor,
         private readonly ?\App\Models\Program $defaultProgram = null,
         private readonly ?string $academicYear = null,   // the year they are enrolled for (current if null)
+        private readonly ?string $semester = null,       // the semester they are enrolled for (current if null)
     )
     {
     }
@@ -126,6 +127,7 @@ class StudentsImport
                         'instructor_id' => $handler?->id,
                         'hours_rendered' => 0,
                         'academic_year' => $this->academicYear ?? \App\Support\Term::current()[0],
+                        'semester' => $this->semester ?? \App\Support\Term::current()[1],
                     ]);
 
                     // Same as the single Add Intern form: every student starts

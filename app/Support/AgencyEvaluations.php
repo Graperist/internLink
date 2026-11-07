@@ -21,11 +21,13 @@ class AgencyEvaluations
      * The agencies where the instructor's students finished their internship,
      * each with those deployments: [hte_id => ['hte' => Hte, 'deployments' => Collection]].
      */
-    public static function agenciesFor(Instructor $instructor, ?int $programId = null): Collection
+    public static function agenciesFor(Instructor $instructor, ?int $programId = null, ?TermFilter $term = null): Collection
     {
         // The coordinator: every program of the campus (or the one picked); an instructor: their own program.
+        // With a term: only the interns enrolled in that academic year / semester.
         return Deployment::where('status', 'completed')
             ->whereHas('internship', fn ($q) => $instructor->limitToEvaluationScope($q)->when($programId, fn ($q) => $q->where('program_id', $programId)))
+            ->when($term, fn ($q) => $term->applyThrough($q, 'internship.student'))
             ->with(['hte', 'internship.student.user', 'internship.student.program'])
             ->get()
             ->filter(fn ($d) => $d->hte)

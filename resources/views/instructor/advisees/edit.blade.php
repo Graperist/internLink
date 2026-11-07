@@ -25,9 +25,15 @@
         @csrf
         @method('PUT')
 
-        <div class="mb-3">
-            <label class="il-form-label" for="academic_year">Academic year</label>
-            @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $student->academic_year), 'required' => true])
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <label class="il-form-label" for="academic_year">Academic year</label>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $student->academic_year), 'required' => true])
+            </div>
+            <div class="col-md-6">
+                <label class="il-form-label" for="semester">Semester</label>
+                @include('partials.semester-select', ['name' => 'semester', 'id' => 'semester', 'value' => old('semester', $student->semester ?: \App\Support\Term::current()[1])])
+            </div>
         </div>
 
         @if ($instructor->isCoordinator())

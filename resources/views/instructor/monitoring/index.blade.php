@@ -9,7 +9,11 @@
     <div>
         <h1 class="il-page-title">Time Frame Monitoring</h1>
         <p class="text-secondary small mb-0">Form 17 – Internship Time Frame. The hours each intern entered per day; they count toward the required hours right away.</p>
+        <p class="small fw-semibold mb-0 mt-1">{{ $term->label() }}</p>
     </div>
+    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'tf'])
+    </form>
 </div>
 
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif
@@ -70,7 +74,7 @@
                         $percent = $row['required'] > 0 ? min(100, (int) round($row['approved'] / $row['required'] * 100)) : 0;
                         $isOpen = $selected && $selected['student']->id === $row['student']->id;
                     @endphp
-                    <a href="{{ route('instructor.monitoring', ['student' => $row['student']->id]) }}" class="list-group-item list-group-item-action {{ $isOpen ? 'active-form' : '' }}">
+                    <a href="{{ route('instructor.monitoring', ['student' => $row['student']->id] + $term->query()) }}" class="list-group-item list-group-item-action {{ $isOpen ? 'active-form' : '' }}">
                         <div class="d-flex justify-content-between gap-2">
                             <div style="min-width:0;">
                                 <div class="fw-semibold small">{{ $row['student']->user->name }}</div>

@@ -29,12 +29,14 @@ class ReportController extends Controller
      * Campus-wide reports (Evaluation Summary, HTE Directory, Documents
      * Compliance) live in the Coordinator portal.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
         $instructor = auth()->user()->instructor;
+        // The academic year (current by default) and semester the reports are for.
+        $term = \App\Support\TermFilter::fromRequest($request);
 
-        // Partner HTEs where this instructor's advisees are placed.
-        $htes = $this->traineeDeployments($instructor)
+        // Partner HTEs where this instructor's advisees (of that term) are placed.
+        $htes = $this->traineeDeployments($instructor, null, $term)
             ->groupBy('hte_id')
             ->map(fn ($group) => $group->first()->hte)
             ->filter()
@@ -42,6 +44,11 @@ class ReportController extends Controller
             ->values();
 
         [$semester, $academicYear] = $this->currentTerm();
+        // Masterlist / Directory open on the chosen term.
+        if ($term->year !== 'all') {
+            $academicYear = $term->year;
+        }
+        $semester = $term->semester ?? $semester;
 
         // Form 24: any agency on the program's (coordinator: campus's) partner agency lists.
         $partnerAgencies = $this->partnerAgencies($instructor);
@@ -51,10 +58,10 @@ class ReportController extends Controller
             ? Program::where('campus_id', $instructor->campus_id)->orderBy('code')->get()
             : collect();
         $campusSummary = $instructor->isCoordinator()
-            ? \App\Http\Controllers\Coordinator\ReportController::campusSummary($instructor->campus_id)
+            ? \App\Http\Controllers\Coordinator\ReportController::campusSummary($instructor->campus_id, $term)
             : null;
 
-        return view('instructor.reports.index', compact('instructor', 'htes', 'semester', 'academicYear', 'partnerAgencies', 'programs', 'campusSummary'));
+        return view('instructor.reports.index', compact('instructor', 'htes', 'semester', 'academicYear', 'partnerAgencies', 'programs', 'campusSummary', 'term'));
     }
 
     /**
@@ -67,7 +74,7 @@ class ReportController extends Controller
 
         $instructor = auth()->user()->instructor;
 
-        $deployments = $this->traineeDeployments($instructor, $this->chosenProgramId($request, $instructor));
+        $deployments = $this->traineeDeployments($instructor, $this->chosenProgramId($request, $instructor), \App\Support\TermFilter::fromRequest($request));
 
         if (! empty($data['hte_id'])) {
             $deployments = $deployments->where('hte_id', (int) $data['hte_id']);
@@ -164,7 +171,7 @@ class ReportController extends Controller
     {
         $request->merge(['academic_year' => Term::normalizeAcademicYear($request->query('academic_year'))]);
         $data = $request->validate([
-            'semester' => ['nullable', 'in:2nd Semester'],
+            'semester' => ['nullable', 'in:'.implode(',', Term::SEMESTERS)],
             'academic_year' => ['nullable', 'string', 'max:20'],
             'program_id' => ['nullable', 'integer'],
         ]);
@@ -174,7 +181,11 @@ class ReportController extends Controller
         $programId = $this->chosenProgramId($request, $instructor);
         $chosenProgram = $programId ? Program::find($programId) : null;
 
+        // The interns enrolled in the chosen term.
+        $termSemester = $data['semester'] ?? $defaultSemester;
+        $termYear = Term::isValidAcademicYear($data['academic_year'] ?? null) ? $data['academic_year'] : $defaultAcademicYear;
         $students = $instructor->visibleStudents()->when($programId, fn ($q) => $q->where('program_id', $programId))
+            ->where('academic_year', $termYear)->where('semester', $termSemester)
             ->with(['user', 'program'])->get()
             ->sortBy(fn ($student) => $student->user->name, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
@@ -190,8 +201,8 @@ class ReportController extends Controller
 
         return view('instructor.reports.directory', array_merge($this->signatories($instructor), [
             'rows' => $rows,
-            'semester' => $data['semester'] ?? $defaultSemester,
-            'academicYear' => $data['academic_year'] ?? $defaultAcademicYear,
+            'semester' => $termSemester,
+            'academicYear' => $termYear,
             'collegeName' => $chosenProgram?->name ?? ($instructor->isCoordinator() ? ($instructor->campus?->name ?? '') : ($instructor->program?->name ?? '')),
         ]));
     }
@@ -211,7 +222,7 @@ class ReportController extends Controller
         ]);
 
         $instructor = auth()->user()->instructor;
-        $deployments = $this->traineeDeployments($instructor, $this->chosenProgramId($request, $instructor));
+        $deployments = $this->traineeDeployments($instructor, $this->chosenProgramId($request, $instructor), \App\Support\TermFilter::fromRequest($request));
 
         if (! empty($data['hte_id'])) {
             $deployments = $deployments->where('hte_id', (int) $data['hte_id']);
@@ -289,9 +300,10 @@ class ReportController extends Controller
      * Deployments of this instructor's advisees (same campus + program) that
      * have a partner HTE. Terminated placements are not counted.
      */
-    private function traineeDeployments(Instructor $instructor, ?int $programId = null)
+    private function traineeDeployments(Instructor $instructor, ?int $programId = null, ?\App\Support\TermFilter $term = null)
     {
         return Deployment::with(['hte', 'internship.student.user', 'internship.student.program'])
+            ->when($term, fn ($q) => $term->applyThrough($q, 'internship.student'))
             ->whereNotNull('hte_id')
             ->whereIn('status', ['pending', 'active', 'completed'])
             ->whereHas('internship', fn ($q) => $instructor->limitInternships($q)->when($programId, fn ($q) => $q->where('program_id', $programId)))
@@ -393,19 +405,11 @@ class ReportController extends Controller
         ];
     }
 
-    /**
-     * Internships run in the 2nd semester only, so the semester is always
-     * "2nd Semester". The academic year starts in August: Aug-Dec belongs to
-     * the year that began that August, Jan-Jul to the year that began the
-     * August before.
-     */
+    /** [semester, academic year] today: Aug-Dec is the 1st Semester, Jan-Jul the 2nd. */
     private function currentTerm(): array
     {
-        $month = (int) now()->format('n');
-        $year = (int) now()->format('Y');
+        [$academicYear, $semester] = Term::current();
 
-        $startYear = $month >= 8 ? $year : $year - 1;
-
-        return ['2nd Semester', $startYear.'-'.($startYear + 1)];
+        return [$semester, $academicYear];
     }
 }

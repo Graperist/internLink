@@ -147,7 +147,7 @@ class AutoDeployment
 
     private static function fullMessage($internship, Hte $hte): ?string
     {
-        [$academicYear, $semester] = Term::current();
+        [$academicYear, $semester] = $internship->student?->term() ?? Term::current();
         $slot = \App\Http\Controllers\Instructor\HteController::availability(
             $internship->campus_id, $internship->program_id, $academicYear, $semester
         )[$hte->id] ?? null;

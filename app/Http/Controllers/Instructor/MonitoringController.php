@@ -19,8 +19,10 @@ class MonitoringController extends Controller
         // Shared module: the coordinator sees the whole campus, an
         // instructor sees their own program.
         $instructor = auth()->user()->instructor;
+        // One academic year (the current one) and, if picked, one semester.
+        $term = \App\Support\TermFilter::fromRequest($request);
 
-        $deployedStudents = $instructor->visibleStudents()
+        $deployedStudents = $term->applyToStudents($instructor->visibleStudents())
             ->with(['user', 'program', 'currentInternship.deployment.hte'])
             ->whereHas('currentInternship.deployment', fn ($q) => $q->whereIn('status', ['active', 'completed']))
             ->get();
@@ -55,11 +57,11 @@ class MonitoringController extends Controller
             : collect();
 
         // Advisees who don't have a Time Frame yet because they aren't deployed.
-        $notDeployed = $instructor->visibleStudents()->with(['user', 'program', 'currentInternship.deployment'])
+        $notDeployed = $term->applyToStudents($instructor->visibleStudents())->with(['user', 'program', 'currentInternship.deployment'])
             ->whereNotIn('id', $deployedStudents->pluck('id'))->get()
             ->sortBy(fn ($s) => $s->user?->name)->values();
 
-        return view('instructor.monitoring.index', compact('rows', 'selected', 'days', 'notDeployed'));
+        return view('instructor.monitoring.index', compact('rows', 'selected', 'days', 'notDeployed', 'term'));
     }
 
     /** Form 17 of one intern, from the approved days: view or download (?download=1, ?week=). */

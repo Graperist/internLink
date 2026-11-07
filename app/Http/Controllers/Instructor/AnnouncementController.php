@@ -29,17 +29,18 @@ class AnnouncementController extends Controller
         // The OJT Coordinator can send to one program or to every program.
         $programs = $instructor->isCoordinator()
             ? \App\Models\Program::where('campus_id', $instructor->campus_id)->orderBy('code')
-                ->withCount(['students' => fn ($q) => $q->where('campus_id', $instructor->campus_id)])->get()
+                ->withCount(['students' => fn ($q) => $q->where('campus_id', $instructor->campus_id)->where('academic_year', \App\Support\Term::current()[0])])->get()
             : collect();
 
         return view('instructor.announcements.index', [
             'announcements' => $announcements,
             'categories' => Announcement::CATEGORIES,
-            'adviseeCount' => $instructor->advisees()->count(),
+            'adviseeCount' => $instructor->advisees()->where('academic_year', \App\Support\Term::current()[0])->count(),
+            'currentYear' => \App\Support\Term::current()[0],
             'program' => $instructor->program,
             'isCoordinator' => $instructor->isCoordinator(),
             'programs' => $programs,
-            'campusCount' => \App\Models\Student::where('campus_id', $instructor->campus_id)->count(),
+            'campusCount' => \App\Models\Student::where('campus_id', $instructor->campus_id)->where('academic_year', \App\Support\Term::current()[0])->count(),
         ]);
     }
 
@@ -62,6 +63,8 @@ class AnnouncementController extends Controller
             'message' => ['nullable', 'string', 'max:2000'],
             // Coordinator only: "all" or a program of the campus.
             'audience' => ['nullable', 'max:20'],
+            // Which interns: this academic year's (both semesters), one semester of it, or every year's.
+            'recipients_term' => ['nullable', 'in:all,'.implode(',', \App\Support\Term::SEMESTERS)],
         ], [
             'event_date.required_if' => 'Please set the seminar date.',
         ]);
@@ -106,6 +109,13 @@ class AnnouncementController extends Controller
         $body = implode("\n", $lines) ?: $data['title'];
 
         $recipients = \App\Models\Student::where('campus_id', $instructor->campus_id);
+        $recipientsTerm = $data['recipients_term'] ?? '';
+        if ($recipientsTerm !== 'all') {
+            $recipients->where('academic_year', \App\Support\Term::current()[0]);
+            if (\App\Support\Term::isValidSemester($recipientsTerm)) {
+                $recipients->where('semester', $recipientsTerm);
+            }
+        }
         if (! $toAllPrograms) {
             $recipients->where('program_id', $audienceProgram?->id ?? 0);
         }

@@ -29,10 +29,16 @@
     <div>
         <h1 class="il-page-title">Evaluations</h1>
         <p class="text-secondary small mb-0">Evaluations open once an intern completes their internship. Everything comes to you &mdash; no one sees the ratings about them.</p>
+        <p class="small fw-semibold mb-0 mt-1">{{ $term->label() }}</p>
     </div>
+    <form method="GET" action="{{ route('instructor.evaluations') }}" class="d-flex flex-wrap align-items-center gap-2">
+        @if ($isCoordinator)<input type="hidden" name="program_id" value="{{ $programId ?? 'all' }}">@endif
+        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'eval'])
+    </form>
     @if ($isCoordinator)
         {{-- The OJT Coordinator sees every program's evaluations. --}}
         <form method="GET" action="{{ route('instructor.evaluations') }}" class="d-flex align-items-center gap-2">
+            @foreach ($term->query() as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
             <label for="evalProgram" class="small fw-semibold text-secondary mb-0 text-nowrap"><i class="ti ti-filter"></i> Program</label>
             <select name="program_id" id="evalProgram" class="form-select form-select-sm" style="min-width:230px;" onchange="this.form.submit()">
                 <option value="all" @selected($programId === null)>All programs</option>
@@ -118,7 +124,7 @@
         $selected = $agencyRows->first(fn ($r) => $r->canEvaluate && ! $r->mine) ?? $agencyRows->first();
         $selectedWaiting = $selected ? null : $waitingAgencies->first();
     }
-    $keep = fn (array $extra) => route('instructor.evaluations', array_filter($extra + ['program_id' => $isCoordinator ? ($programId ?? 'all') : null]));
+    $keep = fn (array $extra) => route('instructor.evaluations', array_filter($extra + ['program_id' => $isCoordinator ? ($programId ?? 'all') : null] + $term->query()));
     $linkFor = fn ($row) => $keep(['hte_id' => $row->hte->id]);
     $deadlineText = fn ($set) => $set ? 'until '.$set->format('M d, Y g:i A') : ($instructor->program ? (($d = $instructor->program->evaluation_edit_days ?? \App\Support\EvaluationEditWindow::DEFAULT_DAYS) === 0 ? '— the program default: until the internship ends' : "— the program default: {$d} ".\Illuminate\Support\Str::plural('day', $d).' after the internship ends') : '— the program default');
 @endphp
@@ -139,6 +145,7 @@
             </div>
             <form method="GET" action="{{ route('instructor.evaluations') }}" class="px-3 pb-2 d-flex flex-column gap-2">
                 @if ($isCoordinator)<input type="hidden" name="program_id" value="{{ $programId ?? 'all' }}">@endif
+                @foreach ($term->query() as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
                 <select name="student_id" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Filter by student">
                     <option value="">All students</option>
                     @foreach ($internRows->sortBy(fn ($r) => $r->student->user->name) as $r)
