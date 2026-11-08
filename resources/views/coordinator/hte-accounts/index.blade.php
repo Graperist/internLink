@@ -131,6 +131,9 @@
         </div>
     </form>
 
+    @if ($accounts->total() === 0 && ($year !== $currentYear || $semester))
+        @include('partials.no-match', ['term' => \App\Support\TermFilter::fromRequest(request()), 'what' => 'HTE accounts', 'resetUrl' => route('instructor.hte-accounts.index')])
+    @endif
     <table class="table align-middle mb-0">
         <thead>
             <tr class="text-secondary" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em;">

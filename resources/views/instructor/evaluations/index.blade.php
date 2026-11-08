@@ -129,6 +129,9 @@
     $deadlineText = fn ($set) => $set ? 'until '.$set->format('M d, Y g:i A') : ($instructor->program ? (($d = $instructor->program->evaluation_edit_days ?? \App\Support\EvaluationEditWindow::DEFAULT_DAYS) === 0 ? '— the program default: until the internship ends' : "— the program default: {$d} ".\Illuminate\Support\Str::plural('day', $d).' after the internship ends') : '— the program default');
 @endphp
 
+@if ($agencyRows->isEmpty() && $waitingAgencies->isEmpty() && ! $term->isDefault())
+    @include('partials.no-match', ['term' => $term, 'what' => 'evaluations or partner agencies', 'resetUrl' => route('instructor.evaluations')])
+@endif
 @if ($agencyRows->isEmpty() && $waitingAgencies->isEmpty())
     <div class="il-card text-center text-secondary py-5">
         <i class="ti ti-building fs-3 d-block mb-1"></i>

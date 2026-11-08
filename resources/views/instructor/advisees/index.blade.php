@@ -196,6 +196,10 @@
         @endif
     </form>
 
+    @php $nmTerm = \App\Support\TermFilter::fromRequest(request()); @endphp
+    @if ($advisees->total() === 0 && ! $nmTerm->isDefault())
+        @include('partials.no-match', ['term' => $nmTerm, 'what' => 'students', 'resetUrl' => route('instructor.advisees')])
+    @endif
     <div class="table-responsive">
     <table class="table align-middle mb-0 il-review-list">
         <thead>

@@ -84,6 +84,10 @@
             </div>
         </form>
     </div>
+    @php $nmTerm = \App\Support\TermFilter::fromRequest(request()); @endphp
+    @if ($deployments->isEmpty() && ! $nmTerm->isDefault())
+        @include('partials.no-match', ['term' => $nmTerm, 'what' => 'interns to evaluate', 'resetUrl' => route('hte.evaluations')])
+    @endif
     <div class="table-responsive">
         <table class="table align-middle mb-0 eval-table">
             <thead>

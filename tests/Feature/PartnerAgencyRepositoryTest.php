@@ -571,9 +571,21 @@ class PartnerAgencyRepositoryTest extends TestCase
             ->assertSee('Student 23-AC-0302')->assertDontSee('Student 23-AC-0301');
         $this->actingAs($coordinator)->get(route('instructor.monitoring', ['academic_year' => 'all']))->assertOk()
             ->assertSee('Student 22-AC-0303');
+        // Nothing in a term: a warning says so.
+        $this->actingAs($coordinator)->get(route('instructor.monitoring', ['academic_year' => '2030']))->assertOk()
+            ->assertSee('Nothing matches this filter.');
+        $this->actingAs($coordinator)->get(route('instructor.advisees', ['academic_year' => '2030']))->assertOk()
+            ->assertSee('Nothing matches this filter.');
+        $this->actingAs($coordinator)->get(route('coordinator.documents', ['academic_year' => '2030']))->assertOk()
+            ->assertSee('Nothing matches this filter.');
+        $this->actingAs($coordinator)->get(route('instructor.documents', ['academic_year' => '2030']))->assertOk()
+            ->assertSee('Nothing matches this filter.');
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => '2030']))->assertOk()
+            ->assertSee('Nothing matches this filter.');
 
-        // Dashboard, Document Review, Evaluations and Generate Reports have the filter too.
-        foreach (['instructor.dashboard', 'instructor.documents', 'instructor.evaluations', 'instructor.reports'] as $name) {
+        // Document Review, Evaluations and Generate Reports have the filter too (not the Dashboard).
+        $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk()->assertDontSee('name="semester"', false);
+        foreach (['instructor.documents', 'instructor.evaluations', 'instructor.reports'] as $name) {
             $this->actingAs($coordinator)->get(route($name, ['semester' => '1st Semester']))->assertOk()
                 ->assertSee('name="semester"', false)->assertSee('AY 2026-2027 (current) · 1st Semester', false);
         }

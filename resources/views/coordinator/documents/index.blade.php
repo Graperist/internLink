@@ -87,6 +87,10 @@
         $postTotal = $stageTotals['post_deployment'] ?? 0;
     @endphp
 
+    @php $nmTerm = \App\Support\TermFilter::fromRequest(request()); @endphp
+    @if ($students->total() === 0 && ! $nmTerm->isDefault())
+        @include('partials.no-match', ['term' => $nmTerm, 'what' => 'interns', 'resetUrl' => route('coordinator.documents')])
+    @endif
     <div class="table-responsive">
     <table class="table align-middle mb-0 il-track-list">
         <thead>

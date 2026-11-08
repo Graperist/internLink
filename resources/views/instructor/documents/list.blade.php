@@ -78,6 +78,10 @@
             <button type="submit" class="btn btn-outline-primary"><i class="ti ti-search"></i> Search</button>
         </div>
     </form>
+    @php $nmTerm = \App\Support\TermFilter::fromRequest(request()); @endphp
+    @if ($rows->total() === 0 && ($counts['all'] ?? 1) === 0 && ! $term->isDefault())
+        @include('partials.no-match', ['term' => $nmTerm, 'what' => 'students', 'resetUrl' => route('instructor.documents')])
+    @endif
 
     @if ($tab === 'queue')
         <div class="table-responsive">
