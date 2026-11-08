@@ -35,13 +35,8 @@
 </style>
 
 <div class="il-page-header">
-    <div>
-        <h1 class="il-page-title">Dashboard overview</h1>
-        <span class="il-page-date">{{ now()->format('F d, Y') }} &middot; {{ $term->label() }}</span>
-    </div>
-    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
-        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'dash'])
-    </form>
+    <h1 class="il-page-title">Dashboard overview</h1>
+    <span class="il-page-date">{{ now()->format('F d, Y') }}</span>
 </div>
 
 @php
@@ -61,7 +56,7 @@
 {{-- Stat cards - each one links to the page that explains the number --}}
 <div class="row g-3 mb-3">
     <div class="col-md-3">
-        <a href="{{ route('instructor.advisees', $term->query()) }}" class="il-card il-card-link">
+        <a href="{{ route('instructor.advisees') }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['advisees'] }}</div>
                 <span class="badge rounded-pill text-bg-success">Active</span>
@@ -70,7 +65,7 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('instructor.advisees', ['status' => 'active'] + $term->query()) }}" class="il-card il-card-link">
+        <a href="{{ route('instructor.advisees', ['status' => 'active']) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['deployed'] }}</div>
                 <span class="badge rounded-pill text-bg-success">{{ $counts['deployment_rate'] }}%</span>
@@ -79,7 +74,7 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ $isSuperAdminView ? route('coordinator.documents') : route('instructor.documents', $ownProgram + $term->query()) }}" class="il-card il-card-link">
+        <a href="{{ $isSuperAdminView ? route('coordinator.documents') : route('instructor.documents', $ownProgram) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['pending_review'] }}</div>
                 <span class="badge rounded-pill text-bg-warning">Pending</span>
@@ -88,7 +83,7 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a href="{{ route('instructor.advisees', $ownProgram + ['status' => 'pending'] + $term->query()) }}" class="il-card il-card-link">
+        <a href="{{ route('instructor.advisees', $ownProgram + ['status' => 'pending']) }}" class="il-card il-card-link">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="il-stat-number">{{ $counts['awaiting_approval'] }}</div>
                 <span class="badge rounded-pill text-bg-danger">
@@ -112,7 +107,7 @@
                 </a>
             </div>
             <div class="col-md-6">
-                <a href="{{ route('instructor.advisees', ['status' => 'not_deployed'] + $term->query()) }}" class="il-row-link">
+                <a href="{{ route('instructor.advisees', ['status' => 'not_deployed']) }}" class="il-row-link">
                     <span class="small"><i class="ti ti-user-question text-secondary"></i> Students with no placement yet</span>
                     <span class="fw-bold">{{ $campus['not_placed'] }}</span>
                 </a>
@@ -125,7 +120,7 @@
 <div class="il-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="h6 fw-bold mb-0">Recent Submissions{{ $ownProgram ? ' · '.$programCode : '' }}</h2>
-        <a href="{{ route('instructor.documents', $ownProgram + $term->query()) }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
+        <a href="{{ route('instructor.documents', $ownProgram) }}" class="small fw-semibold text-decoration-none">Review All &rarr;</a>
     </div>
 
     @forelse ($recentSubmissions as $document)

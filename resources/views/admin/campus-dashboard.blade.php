@@ -10,12 +10,9 @@
         <p class="text-secondary small mb-0">
             <span class="badge rounded-pill text-bg-light border fw-bold">{{ $campus->code }}</span>
             @if ($campus->address) <i class="ti ti-map-pin ms-1"></i> {{ $campus->address }} @endif
-            &middot; Campus set-up and accounts &middot; {{ $term->label() }}
+            &middot; Campus set-up and accounts &middot; AY {{ $year }}
         </p>
     </div>
-    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
-        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'campus'])
-    </form>
     <a href="{{ route('admin.campuses.edit', $campus) }}" class="btn btn-outline-secondary"><i class="ti ti-pencil"></i> Edit campus</a>
 </div>
 
@@ -32,8 +29,8 @@
         ['coordinator', route('admin.coordinators.index', ['campus_id' => $campus->id]), 'ti-user-star', $stats['coordinators']->count(), 'OJT Coordinator'.($stats['coordinators']->count() === 1 ? '' : 's')],
         ['programs', route('coordinator.programs.index'), 'ti-school', $stats['programs'], 'Programs'],
         ['instructors', route('coordinator.instructors.index'), 'ti-chalkboard', $stats['instructors'], 'Subject Instructors'],
-        ['students', route('instructor.advisees', $term->query() + ($term->year === 'all' ? ['academic_year' => 'all'] : [])), 'ti-users', $stats['students'], 'Students · '.$term->label()],
-        ['agencies', route('instructor.htes', $year ? array_filter(['academic_year' => $year, 'semester' => $term->semester]) : []), 'ti-building', $stats['agencies'], 'Partner agencies · '.$term->label()],
+        ['students', route('instructor.advisees'), 'ti-users', $stats['students'], 'Students · AY '.$year],
+        ['agencies', route('instructor.htes'), 'ti-building', $stats['agencies'], 'Partner agencies · AY '.$year],
         ['hte', route('instructor.hte-accounts.index', ['academic_year' => 'all']), 'ti-user-shield', $stats['hte_accounts'], 'HTE accounts'],
     ] as [$key, $url, $icon, $number, $label])
         <div class="col-6 col-md-4 col-xl-2">
