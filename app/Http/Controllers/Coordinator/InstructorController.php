@@ -133,6 +133,36 @@ class InstructorController extends Controller
             ->with('status', $instructor->user->name.' was reassigned.');
     }
 
+    /** Edit the instructor's ID number, name and email. */
+    public function editDetails(Instructor $instructor): View
+    {
+        abort_unless($instructor->campus_id === auth()->user()->campus_id && ! $instructor->isCoordinator(), 403);
+
+        return view('coordinator.instructors.details', compact('instructor'));
+    }
+
+    public function updateDetails(Request $request, Instructor $instructor): RedirectResponse
+    {
+        abort_unless($instructor->campus_id === auth()->user()->campus_id && ! $instructor->isCoordinator(), 403);
+        $user = $instructor->user;
+
+        $data = $request->validate([
+            'id_number' => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::unique('users', 'id_number')->ignore($user->id)],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id)],
+        ], [
+            'id_number.unique' => 'An account with this ID number already exists.',
+            'email.unique' => 'Another account already uses this email.',
+        ]);
+
+        $user->update($data);
+        \App\Support\AuditLogger::record('instructor.updated', 'Edited the instructor account '.$user->id_number.' ('.$user->name.').', auth()->user(), $request, $instructor, $instructor->campus_id);
+
+        return redirect()
+            ->route('coordinator.instructors.index')
+            ->with('status', $user->name.'\'s details were updated.');
+    }
+
     public function resetPassword(Instructor $instructor): RedirectResponse
     {
         $coordinator = auth()->user();

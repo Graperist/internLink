@@ -268,6 +268,8 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureCampusIsActive::class, Ens
         Route::post('/instructors', [InstructorController::class, 'store'])->name('instructors.store');
         Route::get('/instructors/{instructor}/edit', [InstructorController::class, 'edit'])->name('instructors.edit');
         Route::put('/instructors/{instructor}', [InstructorController::class, 'update'])->name('instructors.update');
+        Route::get('/instructors/{instructor}/details', [InstructorController::class, 'editDetails'])->name('instructors.details.edit');
+        Route::put('/instructors/{instructor}/details', [InstructorController::class, 'updateDetails'])->name('instructors.details.update');
         Route::post('/instructors/{instructor}/reset-password', [InstructorController::class, 'resetPassword'])->name('instructors.reset-password');
 
         // HTE Accounts moved to the shared portal (instructors make their program's).

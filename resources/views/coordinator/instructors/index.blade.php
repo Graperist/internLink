@@ -145,6 +145,9 @@
                         <a href="{{ route('coordinator.instructors.edit', $instructor) }}" class="btn btn-sm btn-outline-secondary">
                             <i class="ti ti-arrows-exchange"></i> Reassign
                         </a>
+                        <a href="{{ route('coordinator.instructors.details.edit', $instructor) }}" class="il-icon-btn" title="Edit details">
+                            <i class="ti ti-pencil"></i><span class="visually-hidden">Edit details</span>
+                        </a>
                         <form method="POST" action="{{ route('coordinator.instructors.reset-password', $instructor) }}" class="d-inline">
                             @csrf
                             <button type="submit" class="il-icon-btn" title="Reset password"
