@@ -25,8 +25,12 @@ class ProgressController extends Controller
         $requiredHours = is_numeric($requiredHours) && (float) $requiredHours > 0 ? (float) $requiredHours : null;
         $hoursPercent = $requiredHours !== null ? min(100, (int) round(($student->hours_rendered / $requiredHours) * 100)) : 0;
 
-        $requirementsCount = DocumentRequirement::where('campus_id', $student->campus_id)->where('is_active', true)->whereIn('audience', ['student', 'coordinator'])->count();
-        $submittedCount = $internship ? $internship->documents()->count() : 0;
+        // The forms on My Documents (all stages), each counted once when done:
+        // Form 17 when the hours are rendered, Form 19 when its weeks are sent.
+        $forms = \App\Support\StudentForms::requirements($student);
+        $documents = $internship ? $internship->documents()->get() : collect();
+        $requirementsCount = $forms->count();
+        $submittedCount = $forms->filter(fn ($req) => \App\Support\StudentForms::isDone($req, $internship, $documents))->count();
         $docsPercent = $requirementsCount > 0 ? min(100, (int) round(($submittedCount / $requirementsCount) * 100)) : 0;
 
         // DTR compliance: weeks with at least one entry vs. weeks elapsed since deployment start.

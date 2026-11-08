@@ -57,7 +57,8 @@ class DashboardController extends Controller
             'document' => $docsByCode->get($req->code),
         ]);
 
-        $submittedCount = $checklist->filter(fn ($row) => $row['document'] !== null)->count();
+        $allDocuments = $internship ? $internship->documents()->get() : collect();
+        $submittedCount = $checklist->filter(fn ($row) => \App\Support\StudentForms::isDone($row['requirement'], $internship, $allDocuments))->count();
 
         // Recent submissions (like the instructor's dashboard): the forms the
         // student sent most recently and where each one stands now.
