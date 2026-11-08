@@ -33,7 +33,10 @@ class ReportController extends Controller
     {
         $instructor = auth()->user()->instructor;
         // The academic year (current by default) and semester the reports are for.
-        $term = \App\Support\TermFilter::fromRequest($request);
+        // The Super Admin's page has no such filter: the summary covers every intern.
+        $term = auth()->user()->isSuperAdmin()
+            ? new \App\Support\TermFilter('all', null, Term::current()[0])
+            : \App\Support\TermFilter::fromRequest($request);
 
         // Partner HTEs where this instructor's advisees (of that term) are placed.
         $htes = $this->traineeDeployments($instructor, null, $term)

@@ -6,11 +6,15 @@
 <div class="il-page-header">
     <div>
         <h1 class="il-page-title">Generate reports</h1>
-        <p class="small fw-semibold mb-0">{{ $term->label() }}</p>
+        @unless (auth()->user()->isSuperAdmin())
+            <p class="small fw-semibold mb-0">{{ $term->label() }}</p>
+        @endunless
     </div>
-    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
-        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'rep'])
-    </form>
+    @unless (auth()->user()->isSuperAdmin())
+        <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+            @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'rep'])
+        </form>
+    @endunless
 </div>
 @php
     // The trainee reports follow the term chosen above.

@@ -206,7 +206,7 @@ class SuperAdminTest extends TestCase
         // Generate Reports has the same semester choices as the coordinator's
         $this->get(route('instructor.dashboard'))->assertDontSee('name="semester"', false);
         $this->get(route('instructor.monitoring'))->assertDontSee('name="semester"', false)->assertDontSee('name="academic_year"', false);
-        $this->get(route('instructor.reports'))->assertSee('id="mst_semester"', false)->assertSee('id="mpi_semester"', false)
+        $this->get(route('instructor.reports'))->assertDontSee('id="rep_sem"', false)->assertSee('id="mst_semester"', false)->assertSee('id="mpi_semester"', false)
             ->assertSee('id="dsi_semester"', false)->assertSee('value="all"', false);
         // no document review, evaluations or announcements for the Super Admin
         $this->get(route('instructor.dashboard'))->assertDontSee(route('instructor.documents'), false)
