@@ -291,7 +291,15 @@ class HteAccountController extends Controller
         DB::transaction(function () use ($representative) {
             $representative->user->update(['status' => 'archived']);
             // The agency leaves the partner lists of this and later terms too
-            // (past terms keep it for their records); restoring brings it back.
+            // (past terms keep it for their records), unless another of its
+            // accounts is still active; restoring brings it back.
+            $otherActive = HteRepresentative::where('hte_id', $representative->hte_id)
+                ->whereKeyNot($representative->id)
+                ->whereHas('user', fn ($u) => $u->where('status', '!=', 'archived'))
+                ->exists();
+            if ($otherActive) {
+                return;
+            }
             \App\Models\HteListing::withoutGlobalScopes()
                 ->where('hte_id', $representative->hte_id)
                 ->whereNull('archived_at')
