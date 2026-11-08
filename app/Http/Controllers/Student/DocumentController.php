@@ -1161,11 +1161,7 @@ class DocumentController extends Controller
         if ($requirement->code === 'WEEKLY_REPORT') {
             $week = \App\Support\TrainingWeeks::form19Weeks($internship)->get($packet);
             abort_unless($week, 422, 'Choose the week to submit.');
-            if (! \App\Support\TrainingWeeks::weekFinished($week['start'], $internship)) {
-                return redirect()->route('student.documents.log', $requirement)->withErrors([
-                    'week' => 'Week '.$packet.' is not finished yet. You can submit it on '.$week['start']->copy()->addDays(6)->format('M d, Y').', its last day.',
-                ]);
-            }
+            // A week can be submitted any day (it doesn't have to be finished first).
             // From now on Week 1's first day is fixed.
             \App\Support\TrainingWeeks::pin($internship);
         }

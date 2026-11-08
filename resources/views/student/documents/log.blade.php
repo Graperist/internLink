@@ -35,7 +35,7 @@
     <div class="il-page-header">
         <div>
             <h1 class="il-page-title">Form 19 – Practicum/Internship Weekly Report</h1>
-            <p class="text-secondary mb-0">Add a row for every training day. Each week is its own Form 19: submit it when the week is finished, your instructor checks it, then you print it, have it signed and upload the signed copy.</p>
+            <p class="text-secondary mb-0">Add a row for every training day. Each week is its own Form 19: submit it any day, your instructor checks it, then you print it, have it signed and upload the signed copy.</p>
         </div>
         <a href="{{ route('student.documents') }}" class="il-btn-secondary text-decoration-none">
             <i class="ti ti-arrow-left"></i> Back to My Documents
@@ -139,8 +139,6 @@
                                             <span class="badge rounded-pill {{ $color }}">{{ $label }}</span>
                                             @if ($beforeWeekOne)
                                                 <span class="small text-secondary">Before your Week 1 – delete these days</span>
-                                            @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty() && ! $finished)
-                                                <span class="small text-secondary" title="A week is sent to your instructor once it is finished">Submit on {{ $end->format('M d') }}</span>
                                             @elseif ($doc && $canEditWeek && $weekEntries->isNotEmpty())
                                                 <form method="POST" action="{{ route('student.documents.log.packet.submit', [$requirement, $weekNumber]) }}" class="d-inline">
                                                     @csrf
@@ -190,6 +188,7 @@
                                                         <th style="width:14%;">Date</th>
                                                         <th style="width:40%;">Tasks Accomplished</th>
                                                         <th>Knowledge, Skills, Values Learned</th>
+                                                        @if ($canEditWeek)<th style="width:1%;"></th>@endif
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -198,6 +197,19 @@
                                                             <td class="text-nowrap">{{ $entry->entry_date->format('M d, Y') }}</td>
                                                             <td style="white-space:pre-line;">{{ $entry->value('tasks_accomplished') }}</td>
                                                             <td style="white-space:pre-line;">{{ $entry->value('knowledge_skills_learned') }}</td>
+                                                            @if ($canEditWeek)
+                                                                <td class="text-end">
+                                                                    {{-- Delete one day of this week (until the week is sent to the instructor). --}}
+                                                                    <form method="POST" action="{{ route('student.documents.log.entry.destroy', [$requirement, $entry->id]) }}" class="d-inline">
+                                                                        @csrf
+                                                                        @method('DELETE')
+                                                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2" title="Delete this day" aria-label="Delete {{ $entry->entry_date->format('M d, Y') }}"
+                                                                                onclick="return confirm('Delete the entry for {{ $entry->entry_date->format('M d, Y') }}? This cannot be undone.')">
+                                                                            <i class="ti ti-trash"></i>
+                                                                        </button>
+                                                                    </form>
+                                                                </td>
+                                                            @endif
                                                         </tr>
                                                     @endforeach
                                                 </tbody>
