@@ -41,10 +41,14 @@ class HteController extends Controller
         $instructor = auth()->user()->instructor;
         [$academicYear, $semester] = $this->term($request);
         $programId = $this->programFilter($request, $instructor);
+        // "All semesters": both lists of the academic year together.
+        $allSemesters = $request->query('semester') === 'all';
+        $semesters = $allSemesters ? Term::SEMESTERS : [$semester];
 
         $listings = HteListing::with(['hte.representatives.user', 'program', 'addedBy'])
             ->where('campus_id', $instructor->campus_id)
-            ->forTerm($academicYear, $semester)
+            ->where('academic_year', $academicYear)
+            ->whereIn('semester', $semesters)
             ->when($programId, fn ($q) => $q->where('program_id', $programId))
             ->when($search = $request->query('search'), fn ($q) => $q->whereHas('hte', fn ($h) => $h->where('name', 'like', "%{$search}%")))
             ->when($moa = $request->query('moa_status'), fn ($q) => $q->whereHas('hte', fn ($h) => $h->where('moa_status', $moa)))
@@ -52,9 +56,9 @@ class HteController extends Controller
             ->sortBy(fn ($l) => $l->hte->name.' '.$l->program->code, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
-        $internCounts = self::internCounts($instructor->campus_id, $academicYear, $semester);
+        $internCounts = collect($semesters)->mapWithKeys(fn ($sem) => [$sem => self::internCounts($instructor->campus_id, $academicYear, $sem)]);
         foreach ($listings as $listing) {
-            $listing->interns_count = $internCounts[$listing->program_id.'|'.$listing->hte_id] ?? 0;
+            $listing->interns_count = $internCounts[$listing->semester][$listing->program_id.'|'.$listing->hte_id] ?? 0;
         }
 
         // Are the existing slots enough? Compare the open slots on this
@@ -71,7 +75,7 @@ class HteController extends Controller
             // Students enrolled in this term who have no placement yet.
             'unplaced' => $instructor->visibleStudents()
                 ->where('academic_year', $academicYear)
-                ->where('semester', $semester)
+                ->whereIn('semester', $semesters)
                 ->when($programId, fn ($q) => $q->where('program_id', $programId))
                 ->whereHas('currentInternship', fn ($q) => $q->where('status', 'pre_deployment'))
                 ->whereDoesntHave('currentInternship.deployment')
@@ -81,7 +85,7 @@ class HteController extends Controller
         [$prevYear, $prevSemester] = Term::previous($academicYear, $semester);
         // Copy last term's list: the instructor's own program, or the program the coordinator is viewing.
         $copyProgramId = $instructor->isCoordinator() ? ($programId ?: null) : $instructor->program_id;
-        $canCopy = $copyProgramId !== null
+        $canCopy = ! $allSemesters && $copyProgramId !== null
             && HteListing::where('program_id', $copyProgramId)->forTerm($prevYear, $prevSemester)->exists();
 
         $programs = $instructor->isCoordinator()
@@ -91,7 +95,8 @@ class HteController extends Controller
         // Archived this term (restorable), like the archived HTE accounts.
         $archived = HteListing::withArchived()->whereNotNull('archived_at')->with(['hte', 'program'])
             ->where('campus_id', $instructor->campus_id)
-            ->forTerm($academicYear, $semester)
+            ->where('academic_year', $academicYear)
+            ->whereIn('semester', $semesters)
             ->when($programId, fn ($q) => $q->where('program_id', $programId))
             ->get()
             ->sortBy(fn ($l) => $l->hte?->name, SORT_NATURAL | SORT_FLAG_CASE)
@@ -104,7 +109,9 @@ class HteController extends Controller
             'programs' => $programs,
             'programId' => $programId,
             'academicYear' => $academicYear,
-            'semester' => $semester,
+            'semester' => $semester,               // a real semester (for adding / copying)
+            'allSemesters' => $allSemesters,
+            'semesterLabel' => $allSemesters ? '1st & 2nd Semester' : $semester,
             'academicYears' => $this->academicYearOptions($academicYear),
             'semesters' => Term::SEMESTERS,
             'previousTerm' => "{$prevSemester}, AY {$prevYear}",

@@ -29,7 +29,7 @@
         <p class="text-secondary small mb-0">Step 1 of the internship process: the program's list of partner agencies for the term.</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="{{ route('instructor.reports.partner-industries', $termQuery + ['program_id' => $programId]) }}" target="_blank"
+        <a href="{{ route('instructor.reports.partner-industries', ['semester' => $allSemesters ? 'all' : $semester] + $termQuery + ['program_id' => $programId]) }}" target="_blank"
            class="btn btn-outline-secondary text-decoration-none">
             <i class="ti ti-printer"></i> Print masterlist
         </a>
@@ -67,7 +67,7 @@
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-semibold mb-1" for="f_sem">Semester</label>
-            @include('partials.semester-select', ['name' => 'semester', 'id' => 'f_sem', 'value' => $semester, 'autoSubmit' => true])
+            @include('partials.semester-select', ['name' => 'semester', 'id' => 'f_sem', 'value' => $allSemesters ? 'all' : $semester, 'autoSubmit' => true, 'allowAll' => true, 'allValue' => 'all'])
         </div>
         @if ($isCoordinator)
             <div class="col-md-2">
@@ -157,7 +157,7 @@
             <span class="ev-icon blue"><i class="ti ti-list-details"></i></span>
             <div>
                 <h2 class="h6 fw-bold mb-0">
-                    {{ $semester }}, AY {{ $academicYear }}
+                    {{ $semesterLabel }}, AY {{ $academicYear }}
                     &middot;
                     @if ($isCoordinator && ! $programId)
                         All programs
@@ -192,7 +192,7 @@
                     <tr>
                         <td>
                             <div class="ev-agency">{{ $hte->name }}</div>
-                            <div class="pa-meta"><i class="ti ti-map-pin"></i> {{ $hte->address ?? '—' }}</div>
+                            <div class="pa-meta"><i class="ti ti-map-pin"></i> {{ $hte->address ?? '—' }}@if ($allSemesters) &middot; {{ $listing->semester }}@endif</div>
                             @if ($listing->remarks)
                                 <div class="pa-meta fst-italic"><i class="ti ti-note"></i> {{ $listing->remarks }}</div>
                             @endif
@@ -252,7 +252,7 @@
                             @if (request()->filled('search'))
                                 No agencies match this search or filter.
                             @else
-                                <div class="mb-2">No partner agencies listed for {{ $semester }}, AY {{ $academicYear }} yet.</div>
+                                <div class="mb-2">No partner agencies listed for {{ $semesterLabel }}, AY {{ $academicYear }} yet.</div>
                                 @if ($hasProgram)
                                     <div class="d-flex justify-content-center gap-2 flex-wrap">
                                         <a href="{{ route('instructor.htes.create', $addQuery) }}" class="btn btn-sm btn-primary">Add the first one</a>
@@ -298,7 +298,7 @@
     <details class="il-card mt-3 hte-archived" @if (request()->filled('search')) open @endif>
         <summary class="d-flex align-items-center gap-2">
             <i class="ti ti-chevron-right hte-chev text-secondary"></i>
-            <span class="fw-bold"><i class="ti ti-archive text-secondary"></i> Archived partner agencies &middot; {{ $semester }}, AY {{ $academicYear }}</span>
+            <span class="fw-bold"><i class="ti ti-archive text-secondary"></i> Archived partner agencies &middot; {{ $semesterLabel }}, AY {{ $academicYear }}</span>
             <span class="text-secondary small ms-auto">{{ $archived->count() }} archived</span>
         </summary>
         <p class="text-secondary small mt-2 mb-1">Kept with all their records. Students can't choose them until restored.</p>
