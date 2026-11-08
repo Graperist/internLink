@@ -82,10 +82,11 @@ class ProgramController extends Controller
 
     private function validated(Request $request, int $campusId, ?Program $program = null): array
     {
-        $request->merge(['code' => strtoupper(trim((string) $request->input('code')))]);
+        // Kept as typed: lowercase letters are allowed (e.g. BSBA-mm).
+        $request->merge(['code' => trim((string) $request->input('code'))]);
 
         return $request->validate([
-            'code' => ['required', 'string', 'max:20', 'regex:/^[A-Z0-9-]+$/',
+            'code' => ['required', 'string', 'max:20', 'regex:/^[A-Za-z0-9-]+$/',
                 Rule::unique('programs', 'code')->where('campus_id', $campusId)->ignore($program?->id)],
             'name' => ['required', 'string', 'max:255'],
             'major' => ['nullable', 'string', 'max:255'],

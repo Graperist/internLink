@@ -28,7 +28,7 @@
         <div class="row">
             <div class="col-md-5 mb-3">
                 <label class="il-form-label" for="code">Program code</label>
-                <input type="text" class="form-control text-uppercase" id="code" name="code"
+                <input type="text" class="form-control" id="code" name="code"
                        value="{{ old('code', $program->code) }}" placeholder="e.g. BSBA-MM" required>
                 <p class="il-form-hint">Short code shown in lists. Use one code per course + major.</p>
             </div>
