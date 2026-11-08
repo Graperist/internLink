@@ -134,7 +134,8 @@ class HteAccountController extends Controller
                 \Illuminate\Validation\Rule::unique('users', 'id_number'),
             ],
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            // May be an email another account uses (sign-in is by ID number).
+            'email' => ['required', 'email', 'max:255'],
         ]);
 
         $alreadyHasAccount = HteRepresentative::where('hte_id', $validated['hte_id'])->exists();
@@ -260,7 +261,8 @@ class HteAccountController extends Controller
         $data = $request->validate([
             'id_number' => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::unique('users', 'id_number')->ignore($user->id)],
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id)],
+            // May be an email another account uses (sign-in is by ID number).
+            'email' => ['required', 'email', 'max:255'],
         ], [
             'id_number.unique' => 'This ID number is already used by another account.',
             'email.unique' => 'This email is already used by another PSU Intern-Link account.',

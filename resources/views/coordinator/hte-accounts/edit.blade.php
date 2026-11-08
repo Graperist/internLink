@@ -58,7 +58,7 @@
             <label class="il-form-label" for="email">Email address</label>
             <input type="email" class="form-control" id="email" name="email" maxlength="255"
                    value="{{ old('email', $account->user->email) }}" required>
-            <p class="il-form-hint">This also becomes the partner agency's contact email. It can't be an email another account already uses. The mail icon sends the sign-in details here.</p>
+            <p class="il-form-hint">This also becomes the partner agency's contact email. The mail icon sends the sign-in details here.</p>
         </div>
 
         <div class="d-flex gap-2 mt-3">

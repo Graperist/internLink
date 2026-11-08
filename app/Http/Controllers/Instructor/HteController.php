@@ -174,12 +174,11 @@ class HteController extends Controller
         if ($makeAccount) {
             $request->validate([
                 'account_id_number' => ['required', 'string', 'max:100', Rule::unique('users', 'id_number')],
-                'contact_email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+                'contact_email' => ['required', 'email', 'max:255'],
             ], [
                 'account_id_number.required' => 'Enter an ID number for the HTE account.',
                 'account_id_number.unique' => 'This ID number is already used by another account.',
                 'contact_email.required' => 'The account needs the contact email - enter it, or choose not to create the account now.',
-                'contact_email.unique' => 'This email is already used by another PSU Intern-Link account. Use another email for the agency, or choose not to create the account now.',
             ]);
         }
         $programId = $instructor->programForNewRecord($data['program_id'] ?? null);
@@ -300,11 +299,29 @@ class HteController extends Controller
     {
         $listing = HteListing::withArchived()->with('hte')->findOrFail($listingId);
         $this->authorizeManage($listing, auth()->user()->instructor);
-        $listing->forceFill(['archived_at' => null, 'archived_with_account' => false])->save();
+        // Restoring the agency also restores its archived HTE account(s), and
+        // puts it back on the other lists it left when the account was archived.
+        $restoredAccounts = \Illuminate\Support\Facades\DB::transaction(function () use ($listing) {
+            $listing->forceFill(['archived_at' => null, 'archived_with_account' => false])->save();
 
-        AuditLogger::record('hte_listing.restored', "Restored {$listing->hte->name} to the partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, null, $listing->campus_id);
+            $accounts = \App\Models\HteRepresentative::with('user')->where('hte_id', $listing->hte_id)
+                ->whereHas('user', fn ($u) => $u->where('status', 'archived'))->get();
+            foreach ($accounts as $account) {
+                $account->user->update(['status' => 'active']);
+            }
+            if ($accounts->isNotEmpty()) {
+                HteListing::withArchived()->where('hte_id', $listing->hte_id)->where('archived_with_account', true)
+                    ->update(['archived_at' => null, 'archived_with_account' => false]);
+            }
 
-        return back()->with('status', "{$listing->hte->name} is back on the {$listing->semester} {$listing->academic_year} list.");
+            return $accounts;
+        });
+
+        AuditLogger::record('hte_listing.restored', "Restored {$listing->hte->name} to the partner list for {$listing->semester} {$listing->academic_year}"
+            .($restoredAccounts->isNotEmpty() ? ' and its HTE account ('.$restoredAccounts->pluck('user.id_number')->implode(', ').')' : '').'.', auth()->user(), $request, null, $listing->campus_id);
+
+        return back()->with('status', "{$listing->hte->name} is back on the {$listing->semester} {$listing->academic_year} list"
+            .($restoredAccounts->isNotEmpty() ? ', and its HTE account ('.$restoredAccounts->pluck('user.name')->implode(', ').') can sign in again.' : '.'));
     }
 
     /** Start a new term from last term's list (own program). */

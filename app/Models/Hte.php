@@ -60,10 +60,8 @@ class Hte extends Model
             if (! $user || strcasecmp((string) $user->email, $email) === 0) {
                 continue;
             }
-            $taken = User::where('email', $email)->where('id', '!=', $user->id)->exists();
-            if (! $taken) {
-                $user->update(['email' => $email]);
-            }
+            // The HTE account follows the agency's contact email, even one another account uses.
+            $user->update(['email' => $email]);
         }
     }
 
@@ -73,14 +71,8 @@ class Hte extends Model
      */
     public function contactEmailTakenBy(): ?User
     {
-        $email = trim((string) $this->contact_email);
-        if ($email === '') {
-            return null;
-        }
-        $repUserIds = $this->representatives()->pluck('user_id');
-
-        return User::with('role')->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
-            ->whereNotIn('id', $repUserIds)->first();
+        // HTE accounts may share an email with another account, so nothing blocks it.
+        return null;
     }
 
     /** A plain sentence for the coordinator when the contact email is taken. */

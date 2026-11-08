@@ -158,7 +158,7 @@
                                     {{ $account->credentials_sent_at ? 'Sign-in details sent '.$account->credentials_sent_at->format('M d, Y') : 'Sign-in details not sent yet' }}
                                 </div>
                                 @if ($account->hte && filled($account->hte->contact_email) && strcasecmp($account->hte->contact_email, (string) $account->user->email) !== 0)
-                                    <div class="text-danger" style="font-size: 0.75rem;"><i class="ti ti-alert-triangle"></i> Not the agency's email ({{ $account->hte->contact_email }}) - that address is used by another account.</div>
+                                    <div class="text-danger" style="font-size: 0.75rem;"><i class="ti ti-alert-triangle"></i> Not the agency's email ({{ $account->hte->contact_email }}). Edit the account to use it.</div>
                                 @endif
                             </div>
                         </div>
