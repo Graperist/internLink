@@ -38,8 +38,8 @@ class HteAccountController extends Controller
             });
         }
 
-        // Academic year: accounts whose agency is on a partner list that
-        // year, or that were made during it. Defaults to the current year.
+        // Academic year: accounts added for that year, or whose agency is on
+        // a partner list that year. Defaults to the current year.
         $currentYear = \App\Support\Term::current()[0];
         // Typed, so any year works (next year's too); "all" shows every year.
         // (The box left empty while showing all years keeps all years.)
@@ -48,15 +48,16 @@ class HteAccountController extends Controller
         if ($year !== 'all' && ! \App\Support\Term::isValidAcademicYear($year)) {
             $year = $currentYear;
         }
-        // 1st or 2nd Semester: agencies on that semester's partner list (or made during it).
+        // 1st or 2nd Semester: accounts added for that semester, or whose
+        // agency is on that semester's partner list.
         $semester = \App\Support\Term::isValidSemester($s = $request->query('semester')) ? $s : null;
-        if ($year !== 'all') {
-            [$from, $to] = $semester ? \App\Support\Term::range($year, $semester) : \App\Support\Term::yearRange($year);
+        if ($year !== 'all' || $semester) {
+            $inTerm = fn ($q, $table = '') => $q
+                ->when($year !== 'all', fn ($q) => $q->where($table.'academic_year', $year))
+                ->when($semester, fn ($q) => $q->where($table.'semester', $semester));
             $query->where(fn ($q) => $q
-                ->whereHas('hte.listings', fn ($l) => $l->where('academic_year', $year)->when($semester, fn ($l) => $l->where('semester', $semester)))
-                ->orWhereBetween('hte_representatives.created_at', [$from, $to]));
-        } elseif ($semester) {
-            $query->whereHas('hte.listings', fn ($l) => $l->where('semester', $semester));
+                ->where(fn ($own) => $inTerm($own, 'hte_representatives.'))
+                ->orWhereHas('hte.listings', fn ($l) => $inTerm($l->withoutGlobalScopes(), 'hte_listings.')));
         }
 
         $archived = (clone $query)->whereHas('user', fn ($u) => $u->where('status', 'archived'))->get()
@@ -90,7 +91,9 @@ class HteAccountController extends Controller
 
         $suggestedId = \App\Support\HteAccounts::nextIdNumber(auth()->user()->campus);
 
-        return view('coordinator.hte-accounts.create', compact('htes', 'suggestedId'));
+        [$academicYear, $semester] = \App\Support\Term::current();
+
+        return view('coordinator.hte-accounts.create', compact('htes', 'suggestedId', 'academicYear', 'semester'));
     }
 
     /**
@@ -103,7 +106,15 @@ class HteAccountController extends Controller
         $coordinator = auth()->user();
         $campusId = $coordinator->campus_id;
 
+        // The term the account is for: the current one unless chosen.
+        $request->merge([
+            'academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? \App\Support\Term::current()[0],
+            'semester' => $request->input('semester') ?: \App\Support\Term::current()[1],
+        ]);
+
         $validated = $request->validate([
+            'academic_year' => ['required', 'regex:/^\d{4}-\d{4}$/'],
+            'semester' => ['required', \Illuminate\Validation\Rule::in(\App\Support\Term::SEMESTERS)],
             'hte_id' => [
                 'required',
                 'integer',
@@ -152,6 +163,8 @@ class HteAccountController extends Controller
             return HteRepresentative::create([
                 'user_id' => $user->id,
                 'hte_id' => $validated['hte_id'],
+                'academic_year' => $validated['academic_year'],
+                'semester' => $validated['semester'],
             ]);
         });
 
@@ -236,6 +249,14 @@ class HteAccountController extends Controller
         $this->authorizeCampus($representative);
         $user = $representative->user;
 
+        $request->merge([
+            'academic_year' => \App\Support\Term::normalizeAcademicYear($request->input('academic_year')) ?? ($representative->academic_year ?: \App\Support\Term::current()[0]),
+            'semester' => $request->input('semester') ?: ($representative->semester ?: \App\Support\Term::current()[1]),
+        ]);
+        $term = $request->validate([
+            'academic_year' => ['required', 'regex:/^\d{4}-\d{4}$/'],
+            'semester' => ['required', \Illuminate\Validation\Rule::in(\App\Support\Term::SEMESTERS)],
+        ]);
         $data = $request->validate([
             'id_number' => ['required', 'string', 'max:100', \Illuminate\Validation\Rule::unique('users', 'id_number')->ignore($user->id)],
             'name' => ['required', 'string', 'max:255'],
@@ -245,8 +266,9 @@ class HteAccountController extends Controller
             'email.unique' => 'This email is already used by another PSU Intern-Link account.',
         ]);
 
-        DB::transaction(function () use ($user, $representative, $data) {
+        DB::transaction(function () use ($user, $representative, $data, $term) {
             $user->update($data);
+            $representative->update($term);
             // The account and the agency share one email: keep them in step
             // (otherwise the agency's old email would be put back).
             $representative->hte->updateQuietly(['contact_email' => $data['email']]);
@@ -266,21 +288,37 @@ class HteAccountController extends Controller
     public function archive(Request $request, HteRepresentative $representative): RedirectResponse
     {
         $this->authorizeCampus($representative);
-        $representative->user->update(['status' => 'archived']);
+        DB::transaction(function () use ($representative) {
+            $representative->user->update(['status' => 'archived']);
+            // The agency leaves the partner lists of this and later terms too
+            // (past terms keep it for their records); restoring brings it back.
+            \App\Models\HteListing::withoutGlobalScopes()
+                ->where('hte_id', $representative->hte_id)
+                ->whereNull('archived_at')
+                ->where('academic_year', '>=', \App\Support\Term::current()[0])
+                ->update(['archived_at' => now(), 'archived_with_account' => true]);
+        });
         \App\Support\AuditLogger::record('hte_account.archived', "Archived the HTE account {$representative->user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
 
         return back()
-            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was archived and can no longer sign in. Its records are kept; restore it from Archived HTE accounts.");
+            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was archived and can no longer sign in, and {$representative->hte->name} was taken off the partner list. Its records are kept; restore it from Archived HTE accounts.");
     }
 
     public function restore(Request $request, HteRepresentative $representative): RedirectResponse
     {
         $this->authorizeCampus($representative);
-        $representative->user->update(['status' => 'active']);
+        DB::transaction(function () use ($representative) {
+            $representative->user->update(['status' => 'active']);
+            // Back on the partner lists it left when the account was archived.
+            \App\Models\HteListing::withoutGlobalScopes()
+                ->where('hte_id', $representative->hte_id)
+                ->where('archived_with_account', true)
+                ->update(['archived_at' => null, 'archived_with_account' => false]);
+        });
         \App\Support\AuditLogger::record('hte_account.restored', "Restored the HTE account {$representative->user->id_number} ({$representative->hte->name}).", auth()->user(), $request, $representative, $representative->hte->campus_id);
 
         return back()
-            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was restored and can sign in again.");
+            ->with('status', "{$representative->user->name}'s account for {$representative->hte->name} was restored and can sign in again; {$representative->hte->name} is back on the partner list.");
     }
 
     private function isCoordinator(): bool

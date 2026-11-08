@@ -151,7 +151,7 @@
                             <span class="il-avatar-sm">{{ $ini }}</span>
                             <div>
                                 <div class="fw-semibold">{{ $account->user->name }}</div>
-                                <div class="text-secondary" style="font-size: 0.78rem;">{{ $account->user->id_number }}</div>
+                                <div class="text-secondary" style="font-size: 0.78rem;">{{ $account->user->id_number }}@if ($account->semester) &middot; {{ $account->semester === \App\Support\Term::FIRST ? '1st Sem' : '2nd Sem' }} {{ $account->academic_year }}@endif</div>
                                 <div class="text-secondary" style="font-size: 0.78rem;"><i class="ti ti-mail"></i> {{ $account->user->email ?: 'No email' }}</div>
                                                 <div style="font-size: 0.75rem;" class="{{ $account->credentials_sent_at ? 'text-success' : 'text-secondary' }}">
                                     <i class="ti {{ $account->credentials_sent_at ? 'ti-mail-check' : 'ti-mail' }}"></i>

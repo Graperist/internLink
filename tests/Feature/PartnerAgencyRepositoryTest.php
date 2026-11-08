@@ -585,7 +585,9 @@ class PartnerAgencyRepositoryTest extends TestCase
 
         // Document Review, Evaluations and Generate Reports have the filter too (not the Dashboard).
         $this->actingAs($coordinator)->get(route('instructor.dashboard'))->assertOk()->assertDontSee('name="semester"', false);
-        foreach (['instructor.documents', 'instructor.evaluations', 'instructor.reports'] as $name) {
+        $this->actingAs($coordinator)->get(route('instructor.documents', ['semester' => '1st Semester']))->assertOk()
+            ->assertSee('name="semester"', false);
+        foreach (['instructor.evaluations', 'instructor.reports'] as $name) {
             $this->actingAs($coordinator)->get(route($name, ['semester' => '1st Semester']))->assertOk()
                 ->assertSee('name="semester"', false)->assertSee('AY 2026-2027 (current) · 1st Semester', false);
         }
@@ -602,5 +604,64 @@ class PartnerAgencyRepositoryTest extends TestCase
             ->assertSessionHas('status', 'Announcement sent to 1 intern of every program.');
         $this->actingAs($coordinator)->post(route('instructor.announcements.store'), $post + ['recipients_term' => 'all'])
             ->assertSessionHas('status', 'Announcement sent to 3 interns of every program.');
+    }
+
+    public function test_archiving_an_hte_account_takes_its_agency_off_the_partner_list(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $listing = $this->listing($this->bsit, 'Proxy Hotel');
+        $repUser = User::forceCreate(['campus_id' => $this->campus->id, 'role_id' => Role::firstOrCreate(['code' => 'hte_representative'], ['name' => 'HTE'])->id, 'id_number' => 'ACC-HTE-002', 'name' => 'Jordan', 'email' => 'j@hte.local', 'password' => 'x', 'status' => 'active']);
+        $rep = \App\Models\HteRepresentative::forceCreate(['user_id' => $repUser->id, 'hte_id' => $listing->hte_id, 'academic_year' => '2026-2027', 'semester' => '2nd Semester']);
+
+        $this->actingAs($coordinator)->get(route('instructor.htes'))->assertSee('Proxy Hotel');
+        $this->actingAs($coordinator)->post(route('instructor.hte-accounts.archive', $rep))->assertSessionHas('status');
+        $this->assertSame('archived', $repUser->fresh()->status);
+        $this->assertFalse(HteListing::whereKey($listing->id)->exists());
+        // Not on the partner list any more (it sits under Archived partner agencies).
+        $this->actingAs($coordinator)->get(route('instructor.htes'))->assertDontSee('<strong>Proxy Hotel</strong>', false);
+
+        $this->actingAs($coordinator)->post(route('instructor.hte-accounts.restore', $rep))->assertSessionHas('status');
+        $this->assertTrue(HteListing::whereKey($listing->id)->exists());
+    }
+
+    public function test_an_hte_account_has_an_academic_year_and_semester(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $listing = $this->listing($this->bsit, 'Hundred Islands', '2026-2027', '2nd Semester');
+        $repUser = User::forceCreate(['campus_id' => $this->campus->id, 'role_id' => Role::firstOrCreate(['code' => 'hte_representative'], ['name' => 'HTE'])->id, 'id_number' => 'BC-HTE-001', 'name' => 'Marianne', 'email' => 'm@hte.local', 'password' => 'x', 'status' => 'active']);
+        $rep = \App\Models\HteRepresentative::forceCreate(['user_id' => $repUser->id, 'hte_id' => $listing->hte_id, 'academic_year' => '2026-2027', 'semester' => '2nd Semester']);
+
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.edit', $rep))->assertOk()
+            ->assertSee('name="semester"', false)->assertSee('name="academic_year"', false);
+        $this->actingAs($coordinator)->put(route('instructor.hte-accounts.update', $rep), [
+            'academic_year' => '2026-2027', 'semester' => '1st Semester', 'id_number' => 'BC-HTE-001', 'name' => 'Marianne', 'email' => 'm@hte.local',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('1st Semester', $rep->fresh()->semester);
+
+        // Found under 1st Semester (its own term) and 2nd Semester (its agency's list), not another year.
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index', ['semester' => '1st Semester']))->assertSee('BC-HTE-001');
+        $this->actingAs($coordinator)->get(route('instructor.hte-accounts.index', ['academic_year' => '2030']))->assertDontSee('BC-HTE-001');
+    }
+
+    public function test_reports_can_cover_both_semesters(): void
+    {
+        $coordinator = $this->teacher('coordinator', 'ACC-COORD-001', $this->bsit);
+        $this->listing($this->bsit, 'First Sem Co', '2026-2027', '1st Semester');
+        $second = $this->listing($this->bsit, 'Second Sem Co');
+        $this->placedStudent($this->bsit, $second->hte, '23-AC-0401');
+
+        $this->actingAs($coordinator)->get(route('instructor.reports'))->assertOk()
+            ->assertSee('id="mst_semester"', false)->assertSee('value="all"', false);
+        $this->actingAs($coordinator)->get(route('instructor.reports.partner-industries', ['semester' => 'all', 'academic_year' => '2026-2027']))->assertOk()
+            ->assertSee('First Sem Co')->assertSee('Second Sem Co')->assertSee('1st &amp; 2nd Semester', false);
+        $this->actingAs($coordinator)->get(route('instructor.reports.partner-industries', ['semester' => '1st Semester', 'academic_year' => '2026-2027']))->assertOk()
+            ->assertSee('First Sem Co')->assertDontSee('Second Sem Co');
+        $this->actingAs($coordinator)->get(route('instructor.reports.directory', ['semester' => 'all', 'academic_year' => '2026-2027']))->assertOk()
+            ->assertSee('Student 23-AC-0401');
+        // Student-Trainees: one semester or both.
+        $this->actingAs($coordinator)->get(route('instructor.reports.student-trainees', ['semester' => '', 'academic_year' => '2026-2027']))->assertOk()
+            ->assertSee('Second Sem Co');
+        $this->actingAs($coordinator)->get(route('instructor.reports.student-trainees', ['semester' => '1st Semester', 'academic_year' => '2026-2027']))->assertOk()
+            ->assertDontSee('Second Sem Co');
     }
 }

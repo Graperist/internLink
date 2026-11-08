@@ -11,7 +11,7 @@
         @if ($autoSubmit ?? false) onchange="this.form.submit()" @endif
         {{ ($disabled ?? false) ? 'disabled' : '' }} aria-label="Semester">
     @if ($allowAll ?? false)
-        <option value="" @selected(($value ?? '') === '' || ($value ?? '') === 'all')>All semesters</option>
+        <option value="{{ $allValue ?? '' }}" @selected(($value ?? '') === '' || ($value ?? '') === 'all')>All semesters</option>
     @endif
     @foreach (\App\Support\Term::SEMESTERS as $sem)
         <option value="{{ $sem }}" @selected(($value ?? '') === $sem)>{{ $sem }}</option>

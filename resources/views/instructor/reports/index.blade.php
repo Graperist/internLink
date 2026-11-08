@@ -90,11 +90,20 @@
         <div class="col-md-4">
             <form method="GET" action="{{ route('instructor.reports.student-trainees') }}" target="_blank"
                   class="il-report-card h-100 d-flex flex-column">
-                @foreach ($termInputs as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
                 <div class="d-flex align-items-center gap-2 mb-2"><span class="il-tile-icon sm"><i class="ti ti-users-group"></i></span><p class="fw-semibold mb-0">Masterlist of Student-Trainees</p></div>
                 <p class="text-secondary small mb-3">
                     FM-AA-INT-09 &middot; One page per company, listing the student-trainees placed there
                 </p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small mb-1" for="mst_semester">Semester</label>
+                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'mst_semester', 'value' => (string) ($term->semester ?? ''), 'allowAll' => true, 'small' => true])
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small mb-1" for="mst_ay">Academic year</label>
+                        @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'mst_ay', 'value' => $term->year === 'all' ? $term->currentYear : $term->year, 'small' => true])
+                    </div>
+                </div>
                 <div class="mb-3">
                     <label class="form-label small mb-1" for="mst_hte">Company</label>
                     <select class="form-select form-select-sm" id="mst_hte" name="hte_id" @disabled($htes->isEmpty())>
@@ -130,7 +139,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_semester">Semester</label>
-                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'mpi_semester', 'value' => $mpiSemester, 'small' => true])
+                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'mpi_semester', 'value' => $mpiSemester, 'allowAll' => true, 'allValue' => 'all', 'small' => true])
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="mpi_ay">Academic Year</label>
@@ -157,7 +166,7 @@
                 <div class="row g-2 mb-3">
                     <div class="col-6">
                         <label class="form-label small mb-1" for="dsi_semester">Semester</label>
-                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'dsi_semester', 'value' => $semester, 'small' => true])
+                        @include('partials.semester-select', ['name' => 'semester', 'id' => 'dsi_semester', 'value' => $semester, 'allowAll' => true, 'allValue' => 'all', 'small' => true])
                     </div>
                     <div class="col-6">
                         <label class="form-label small mb-1" for="dsi_ay">Academic Year</label>

@@ -20,7 +20,10 @@ class MonitoringController extends Controller
         // instructor sees their own program.
         $instructor = auth()->user()->instructor;
         // One academic year (the current one) and, if picked, one semester.
-        $term = \App\Support\TermFilter::fromRequest($request);
+        // The Super Admin sees every intern of the campus (no term filter).
+        $term = auth()->user()->isSuperAdmin()
+            ? new \App\Support\TermFilter('all', null, \App\Support\Term::current()[0])
+            : \App\Support\TermFilter::fromRequest($request);
 
         $deployedStudents = $term->applyToStudents($instructor->visibleStudents())
             ->with(['user', 'program', 'currentInternship.deployment.hte'])

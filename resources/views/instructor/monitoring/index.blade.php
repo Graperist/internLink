@@ -9,11 +9,15 @@
     <div>
         <h1 class="il-page-title">Time Frame Monitoring</h1>
         <p class="text-secondary small mb-0">Form 17 – Internship Time Frame. The hours each intern entered per day; they count toward the required hours right away.</p>
-        <p class="small fw-semibold mb-0 mt-1">{{ $term->label() }}</p>
+        @unless (auth()->user()->isSuperAdmin())
+            <p class="small fw-semibold mb-0 mt-1">{{ $term->label() }}</p>
+        @endunless
     </div>
-    <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
-        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'tf'])
-    </form>
+    @unless (auth()->user()->isSuperAdmin())
+        <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+            @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'tf'])
+        </form>
+    @endunless
 </div>
 
 @if (session('status'))<div class="alert alert-success">{{ session('status') }}</div>@endif

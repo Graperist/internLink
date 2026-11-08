@@ -123,7 +123,7 @@ class ReportController extends Controller
         [$defaultYear, $defaultSemester] = Term::current();
         $request->merge(['academic_year' => Term::normalizeAcademicYear($request->query('academic_year'))]);
         $data = $request->validate([
-            'semester' => ['nullable', 'in:'.implode(',', Term::SEMESTERS)],
+            'semester' => ['nullable', 'in:all,'.implode(',', Term::SEMESTERS)],
             'academic_year' => ['nullable', 'string', 'max:20'],
             'program_id' => ['nullable', 'integer'],
         ]);
@@ -139,24 +139,27 @@ class ReportController extends Controller
             $program = Program::where('campus_id', $instructor->campus_id)->findOrFail($data['program_id']);
         }
 
-        $counts = HteController::internCounts($instructor->campus_id, $academicYear, $semester);
+        // "all": both semesters of the year (an agency on both lists appears once).
+        $semesters = $semester === 'all' ? Term::SEMESTERS : [$semester];
+        $counts = collect($semesters)->mapWithKeys(fn ($sem) => [$sem => HteController::internCounts($instructor->campus_id, $academicYear, $sem)]);
 
         $rows = HteListing::with('hte')
             ->where('campus_id', $instructor->campus_id)
-            ->forTerm($academicYear, $semester)
+            ->where('academic_year', $academicYear)
+            ->whereIn('semester', $semesters)
             ->when($program, fn ($q) => $q->where('program_id', $program->id), fn ($q) => $q->when(! $instructor->isCoordinator(), fn ($q) => $q->whereRaw('1 = 0')))
             ->get()
             ->groupBy('hte_id')
             ->map(fn ($group) => [
                 'name' => $group->first()->hte->name,
-                'total' => $group->sum(fn ($listing) => $counts[$listing->program_id.'|'.$listing->hte_id] ?? 0),
+                'total' => $group->sum(fn ($listing) => $counts[$listing->semester][$listing->program_id.'|'.$listing->hte_id] ?? 0),
             ])
             ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
         return view('instructor.reports.partner-industries', array_merge($this->signatories($instructor), [
             'rows' => $rows,
-            'semester' => $semester,
+            'semester' => $semester === 'all' ? '1st & 2nd Semester' : $semester,
             'academicYear' => $academicYear,
             'collegeName' => $program?->courseTitle() ?? ($instructor->campus?->name ?? ''),
         ]));
@@ -171,7 +174,7 @@ class ReportController extends Controller
     {
         $request->merge(['academic_year' => Term::normalizeAcademicYear($request->query('academic_year'))]);
         $data = $request->validate([
-            'semester' => ['nullable', 'in:'.implode(',', Term::SEMESTERS)],
+            'semester' => ['nullable', 'in:all,'.implode(',', Term::SEMESTERS)],
             'academic_year' => ['nullable', 'string', 'max:20'],
             'program_id' => ['nullable', 'integer'],
         ]);
@@ -185,7 +188,8 @@ class ReportController extends Controller
         $termSemester = $data['semester'] ?? $defaultSemester;
         $termYear = Term::isValidAcademicYear($data['academic_year'] ?? null) ? $data['academic_year'] : $defaultAcademicYear;
         $students = $instructor->visibleStudents()->when($programId, fn ($q) => $q->where('program_id', $programId))
-            ->where('academic_year', $termYear)->where('semester', $termSemester)
+            ->where('academic_year', $termYear)
+            ->when($termSemester !== 'all', fn ($q) => $q->where('semester', $termSemester))
             ->with(['user', 'program'])->get()
             ->sortBy(fn ($student) => $student->user->name, SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
@@ -201,7 +205,7 @@ class ReportController extends Controller
 
         return view('instructor.reports.directory', array_merge($this->signatories($instructor), [
             'rows' => $rows,
-            'semester' => $termSemester,
+            'semester' => $termSemester === 'all' ? '1st & 2nd Semester' : $termSemester,
             'academicYear' => $termYear,
             'collegeName' => $chosenProgram?->name ?? ($instructor->isCoordinator() ? ($instructor->campus?->name ?? '') : ($instructor->program?->name ?? '')),
         ]));

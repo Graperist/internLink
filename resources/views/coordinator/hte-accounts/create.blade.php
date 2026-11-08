@@ -41,6 +41,18 @@
             </p>
         </div>
 
+        <div class="row g-2 mb-3">
+            <div class="col-md-6">
+                <label class="il-form-label" for="academic_year">Academic year</label>
+                @include('partials.academic-year-input', ['name' => 'academic_year', 'id' => 'academic_year', 'value' => old('academic_year', $academicYear), 'required' => true])
+            </div>
+            <div class="col-md-6">
+                <label class="il-form-label" for="semester">Semester</label>
+                @include('partials.semester-select', ['name' => 'semester', 'id' => 'semester', 'value' => old('semester', $semester)])
+            </div>
+            <p class="il-form-hint mb-0">The term the account is for. It shows under this academic year and semester on HTE Accounts.</p>
+        </div>
+
         <div class="mb-3">
             <label class="il-form-label" for="id_number">Representative ID number</label>
             <input type="text" class="form-control" id="id_number" name="id_number"

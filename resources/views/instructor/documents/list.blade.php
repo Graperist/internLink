@@ -44,39 +44,29 @@
         @endforeach
     </ul>
 
-    <form method="GET" class="row g-2 mb-3">
+    {{-- All the filters on one row. --}}
+    <form method="GET" class="d-flex flex-wrap flex-xl-nowrap gap-2 align-items-center mb-3">
         <input type="hidden" name="tab" value="{{ $tab === 'queue' ? '' : $tab }}">
-        <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
-            @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'review'])
-            <span class="small text-secondary">{{ $term->label() }}</span>
-        </div>
-        <div class="{{ $isCoordinator ? 'col-md-4' : 'col-md-7' }}">
-            <input type="text" name="search" class="form-control" placeholder="Search by name or ID number..." value="{{ request('search') }}">
-        </div>
+        @include('partials.term-filter', ['term' => $term, 'idPrefix' => 'review'])
+        <input type="text" name="search" class="form-control" style="flex: 1 1 180px; min-width: 150px;" placeholder="Search name or ID..." value="{{ request('search') }}">
         @if ($isCoordinator)
-            <div class="col-md-3">
-                <select name="program_id" class="form-select" onchange="this.form.submit()">
-                    <option value="">All programs</option>
-                    @foreach ($programs as $program)
-                        <option value="{{ $program->id }}" @selected((string) request('program_id') === (string) $program->id)>
-                            {{ $program->code }}{{ $program->id === $instructor->program_id ? ' (mine)' : '' }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-        @endif
-        <div class="col-md-3">
-            <select name="hte_id" class="form-select" onchange="this.form.submit()" aria-label="Partner agency">
-                <option value="">All partner agencies</option>
-                @foreach ($agencies as $agency)
-                    <option value="{{ $agency->id }}" @selected((string) request('hte_id') === (string) $agency->id)>{{ $agency->name }}</option>
+            <select name="program_id" class="form-select" style="flex: 0 1 150px; min-width: 120px;" onchange="this.form.submit()" aria-label="Program">
+                <option value="">All programs</option>
+                @foreach ($programs as $program)
+                    <option value="{{ $program->id }}" @selected((string) request('program_id') === (string) $program->id)>
+                        {{ $program->code }}{{ $program->id === $instructor->program_id ? ' (mine)' : '' }}
+                    </option>
                 @endforeach
-                <option value="none" @selected(request('hte_id') === 'none')>No partner agency yet</option>
             </select>
-        </div>
-        <div class="col-md-2 d-grid">
-            <button type="submit" class="btn btn-outline-primary"><i class="ti ti-search"></i> Search</button>
-        </div>
+        @endif
+        <select name="hte_id" class="form-select" style="flex: 0 1 200px; min-width: 150px;" onchange="this.form.submit()" aria-label="Partner agency">
+            <option value="">All partner agencies</option>
+            @foreach ($agencies as $agency)
+                <option value="{{ $agency->id }}" @selected((string) request('hte_id') === (string) $agency->id)>{{ $agency->name }}</option>
+            @endforeach
+            <option value="none" @selected(request('hte_id') === 'none')>No partner agency yet</option>
+        </select>
+        <button type="submit" class="btn btn-outline-primary flex-shrink-0"><i class="ti ti-search"></i> Search</button>
     </form>
     @php $nmTerm = \App\Support\TermFilter::fromRequest(request()); @endphp
     @if ($rows->total() === 0 && ($counts['all'] ?? 1) === 0 && ! $term->isDefault())

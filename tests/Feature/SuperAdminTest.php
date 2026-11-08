@@ -202,6 +202,12 @@ class SuperAdminTest extends TestCase
         foreach (['coordinator.programs.index', 'coordinator.instructors.index', 'instructor.hte-accounts.index', 'coordinator.documents', 'coordinator.settings', 'coordinator.campus-settings.edit', 'instructor.advisees', 'instructor.monitoring', 'instructor.htes', 'instructor.reports', 'instructor.audit-trail'] as $name) {
             $this->get(route($name))->assertOk();
         }
+        // no academic year / semester filter on the Campus Dashboard or Time Frame;
+        // Generate Reports has the same semester choices as the coordinator's
+        $this->get(route('instructor.dashboard'))->assertDontSee('name="semester"', false);
+        $this->get(route('instructor.monitoring'))->assertDontSee('name="semester"', false)->assertDontSee('name="academic_year"', false);
+        $this->get(route('instructor.reports'))->assertSee('id="mst_semester"', false)->assertSee('id="mpi_semester"', false)
+            ->assertSee('id="dsi_semester"', false)->assertSee('value="all"', false);
         // no document review, evaluations or announcements for the Super Admin
         $this->get(route('instructor.dashboard'))->assertDontSee(route('instructor.documents'), false)
             ->assertDontSee(route('instructor.evaluations'), false)->assertDontSee(route('instructor.announcements'), false)

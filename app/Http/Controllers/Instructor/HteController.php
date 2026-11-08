@@ -293,7 +293,7 @@ class HteController extends Controller
     {
         $listing = HteListing::withArchived()->with('hte')->findOrFail($listingId);
         $this->authorizeManage($listing, auth()->user()->instructor);
-        $listing->forceFill(['archived_at' => null])->save();
+        $listing->forceFill(['archived_at' => null, 'archived_with_account' => false])->save();
 
         AuditLogger::record('hte_listing.restored', "Restored {$listing->hte->name} to the partner list for {$listing->semester} {$listing->academic_year}.", auth()->user(), $request, null, $listing->campus_id);
 
