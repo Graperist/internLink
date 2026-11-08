@@ -1034,10 +1034,13 @@
                                 <textarea class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" rows="3" {{ $field->is_required ? 'required' : '' }}>{{ old($field->field_key, $document?->fieldValue($field->field_key)) }}</textarea>
                             @else
                                 @php
-                                    // Form 1's Number of Hours starts at the program's Required Hours (it can be changed).
+                                    // Form 1's Number of Hours starts at the program's Required Hours; what the student saves becomes their required hours.
                                     $fieldDefault = $field->field_key === 'hte_number_of_hours' ? $internship?->requiredHours() : null;
                                 @endphp
                                 <input type="text" class="form-control" id="{{ $field->field_key }}" name="{{ $field->field_key }}" value="{{ old($field->field_key, $document?->fieldValue($field->field_key) ?? $fieldDefault) }}" {{ $field->is_required ? 'required' : '' }}>
+                                @if ($field->field_key === 'hte_number_of_hours')
+                                    <div class="form-text">Your Time Frame (Form 17) and progress count these required hours.</div>
+                                @endif
                             @endif
                         @endif
                     </div>

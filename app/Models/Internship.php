@@ -63,10 +63,10 @@ class Internship extends Model
     private ?int $requiredHoursCache = null;
 
     /**
-     * The hours this intern must render: the program's Required Hours set by
-     * the coordinator in Programs, so a change there updates every intern of
-     * that program (Time Frame, Form 17, progress, the completion check).
-     * The hours typed on a form only go on that form's printout.
+     * The hours this intern must render: the NUMBER OF HOURS the student put
+     * on their Application for Internship (Time Frame, Form 17, progress and
+     * the completion check all follow it). Before the application has it,
+     * the program's Required Hours set by the coordinator in Programs.
      */
     public function requiredHours(): ?int
     {
@@ -74,7 +74,16 @@ class Internship extends Model
             return $this->requiredHoursCache;
         }
 
-        $hours = (int) ($this->program?->required_hours ?? $this->student?->program?->required_hours ?? $this->getAttribute('required_hours') ?? 0);
+        $fromApplication = (int) DocumentFieldValue::query()
+            ->where('field_key', 'hte_number_of_hours')
+            ->whereHas('document', fn ($d) => $d->where('internship_id', $this->id)
+                ->whereHas('requirement', fn ($r) => $r->where('code', 'APPLICATION_FOR_OJT')))
+            ->latest('id')
+            ->value('value');
+
+        $hours = $fromApplication > 0
+            ? $fromApplication
+            : (int) ($this->program?->required_hours ?? $this->student?->program?->required_hours ?? $this->getAttribute('required_hours') ?? 0);
 
         return $hours > 0 ? ($this->requiredHoursCache = $hours) : null;
     }
