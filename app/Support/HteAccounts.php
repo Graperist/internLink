@@ -50,7 +50,7 @@ class HteAccounts
                 'email' => $email,
                 'password' => Hash::make(Str::password(16)),
                 'status' => 'active',
-                'must_change_password' => false,   // HTE accounts keep their password (evaluations only)
+                'must_change_password' => true,   // set their own password on first sign-in
             ]);
 
             return HteRepresentative::create(['user_id' => $user->id, 'hte_id' => $hte->id]);
@@ -98,7 +98,8 @@ class HteAccounts
 
         $password = Str::password(10, symbols: false);
         $oldHash = $user->password;
-        $user->update(['password' => Hash::make($password)]);
+        $oldMustChange = (bool) $user->must_change_password;
+        $user->update(['password' => Hash::make($password), 'must_change_password' => true]);
 
         try {
             Mail::to($user->email)->send(new HteAccountMail(
@@ -107,7 +108,7 @@ class HteAccounts
             ));
         } catch (\Throwable $e) {
             report($e);
-            $user->update(['password' => $oldHash]);   // nothing was sent: keep the old password
+            $user->update(['password' => $oldHash, 'must_change_password' => $oldMustChange]);   // nothing was sent: keep the old password
 
             return ['sent' => false, 'error' => Str::limit(trim(strtok($e->getMessage(), "\n")), 220), 'password' => ''];
         }

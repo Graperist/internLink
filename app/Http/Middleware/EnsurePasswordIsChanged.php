@@ -15,8 +15,6 @@ class EnsurePasswordIsChanged
         if (
             $user
             && $user->must_change_password
-            // HTE accounts are given by the coordinator for evaluations only and keep their password.
-            && ! $user->isHteRepresentative()
             && ! $request->routeIs('password.change', 'password.update', 'logout')
         ) {
             return redirect()->route('password.change');

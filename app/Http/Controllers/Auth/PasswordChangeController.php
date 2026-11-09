@@ -20,7 +20,8 @@ class PasswordChangeController extends Controller
 
     public function show(): View|RedirectResponse
     {
-        if (auth()->user()?->isHteRepresentative()) {
+        // HTE supervisors set their own password once, on first sign-in.
+        if (auth()->user()?->isHteRepresentative() && ! auth()->user()->must_change_password) {
             return $this->hteCannotChange();
         }
 
@@ -30,7 +31,7 @@ class PasswordChangeController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $user = $request->user();
-        if ($user?->isHteRepresentative()) {
+        if ($user?->isHteRepresentative() && ! $user->must_change_password) {
             return $this->hteCannotChange();
         }
 

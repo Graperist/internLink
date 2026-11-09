@@ -53,7 +53,7 @@
                     @if (filled($acct['email_warning'] ?? null))
                         <p class="small mb-1 text-danger"><i class="ti ti-alert-triangle"></i> {{ $acct['email_warning'] }}</p>
                     @endif
-                    <p class="text-secondary mb-0" style="font-size:.78rem;">HTE accounts are for evaluating the interns only and keep this password (they can't change it). If it gets lost, use <i class="ti ti-key"></i> to make a new one.</p>
+                    <p class="text-secondary mb-0" style="font-size:.78rem;">They will set their own password the first time they sign in. If it gets lost, use <i class="ti ti-key"></i> to make a new one.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-primary" id="copyCredentials" data-message="{{ $acctMessage }}">

@@ -158,7 +158,7 @@ class HteAccountController extends Controller
                 'email' => $validated['email'],
                 'password' => Hash::make($temporaryPassword),
                 'status' => 'active',
-                'must_change_password' => false,   // HTE accounts keep this password (evaluations only)
+                'must_change_password' => true,   // set their own password on first sign-in
             ]);
 
             return HteRepresentative::create([
@@ -209,7 +209,7 @@ class HteAccountController extends Controller
 
         $representative->user->update([
             'password' => Hash::make($temporaryPassword),
-            'must_change_password' => false,   // HTE accounts keep this password (evaluations only)
+            'must_change_password' => true,   // set their own password on first sign-in
         ]);
 
         // Shown once here; emailing is the mail icon's job (HteAccounts).

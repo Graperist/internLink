@@ -31,7 +31,7 @@
         </p>
 
         <p style="font-size:13px; color:#44546a;">
-            Sign in with your ID number and this password. Please keep them private. If you lose them,
+            Sign in with your ID number and this temporary password. You will be asked to set your own password the first time you sign in. Please keep them private. If you lose them,
             contact the OJT Coordinator and they can send you a new password.
         </p>
     </div>
